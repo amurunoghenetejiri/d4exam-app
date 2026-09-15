@@ -1,0 +1,38 @@
+name: FIX-ACCOUNT-SWITCH
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/FIX-ACCOUNT-SWITCH.yml"
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore account-switcher from good history
+        run: |
+          set -euo pipefail
+          SIZE=$(wc -c < src/lib/account-switcher.ts || echo 0)
+          echo "current size $SIZE"
+          if [ "$SIZE" -lt 500 ]; then
+            for rev in fbb8b4603c449342188b5fe65508be5f086f1e9d 94a3c985580a54853696843f7b20a036eca8d60d; do
+              if git cat-file -e "$rev:src/lib/account-switcher.ts" 2>/dev/null; then
+                S=$(git show "$rev:src/lib/account-switcher.ts" | wc -c)
+                if [ "$S" -gt 500 ]; then
+                  git show "$rev:src/lib/account-switcher.ts" > src/lib/account-switcher.ts
+                  echo "Restored from $rev ($S bytes)"
+                  break
+                fi
+              fi
+            done
+          fi
+          test "$(wc -c < src/lib/account-switcher.ts)" -gt 500
+          git config user.name "d4exam-bot"
+          git config user.email "bot@d4exam.local"
+          git add src/lib/account-switcher.ts
+          git commit -m "fix(accounts): restore account-switcher after placeholder" || echo nochange
+          git push origin HEAD:main || true
