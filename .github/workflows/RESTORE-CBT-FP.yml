@@ -1,0 +1,61 @@
+name: RESTORE-CBT-FP
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/RESTORE-CBT-FP.yml"
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore CbtExamSession and add fingerprint exam flag
+        run: |
+          set -euo pipefail
+          # Restore last known-good content from before the PLACEHOLDER commit
+          git show 94a3c985580a54853696843f7b20a036eca8d60d:src/components/cbt/CbtExamSession.impl.tsx > src/components/cbt/CbtExamSession.impl.tsx
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("src/components/cbt/CbtExamSession.impl.tsx")
+          text = p.read_text()
+          old_imp = 'import { isExamAttemptFinished } from "@/lib/student";'
+          new_imp = old_imp + '\nimport { setExamActiveFlag } from "@/lib/fingerprint-lock";'
+          if 'setExamActiveFlag' not in text:
+              if old_imp not in text:
+                  raise SystemExit('import anchor missing')
+              text = text.replace(old_imp, new_imp, 1)
+          anchor = '''  useEffect(() => {
+    if (done) {
+      shutdownMedia();
+      setFsGate(false);
+      setPaused(false);
+      void leaveExamFullscreen();
+    }
+  }, [done, shutdownMedia]);
+'''
+          insert = anchor + '''
+  /** Keep fingerprint app-lock from interrupting an active CBT session */
+  useEffect(() => {
+    const active = Boolean(started && !done && !previewMode);
+    setExamActiveFlag(active);
+    return () => setExamActiveFlag(false);
+  }, [started, done, previewMode]);
+'''
+          if 'setExamActiveFlag(active)' not in text:
+              if anchor not in text:
+                  raise SystemExit('anchor missing')
+              text = text.replace(anchor, insert, 1)
+          p.write_text(text)
+          print('patched', text.count('setExamActiveFlag'))
+          PY
+          git config user.name "d4exam-bot"
+          git config user.email "bot@d4exam.app"
+          git add src/components/cbt/CbtExamSession.impl.tsx
+          git diff --cached --quiet && echo "nothing to commit" && exit 0
+          git commit -m "fix(cbt): restore session + mark exam active for fingerprint lock skip"
+          git push origin HEAD:main
