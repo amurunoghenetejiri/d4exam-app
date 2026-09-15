@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
@@ -15,7 +15,7 @@ const links = [
   { to: "/support", label: "Support" },
 ];
 
-/** Classic mobile menu — same groups on website and app (no copyright in the sheet). */
+/** Classic mobile menu — Login is a button under Apply, not a text link. */
 const menuGroups = [
   {
     title: "Platform",
@@ -33,17 +33,11 @@ const menuGroups = [
       { to: "/privacy", label: "Privacy Policy" },
     ],
   },
-  {
-    title: "Access",
-    items: [
-      { to: "/login", label: "Login" },
-      { to: "/forgot-password", label: "Forgot Password" },
-    ],
-  },
 ];
 
 export function PublicLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
   const appShell = useMemo(() => {
     try {
       return isAppLikeShell();
@@ -51,6 +45,18 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       return false;
     }
   }, []);
+
+  function goTo(path: string) {
+    setOpen(false);
+    // Small delay so the sheet can close before navigation (more reliable on mobile / WebView)
+    window.setTimeout(() => {
+      try {
+        void navigate({ to: path as never });
+      } catch {
+        window.location.assign(path);
+      }
+    }, 50);
+  }
 
   return (
     <div className="relative flex min-h-dvh flex-col bg-white">
@@ -111,23 +117,28 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                     </p>
                     <div className="flex flex-col gap-0.5">
                       {g.items.map((l) => (
-                        <Link
+                        <button
                           key={l.label}
-                          to={l.to}
-                          onClick={() => setOpen(false)}
-                          className="rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                          type="button"
+                          onClick={() => goTo(l.to)}
+                          className="rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
                         >
                           {l.label}
-                        </Link>
+                        </button>
                       ))}
                     </div>
                   </div>
                 ))}
                 <div className="mt-2 space-y-2 border-t border-slate-100 pt-4">
-                  <Button className="w-full" asChild>
-                    <Link to="/school-application" onClick={() => setOpen(false)}>
-                      Apply Now
-                    </Link>
+                  <Button className="w-full font-semibold" onClick={() => goTo("/school-application")}>
+                    Apply Now
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full font-semibold"
+                    onClick={() => goTo("/login")}
+                  >
+                    Login
                   </Button>
                 </div>
               </div>
@@ -167,10 +178,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             />
             <FooterCol
               title="Access"
-              items={[
-                { to: "/login", label: "Login" },
-                { to: "/forgot-password", label: "Forgot Password" },
-              ]}
+              items={[{ to: "/login", label: "Login" }]}
             />
           </div>
           <div className="border-t border-slate-200">
