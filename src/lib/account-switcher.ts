@@ -294,7 +294,9 @@ export async function switchToAccount(userId: string): Promise<{ ok: true } | { 
         headers: {
           "Content-Type": "application/json",
           apikey: key,
-          Authorization: `Bearer ${key}`,
+          ...(key.startsWith("sb_publishable_") || key.startsWith("sb_secret_")
+            ? {}
+            : { Authorization: `Bearer ${key}` }),
         },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
@@ -337,12 +339,34 @@ export async function switchToAccount(userId: string): Promise<{ ok: true } | { 
   }
 
   try {
+    // Prefer setSession first so current account is preserved if switch fails
+    if (accessTok && refreshTok) {
+      const ok = await commitSession(accessTok, refreshTok, targetId);
+      if (ok) {
+        if (account.role) seedPendingLoginRole(account.role);
+        if (typeof window !== "undefined") window.location.replace(path);
+        return { ok: true };
+      }
+    }
+
+    if (refreshTok) {
+      const api = await refreshViaApi(refreshTok);
+      if (api && (!api.uid || api.uid === targetId)) {
+        const ok = await commitSession(api.access, api.refresh, targetId);
+        if (ok) {
+          if (account.role) seedPendingLoginRole(account.role);
+          if (typeof window !== "undefined") window.location.replace(path);
+          return { ok: true };
+        }
+      }
+    }
+
     try {
       await supabase.auth.signOut({ scope: "local" });
     } catch {
       /* ignore */
     }
-    await new Promise((r) => setTimeout(r, 80));
+    await new Promise((r) => setTimeout(r, 60));
 
     if (refreshTok) {
       const api = await refreshViaApi(refreshTok);
@@ -391,7 +415,7 @@ export async function switchToAccount(userId: string): Promise<{ ok: true } | { 
     await restorePrevious();
     return {
       ok: false,
-      error: "Could not switch to that account. Sign in once more to refresh it on this device.",
+      error: "Session for that account expired on this device. Sign in once to refresh it.",
       needsLogin: true,
       email: account.email,
     };
