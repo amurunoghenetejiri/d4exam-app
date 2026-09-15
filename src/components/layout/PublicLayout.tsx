@@ -1,10 +1,16 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { Watermark } from "@/components/brand/Watermark";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { isAppLikeShell } from "@/native/platform";
 
 const links = [
@@ -13,9 +19,9 @@ const links = [
   { to: "/pricing", label: "Pricing" },
   { to: "/about", label: "About Us" },
   { to: "/support", label: "Support" },
-];
+] as const;
 
-/** Classic mobile menu — Login is a button under Apply, not a text link. */
+/** Mobile menu groups — Login is a button under Apply, not a text row. */
 const menuGroups = [
   {
     title: "Platform",
@@ -33,11 +39,10 @@ const menuGroups = [
       { to: "/privacy", label: "Privacy Policy" },
     ],
   },
-];
+] as const;
 
 export function PublicLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
   const appShell = useMemo(() => {
     try {
       return isAppLikeShell();
@@ -45,18 +50,6 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       return false;
     }
   }, []);
-
-  function goTo(path: string) {
-    setOpen(false);
-    // Small delay so the sheet can close before navigation (more reliable on mobile / WebView)
-    window.setTimeout(() => {
-      try {
-        void navigate({ to: path as never });
-      } catch {
-        window.location.assign(path);
-      }
-    }, 50);
-  }
 
   return (
     <div className="relative flex min-h-dvh flex-col bg-white">
@@ -97,17 +90,27 @@ export function PublicLayout({ children }: { children: ReactNode }) {
 
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-              <Button variant="outline" size="icon" className="d4-public-menu lg:hidden" aria-label="Open menu">
+              <Button
+                variant="outline"
+                size="icon"
+                className="d4-public-menu lg:hidden"
+                aria-label="Open menu"
+              >
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="w-[min(100%,20rem)] border-l border-slate-200 bg-white p-0">
+            <SheetContent
+              side="right"
+              className="w-[min(100%,20rem)] border-l border-slate-200 bg-white p-0"
+            >
               <SheetTitle className="sr-only">Menu</SheetTitle>
               <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
                 <Logo size="sm" />
-                <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close menu">
-                  <X className="h-5 w-5" />
-                </Button>
+                <SheetClose asChild>
+                  <Button variant="ghost" size="icon" aria-label="Close menu">
+                    <X className="h-5 w-5" />
+                  </Button>
+                </SheetClose>
               </div>
               <div className="flex max-h-[calc(100dvh-3.5rem)] flex-col overflow-y-auto p-4">
                 {menuGroups.map((g) => (
@@ -117,29 +120,29 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                     </p>
                     <div className="flex flex-col gap-0.5">
                       {g.items.map((l) => (
-                        <button
-                          key={l.label}
-                          type="button"
-                          onClick={() => goTo(l.to)}
-                          className="rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                          {l.label}
-                        </button>
+                        <SheetClose key={l.label} asChild>
+                          <Link
+                            to={l.to}
+                            className="rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            {l.label}
+                          </Link>
+                        </SheetClose>
                       ))}
                     </div>
                   </div>
                 ))}
                 <div className="mt-2 space-y-2 border-t border-slate-100 pt-4">
-                  <Button className="w-full font-semibold" onClick={() => goTo("/school-application")}>
-                    Apply Now
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full font-semibold"
-                    onClick={() => goTo("/login")}
-                  >
-                    Login
-                  </Button>
+                  <SheetClose asChild>
+                    <Button className="w-full font-semibold" asChild>
+                      <Link to="/school-application">Apply Now</Link>
+                    </Button>
+                  </SheetClose>
+                  <SheetClose asChild>
+                    <Button variant="outline" className="w-full font-semibold" asChild>
+                      <Link to="/login">Login</Link>
+                    </Button>
+                  </SheetClose>
                 </div>
               </div>
             </SheetContent>
@@ -150,7 +153,6 @@ export function PublicLayout({ children }: { children: ReactNode }) {
 
       <main className="relative z-10 flex-1">{children}</main>
 
-      {/* Website keeps the full marketing footer; native/PWA app does not */}
       {!appShell && (
         <footer className="relative z-10 border-t border-slate-200 bg-slate-50/95">
           <div className="mx-auto grid w-full max-w-[1180px] gap-8 px-4 py-12 sm:px-6 md:grid-cols-[1.4fr_repeat(3,1fr)]">
@@ -176,10 +178,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                 { to: "/privacy", label: "Privacy Policy" },
               ]}
             />
-            <FooterCol
-              title="Access"
-              items={[{ to: "/login", label: "Login" }]}
-            />
+            <FooterCol title="Access" items={[{ to: "/login", label: "Login" }]} />
           </div>
           <div className="border-t border-slate-200">
             <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-1 px-4 py-5 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
