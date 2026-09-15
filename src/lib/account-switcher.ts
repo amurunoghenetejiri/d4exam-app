@@ -221,104 +221,159 @@ export async function switchToAccount(userId: string): Promise<{ ok: true } | { 
   const path =
     account.role && account.role in roleHome ? roleHome[account.role] : "/";
 
+  // Snapshot current session so we can restore it if the switch fails
+  let prevAccess: string | null = null;
+  let prevRefresh: string | null = null;
+  let prevUserId: string | null = null;
   try {
-    // Already this user — just navigate to their role home (no token dance)
-    try {
-      const { data: cur } = await supabase.auth.getSession();
-      if (cur.session?.user?.id === userId && cur.session.access_token) {
-        setActiveAccountId(userId);
-        if (account.role) seedPendingLoginRole(account.role);
-        // Refresh vault tokens from live session
-        try {
-          account.accessToken = cur.session.access_token;
-          if (cur.session.refresh_token) account.refreshToken = cur.session.refresh_token;
-          account.lastUsedAt = Date.now();
-          const idx = vault.accounts.findIndex((a) => a.userId === userId);
-          if (idx >= 0) vault.accounts[idx] = account;
+    const { data: cur } = await supabase.auth.getSession();
+    if (cur.session?.access_token && cur.session?.refresh_token && cur.session.user?.id) {
+      prevAccess = cur.session.access_token;
+      prevRefresh = cur.session.refresh_token;
+      prevUserId = cur.session.user.id;
+      // Persist current account tokens before leaving (keeps vault fresh)
+      try {
+        const idx = vault.accounts.findIndex((a) => a.userId === prevUserId);
+        if (idx >= 0) {
+          vault.accounts[idx] = {
+            ...vault.accounts[idx],
+            accessToken: prevAccess,
+            refreshToken: prevRefresh,
+            lastUsedAt: Date.now(),
+          };
           writeVault(vault);
-        } catch { /* ignore */ }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // Already this user — just navigate home
+  if (prevUserId === userId && prevAccess) {
+    setActiveAccountId(userId);
+    if (account.role) seedPendingLoginRole(account.role);
+    if (typeof window !== "undefined") window.location.replace(path);
+    return { ok: true };
+  }
+
+  if (!account.refreshToken && !account.accessToken) {
+    return { ok: false, error: "No saved session for that account. Sign in again.", needsLogin: true };
+  }
+
+  async function applySession(access: string, refresh: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase.auth.setSession({
+        access_token: access,
+        refresh_token: refresh,
+      });
+      if (!error && data.session?.access_token && data.session.user?.id === userId) {
+        account.accessToken = data.session.access_token;
+        account.refreshToken = data.session.refresh_token || refresh;
+        account.lastUsedAt = Date.now();
+        const idx = vault.accounts.findIndex((a) => a.userId === userId);
+        if (idx >= 0) vault.accounts[idx] = { ...vault.accounts[idx], ...account };
+        else vault.accounts.push(account);
+        writeVault(vault);
+        setActiveAccountId(userId);
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+
+  async function tryRefresh(refresh: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase.auth.refreshSession({ refresh_token: refresh });
+      if (!error && data.session?.access_token && data.session.user?.id === userId) {
+        account.accessToken = data.session.access_token;
+        account.refreshToken = data.session.refresh_token || refresh;
+        account.lastUsedAt = Date.now();
+        const idx = vault.accounts.findIndex((a) => a.userId === userId);
+        if (idx >= 0) vault.accounts[idx] = { ...vault.accounts[idx], ...account };
+        else vault.accounts.push(account);
+        writeVault(vault);
+        setActiveAccountId(userId);
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+
+  async function restorePrevious(): Promise<void> {
+    if (!prevAccess || !prevRefresh) return;
+    try {
+      await supabase.auth.setSession({
+        access_token: prevAccess,
+        refresh_token: prevRefresh,
+      });
+      if (prevUserId) setActiveAccountId(prevUserId);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  try {
+    // 1) Prefer refresh of the *target* account (works even with expired access token)
+    if (account.refreshToken) {
+      const ok = await tryRefresh(account.refreshToken);
+      if (ok) {
+        if (account.role) seedPendingLoginRole(account.role);
         if (typeof window !== "undefined") window.location.replace(path);
         return { ok: true };
       }
-    } catch {
-      /* continue */
     }
 
-    if (!account.refreshToken && !account.accessToken) {
-      return { ok: false, error: "No saved session for that account. Sign in again.", needsLogin: true };
+    // 2) Try setSession with stored tokens (no sign-out yet — avoids blank session)
+    if (account.accessToken && account.refreshToken) {
+      const ok = await applySession(account.accessToken, account.refreshToken);
+      if (ok) {
+        if (account.role) seedPendingLoginRole(account.role);
+        if (typeof window !== "undefined") window.location.replace(path);
+        return { ok: true };
+      }
     }
 
+    // 3) Local sign-out then setSession (clears sticky previous session on some WebViews)
     try {
       await supabase.auth.signOut({ scope: "local" });
     } catch {
       /* ignore */
     }
+    await new Promise((r) => setTimeout(r, 150));
 
-    let access = account.accessToken;
-    let refresh = account.refreshToken;
-
-    // Prefer setSession when we still have both tokens
-    let sessionOk = false;
-    if (access && refresh) {
-      const { data: setData, error: setErr } = await supabase.auth.setSession({
-        access_token: access,
-        refresh_token: refresh,
-      });
-      if (!setErr && setData.session?.access_token) {
-        access = setData.session.access_token;
-        refresh = setData.session.refresh_token || refresh;
-        sessionOk = true;
+    if (account.refreshToken) {
+      const ok = await tryRefresh(account.refreshToken);
+      if (ok) {
+        if (account.role) seedPendingLoginRole(account.role);
+        if (typeof window !== "undefined") window.location.replace(path);
+        return { ok: true };
+      }
+    }
+    if (account.accessToken && account.refreshToken) {
+      const ok = await applySession(account.accessToken, account.refreshToken);
+      if (ok) {
+        if (account.role) seedPendingLoginRole(account.role);
+        if (typeof window !== "undefined") window.location.replace(path);
+        return { ok: true };
       }
     }
 
-    // Refresh token path
-    if (!sessionOk && refresh) {
-      const { data: refData, error: refErr } = await supabase.auth.refreshSession({
-        refresh_token: refresh,
-      });
-      if (!refErr && refData.session?.access_token) {
-        access = refData.session.access_token;
-        refresh = refData.session.refresh_token || refresh;
-        sessionOk = true;
-      }
-    }
-
-    // Last try: setSession again after a tick
-    if (!sessionOk && access && refresh) {
-      await new Promise((r) => setTimeout(r, 200));
-      const { data: setData2, error: setErr2 } = await supabase.auth.setSession({
-        access_token: access,
-        refresh_token: refresh,
-      });
-      if (!setErr2 && setData2.session?.access_token) {
-        access = setData2.session.access_token;
-        refresh = setData2.session.refresh_token || refresh;
-        sessionOk = true;
-      }
-    }
-
-    if (!sessionOk) {
-      return {
-        ok: false,
-        error: "Could not restore that account on this device. Sign in once to refresh it.",
-        needsLogin: true,
-      };
-    }
-
-    account.accessToken = access;
-    account.refreshToken = refresh;
-    account.lastUsedAt = Date.now();
-    const idx = vault.accounts.findIndex((a) => a.userId === userId);
-    if (idx >= 0) vault.accounts[idx] = account;
-    else vault.accounts.push(account);
-    writeVault(vault);
-    setActiveAccountId(userId);
-
-    if (account.role) seedPendingLoginRole(account.role);
-
-    if (typeof window !== "undefined") window.location.replace(path);
-    return { ok: true };
+    // Failed — put the user back on the account they were using
+    await restorePrevious();
+    return {
+      ok: false,
+      error: "Could not switch to that account. Sign in once more to refresh it on this device.",
+      needsLogin: true,
+    };
   } catch (e) {
+    await restorePrevious();
     return { ok: false, error: (e as Error).message || "Could not switch account." };
   }
 }
