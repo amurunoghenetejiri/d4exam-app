@@ -38,6 +38,7 @@ import { SchoolLogo } from "@/components/brand/SchoolLogo";
 import { Loader2, Upload, Building2, Info, LifeBuoy, Shield, ChevronRight, CreditCard, ArrowLeft } from "lucide-react";
 import { InAppHelpLegal, helpLegalTitle, type HelpLegalDoc } from "@/components/pages/InAppHelpLegal";
 import { PushSettingsCard } from "@/components/settings/PushSettingsCard";
+import { FingerprintLockCard } from "@/components/settings/FingerprintLockCard";
 import { SwitchAccountCard } from "@/components/settings/SwitchAccountCard";
 import { RoleSwitchCard } from "@/components/settings/RoleSwitchCard";
 import { signOutThisAccount, signOutAllAccounts, listSavedAccounts } from "@/lib/account-switcher";
@@ -78,7 +79,6 @@ export function SettingsPage({ scope }: { scope: string }) {
     }
   }
 
-  // Full in-app legal page (stays in role shell — no public marketing header)
   if (helpDoc) {
     return (
       <>
@@ -145,6 +145,7 @@ export function SettingsPage({ scope }: { scope: string }) {
           </div>
         </SectionCard>
         <PushSettingsCard scope={scope} />
+        <FingerprintLockCard />
         <RoleSwitchCard />
         <SwitchAccountCard />
         <SectionCard title="Session" description="Device and access information">
