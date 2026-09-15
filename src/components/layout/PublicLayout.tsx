@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
@@ -44,6 +44,7 @@ const menuGroups = [
 
 export function PublicLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
   const appShell = useMemo(() => {
     try {
       return isAppLikeShell();
@@ -51,6 +52,27 @@ export function PublicLayout({ children }: { children: ReactNode }) {
       return false;
     }
   }, []);
+
+  /**
+   * Close the sheet first (so the slide-out animation runs), then navigate.
+   * Avoids Radix SheetClose + TanStack Link composition bugs on mobile/WebView
+   * where the menu stays open and the route never changes.
+   */
+  function goTo(to: string) {
+    setOpen(false);
+    // Let the close animation start, then navigate. Works on Capacitor WebView.
+    window.setTimeout(() => {
+      try {
+        void navigate({ to: to as never });
+      } catch {
+        try {
+          window.location.assign(to);
+        } catch {
+          window.location.href = to;
+        }
+      }
+    }, 80);
+  }
 
   return (
     <div className="relative flex min-h-dvh flex-col bg-white">
@@ -103,6 +125,8 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             <SheetContent
               side="right"
               className="w-[min(100%,20rem)] border-l border-slate-200 bg-white p-0"
+              // Ensure body scroll lock is released cleanly when we force-close via setOpen
+              onCloseAutoFocus={(e) => e.preventDefault()}
             >
               <SheetTitle className="sr-only">Menu</SheetTitle>
               <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
@@ -121,42 +145,39 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                     </p>
                     <div className="flex flex-col gap-0.5">
                       {g.items.map((l) => (
-                        <SheetClose key={l.label} asChild>
-                          <Link
-                            to={l.to}
-                            className="rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            {l.label}
-                          </Link>
-                        </SheetClose>
+                        <button
+                          key={l.label}
+                          type="button"
+                          className="rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+                          onClick={() => goTo(l.to)}
+                        >
+                          {l.label}
+                        </button>
                       ))}
                     </div>
                   </div>
                 ))}
-                {/* Single SheetClose+Link only — no nested Button asChild (breaks taps on mobile) */}
                 <div className="mt-2 space-y-2 border-t border-slate-100 pt-4">
-                  <SheetClose asChild>
-                    <Link
-                      to="/school-application"
-                      className={cn(
-                        "inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground",
-                        "hover:bg-primary/90",
-                      )}
-                    >
-                      Apply Now
-                    </Link>
-                  </SheetClose>
-                  <SheetClose asChild>
-                    <Link
-                      to="/login"
-                      className={cn(
-                        "inline-flex h-10 w-full items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-semibold",
-                        "hover:bg-accent hover:text-accent-foreground",
-                      )}
-                    >
-                      Login
-                    </Link>
-                  </SheetClose>
+                  <button
+                    type="button"
+                    onClick={() => goTo("/school-application")}
+                    className={cn(
+                      "inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground",
+                      "hover:bg-primary/90 active:opacity-90",
+                    )}
+                  >
+                    Apply Now
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => goTo("/login")}
+                    className={cn(
+                      "inline-flex h-10 w-full items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-semibold",
+                      "hover:bg-accent hover:text-accent-foreground active:opacity-90",
+                    )}
+                  >
+                    Login
+                  </button>
                 </div>
               </div>
             </SheetContent>
