@@ -12,6 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore account-switcher from good history
         run: |
@@ -35,4 +36,4 @@ jobs:
           git config user.email "bot@d4exam.local"
           git add src/lib/account-switcher.ts
           git commit -m "fix(accounts): restore account-switcher after placeholder" || echo nochange
-          git push origin HEAD:main || true
+          git push origin HEAD:main
