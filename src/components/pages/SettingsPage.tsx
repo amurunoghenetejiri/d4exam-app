@@ -36,6 +36,7 @@ import {
 } from "@/lib/school-identity";
 import { SchoolLogo } from "@/components/brand/SchoolLogo";
 import { Loader2, Upload, Building2, Info, LifeBuoy, Shield, ChevronRight, CreditCard, ArrowLeft } from "lucide-react";
+import { InAppHelpLegal, helpLegalTitle, type HelpLegalDoc } from "@/components/pages/InAppHelpLegal";
 import { PushSettingsCard } from "@/components/settings/PushSettingsCard";
 import { SwitchAccountCard } from "@/components/settings/SwitchAccountCard";
 import { RoleSwitchCard } from "@/components/settings/RoleSwitchCard";
@@ -44,7 +45,7 @@ import { signOutThisAccount, signOutAllAccounts, listSavedAccounts } from "@/lib
 export function SettingsPage({ scope }: { scope: string }) {
   const { data: session } = useSessionUser();
   const [saving, setSaving] = useState(false);
-  const [helpDoc, setHelpDoc] = useState<null | "about" | "support" | "privacy" | "pricing">(null);
+  const [helpDoc, setHelpDoc] = useState<HelpLegalDoc | null>(null);
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({ ...DEFAULT_NOTIFICATION_PREFS });
   const [displayPrefs, setDisplayPrefs] = useState<DisplayPrefs>({ ...DEFAULT_DISPLAY_PREFS });
   const scopeLower = (scope || "").toLowerCase();
@@ -75,6 +76,28 @@ export function SettingsPage({ scope }: { scope: string }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  // Full in-app legal page (stays in role shell — no public marketing header)
+  if (helpDoc) {
+    return (
+      <>
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => setHelpDoc(null)}
+            className="inline-flex items-center gap-2 rounded-lg px-1 py-2 text-sm font-semibold text-primary hover:bg-slate-50"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to settings
+          </button>
+        </div>
+        <SectionCard title={helpLegalTitle(helpDoc)} description="Help & legal">
+          <div className="px-0.5 pb-2">
+            <InAppHelpLegal doc={helpDoc} />
+          </div>
+        </SectionCard>
+      </>
+    );
   }
 
   return (
@@ -136,30 +159,13 @@ export function SettingsPage({ scope }: { scope: string }) {
           </div>
         </SectionCard>
         <SectionCard title="Help & legal" description="About, support, privacy and pricing">
-          {helpDoc ? (
-            <div className="space-y-4">
-              <button type="button" onClick={() => setHelpDoc(null)} className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-primary hover:bg-slate-50">
-                <ArrowLeft className="h-4 w-4" /> Back
-              </button>
-              <h3 className="text-base font-bold text-slate-900">
-                {helpDoc === "about" ? "About Us" : helpDoc === "support" ? "Support" : helpDoc === "privacy" ? "Privacy Policy" : "Pricing"}
-              </h3>
-              <div className="space-y-3 text-sm leading-relaxed text-slate-600">
-                {helpDoc === "about" && (<><p>D4EXAM is a professional online examination / CBT platform for schools.</p><p>Students, teachers, officers and admins share one secure system.</p></>)}
-                {helpDoc === "support" && (<><p>Contact your school administrator for account or exam access help.</p><p>Include your role, school name, and a short description when reporting issues.</p></>)}
-                {helpDoc === "privacy" && (<><p>Account, exam and integrity data are processed to run secure assessments.</p><p>Camera and mic are used only when exam security settings require them.</p></>)}
-                {helpDoc === "pricing" && (<><p>Pricing is managed per school by your administrator or Super Admin.</p></>)}
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1">
-              <button type="button" onClick={() => setHelpDoc("about")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><Info className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">About Us</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
-              <button type="button" onClick={() => setHelpDoc("support")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><LifeBuoy className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Support</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
-              <button type="button" onClick={() => setHelpDoc("privacy")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><Shield className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Privacy Policy</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
-              <button type="button" onClick={() => setHelpDoc("pricing")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><CreditCard className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Pricing</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
-              <p className="mt-3 px-2 text-center text-[11px] text-slate-400">D4EXAM. Smart. Secure. Seamless.</p>
-            </div>
-          )}
+          <div className="flex flex-col gap-1">
+            <button type="button" onClick={() => setHelpDoc("about")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><Info className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">About Us</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
+            <button type="button" onClick={() => setHelpDoc("support")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><LifeBuoy className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Support</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
+            <button type="button" onClick={() => setHelpDoc("privacy")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><Shield className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Privacy Policy</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
+            <button type="button" onClick={() => setHelpDoc("pricing")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><CreditCard className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Pricing</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
+            <p className="mt-3 px-2 text-center text-[11px] text-slate-400">D4EXAM. Smart. Secure. Seamless.</p>
+          </div>
         </SectionCard>
       </div>
     </>
