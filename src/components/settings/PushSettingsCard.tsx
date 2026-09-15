@@ -10,18 +10,11 @@ import {
   refreshNativePushPermissionState,
   type PushPermissionState,
 } from "@/lib/push";
-import { sendTestNotificationToSelf } from "@/lib/push-send.functions";
-import { sendNotification } from "@/lib/notifications";
 import { isNativeShell } from "@/native/platform";
-import { showD4ExamNativeNotification } from "@/native/localNotify";
-import { notificationsEnabledConfirm } from "@/lib/notify-messages";
-import { useQueryClient } from "@tanstack/react-query";
 
 export function PushSettingsCard({ scope }: { scope?: string }) {
   const { data: session } = useSessionUser();
-  const queryClient = useQueryClient();
   const [pushBusy, setPushBusy] = useState(false);
-  const [testBusy, setTestBusy] = useState(false);
   const [pushStatus, setPushStatus] = useState<PushPermissionState>(() => getPushPermissionState());
   const native = isNativeShell();
 
@@ -30,135 +23,56 @@ export function PushSettingsCard({ scope }: { scope?: string }) {
     void refreshNativePushPermissionState().then(setPushStatus);
   }, [native]);
 
+  const enabled = pushStatus === "granted";
+  const unsupported = !native && pushStatus === "unsupported";
+
   return (
-    <SectionCard
-      title="Push notifications"
-      description={
-        native
-          ? "Alerts show as D4EXAM on this device (not Chrome)"
-          : "Browser alerts for exams, results and important updates"
-      }
-    >
+    <SectionCard title="Notifications" description="Exam and result alerts on this device">
       <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Stay updated with exams, results and important D4EXAM updates on this device.
+        <p className="text-sm text-slate-600">
+          {enabled
+            ? "Notifications are enabled on this device."
+            : unsupported
+              ? "Notifications are not supported in this browser."
+              : "Enable notifications to get exam and result alerts."}
         </p>
         <p className="text-xs text-slate-500">
-          Status: <span className="font-semibold">{pushStatus}</span>
-          {native ? " (Android app)" : ""}
+          Status:{" "}
+          <span className={`font-semibold ${enabled ? "text-emerald-600" : "text-slate-700"}`}>
+            {enabled ? "Enabled" : pushStatus === "denied" ? "Blocked" : unsupported ? "Unsupported" : "Off"}
+          </span>
         </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            disabled={pushBusy || (!native && pushStatus === "unsupported") || pushStatus === "granted"}
-            onClick={() => {
-              if (!session?.userId) {
-                toast.error("Sign in required.");
-                return;
-              }
-              if (pushStatus === "granted") {
-                toast.message("Notifications are already enabled.");
-                return;
-              }
-              setPushBusy(true);
-              void enablePushNotifications(session.userId, session.role)
-                .then(async (r) => {
-                  if (native) setPushStatus(await refreshNativePushPermissionState());
-                  else setPushStatus(getPushPermissionState());
-                  if (r.ok) {
-                    toast.success("Notifications enabled on this device.");
-                    try {
-                      const key = `d4_notif_enabled_once:${session.userId}`;
-                      if (localStorage.getItem(key) !== "1") {
-                        localStorage.setItem(key, "1");
-                        const copy = notificationsEnabledConfirm();
-                        if (native) {
-                          await showD4ExamNativeNotification(
-                            copy.title,
-                            copy.message,
-                            scope ? `/${scope}/settings` : "/",
-                          );
-                        }
-                      }
-                    } catch {
-                      /* ignore */
-                    }
-                  } else toast.error(r.error || "Could not enable notifications.");
-                })
-                .finally(() => setPushBusy(false));
-            }}
-          >
-            {pushBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {pushStatus === "granted" ? "Notifications enabled" : "Enable notifications"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={testBusy || !session?.userId}
-            onClick={() => {
-              if (!session?.userId) return;
-              setTestBusy(true);
-              const role = session.role || "";
-              const link =
-                role === "super_admin"
-                  ? "/super-admin/notifications"
-                  : role === "school_admin"
-                    ? "/admin/notifications"
-                    : role === "examination_officer"
-                      ? "/officer/notifications"
-                      : role === "teacher"
-                        ? "/teacher/notifications"
-                        : role === "student"
-                          ? "/student/notifications"
-                          : "/";
-              const title = "D4EXAM Test Notification";
-              const message = "This is a test notification for your D4EXAM account.";
-
-              void (async () => {
-                try {
-                  try {
-                    await sendTestNotificationToSelf({
-                      data: { userId: session.userId, role },
-                    });
-                  } catch {
-                    /* ignore server errors */
-                  }
-
-                  await sendNotification({
-                    recipientUserId: session.userId,
-                    title,
-                    message,
-                    type: "system_alert",
-                    link,
-                  });
-
-                  toast.success(title, { description: message, duration: 6000 });
-
-                  if (native) {
-                    await showD4ExamNativeNotification(title, message, link);
-                  }
-
-                  void queryClient.invalidateQueries({ queryKey: ["count", "notifications"] });
-                  void queryClient.invalidateQueries({
-                    queryKey: ["count", "notifications", "unread", session.userId],
-                  });
-                } catch (e) {
-                  toast.error((e as Error).message || "Test failed");
-                } finally {
-                  setTestBusy(false);
-                }
-              })();
-            }}
-          >
-            {testBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Send test notification
-          </Button>
-        </div>
-        <p className="text-xs text-slate-500">
-          {native
-            ? "On the Android app, alerts use the D4EXAM icon — not Chrome. Install the latest APK if local notifications are missing."
-            : "In a browser, system alerts may appear under Chrome; use the Android app for native D4EXAM alerts."}
-        </p>
+        <Button
+          type="button"
+          disabled={pushBusy || unsupported || enabled}
+          onClick={() => {
+            if (!session?.userId) {
+              toast.error("Sign in required.");
+              return;
+            }
+            if (enabled) {
+              toast.message("Notifications are already enabled.");
+              return;
+            }
+            setPushBusy(true);
+            void enablePushNotifications(session.userId, session.role)
+              .then(async (r) => {
+                if (native) setPushStatus(await refreshNativePushPermissionState());
+                else setPushStatus(getPushPermissionState());
+                if (r.ok) toast.success("Notifications enabled.");
+                else toast.error(r.error || "Could not enable notifications.");
+              })
+              .finally(() => setPushBusy(false));
+          }}
+        >
+          {pushBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          {enabled ? "Notifications enabled" : "Enable notifications"}
+        </Button>
+        {pushStatus === "denied" && (
+          <p className="text-xs text-amber-700">
+            Notifications are blocked. Allow them in your device or browser settings for D4EXAM.
+          </p>
+        )}
       </div>
     </SectionCard>
   );
