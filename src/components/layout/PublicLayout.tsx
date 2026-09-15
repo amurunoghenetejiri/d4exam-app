@@ -12,6 +12,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { isAppLikeShell } from "@/native/platform";
+import { cn } from "@/lib/utils";
 
 const links = [
   { to: "/features", label: "Features" },
@@ -132,16 +133,29 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                     </div>
                   </div>
                 ))}
+                {/* Single SheetClose+Link only — no nested Button asChild (breaks taps on mobile) */}
                 <div className="mt-2 space-y-2 border-t border-slate-100 pt-4">
                   <SheetClose asChild>
-                    <Button className="w-full font-semibold" asChild>
-                      <Link to="/school-application">Apply Now</Link>
-                    </Button>
+                    <Link
+                      to="/school-application"
+                      className={cn(
+                        "inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground",
+                        "hover:bg-primary/90",
+                      )}
+                    >
+                      Apply Now
+                    </Link>
                   </SheetClose>
                   <SheetClose asChild>
-                    <Button variant="outline" className="w-full font-semibold" asChild>
-                      <Link to="/login">Login</Link>
-                    </Button>
+                    <Link
+                      to="/login"
+                      className={cn(
+                        "inline-flex h-10 w-full items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-semibold",
+                        "hover:bg-accent hover:text-accent-foreground",
+                      )}
+                    >
+                      Login
+                    </Link>
                   </SheetClose>
                 </div>
               </div>
