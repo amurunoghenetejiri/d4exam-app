@@ -50,61 +50,34 @@ self.addEventListener("activate", function (event) {
           ) {
             return caches.delete(k);
           }
-          return null;
         }),
       );
-    }).then(function () {
-      return self.clients.claim();
     }),
   );
+  self.clients.claim();
 });
 
-messaging.onBackgroundMessage(function (payload) {
-  var title = (payload.notification && payload.notification.title) || "D4EXAM";
-  var body = (payload.notification && payload.notification.body) || "";
-  var data = payload.data || {};
-  self.registration.showNotification(title, {
-    body: body,
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
-    data: data,
-  });
-});
-
-self.addEventListener("notificationclick", function (event) {
-  event.notification.close();
-  var url = "/";
-  try {
-    if (event.notification && event.notification.data && event.notification.data.url) {
-      url = event.notification.data.url;
-    }
-  } catch (e) {}
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
-      for (var i = 0; i < clientList.length; i++) {
-        var c = clientList[i];
-        if (c.url && "focus" in c) {
-          c.navigate(url);
-          return c.focus();
-        }
-      }
-      if (clients.openWindow) return clients.openWindow(url);
-    }),
+function isStaticAsset(pathname) {
+  return (
+    pathname.indexOf("/assets/") === 0 ||
+    pathname.endsWith(".js") ||
+    pathname.endsWith(".css") ||
+    pathname.endsWith(".woff2") ||
+    pathname.endsWith(".woff") ||
+    pathname.endsWith(".png") ||
+    pathname.endsWith(".svg") ||
+    pathname.endsWith(".ico") ||
+    pathname.endsWith(".webp")
   );
-});
+}
 
 self.addEventListener("fetch", function (event) {
   var req = event.request;
   if (req.method !== "GET") return;
-  var url;
-  try {
-    url = new URL(req.url);
-  } catch (e) {
-    return;
-  }
+  var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.indexOf("/api") === 0) return;
 
-  // Navigation: network-first, fall back to cache / offline.html
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req)
@@ -133,15 +106,10 @@ self.addEventListener("fetch", function (event) {
     return;
   }
 
-  // Static assets: cache-first
-  if (
-    url.pathname.indexOf("/assets/") === 0 ||
-    url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|ico)$/)
-  ) {
+  if (isStaticAsset(url.pathname)) {
     event.respondWith(
       caches.match(req).then(function (cached) {
-        if (cached) return cached;
-        return fetch(req)
+        var fetchPromise = fetch(req)
           .then(function (res) {
             try {
               var copy = res.clone();
@@ -152,20 +120,102 @@ self.addEventListener("fetch", function (event) {
             return res;
           })
           .catch(function () {
-            return caches.match(req);
+            return cached;
           });
+        return cached || fetchPromise;
       }),
     );
     return;
   }
 
-  // Other same-origin: network with offline.html fallback for HTML-ish fails
   event.respondWith(
-    fetch(req).catch(function () {
-      return caches.match(req).then(function (cached) {
-        if (cached) return cached;
-        return caches.match("/offline.html");
-      });
+    fetch(req)
+      .then(function (res) {
+        return res;
+      })
+      .catch(function () {
+        return caches.match(req).then(function (cached) {
+          if (cached) return cached;
+          return caches.match("/offline.html");
+        });
+      }),
+  );
+});
+
+function absUrl(path) {
+  try {
+    return new URL(path, self.location.origin).href;
+  } catch (e) {
+    return path;
+  }
+}
+
+function showD4Notification(payload) {
+  var data = (payload && payload.data) || {};
+  var title =
+    (payload && payload.notification && payload.notification.title) ||
+    data.title ||
+    "D4EXAM";
+  var body =
+    (payload && payload.notification && payload.notification.body) ||
+    data.body ||
+    data.message ||
+    "Secure online examinations for schools.";
+  var link = data.link || data.url || "/";
+  var icon = data.icon || absUrl("/icon-192.png");
+  var badge = data.badge || absUrl("/icon-192.png");
+
+  return self.registration.showNotification(title, {
+    body: body,
+    icon: icon,
+    badge: badge,
+    data: { link: link, title: title },
+    tag: data.tag || "d4exam-notification",
+    renotify: true,
+    requireInteraction: false,
+    silent: false,
+    vibrate: [120, 40, 120],
+  });
+}
+
+messaging.onBackgroundMessage(function (payload) {
+  return showD4Notification(payload);
+});
+
+self.addEventListener("push", function (event) {
+  try {
+    var raw = event.data ? event.data.json() : {};
+    event.waitUntil(showD4Notification(raw));
+  } catch (e) {
+    event.waitUntil(
+      showD4Notification({
+        data: { title: "D4EXAM", body: "You have a new update." },
+      }),
+    );
+  }
+});
+
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  var link = "/";
+  try {
+    if (event.notification && event.notification.data && event.notification.data.link) {
+      link = event.notification.data.link;
+    }
+  } catch (e) {}
+  if (link.indexOf("http") !== 0) {
+    link = self.location.origin + (link.charAt(0) === "/" ? link : "/" + link);
+  }
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
+      for (var i = 0; i < clientList.length; i++) {
+        var client = clientList[i];
+        if ("focus" in client) {
+          if (client.navigate) client.navigate(link);
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(link);
     }),
   );
 });
