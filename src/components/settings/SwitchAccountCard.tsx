@@ -51,18 +51,29 @@ export function SwitchAccountCard() {
     }
     setBusyId(userId);
     try {
+      // Keep current account tokens fresh before switching
+      try {
+        await saveCurrentAccountToVault(session);
+      } catch {
+        /* ignore */
+      }
       const result = await switchToAccount(userId);
       if (!result.ok) {
+        // Stay on current account — do NOT remove the other account from the vault
         if (result.needsLogin) {
-          toast.error("Could not restore that account. Tap Add Account and sign in once to refresh it.");
-          await removeAccountFromDevice(userId);
-          refresh();
+          toast.error(
+            result.error ||
+              "Could not switch to that account. Open Add Account and sign in once to refresh it.",
+          );
         } else {
           toast.error(result.error);
         }
+        refresh();
       }
+      // On success, switchToAccount navigates away (full page load)
     } catch (e) {
       toast.error((e as Error).message || "Could not switch account.");
+      refresh();
     } finally {
       setBusyId(null);
     }
