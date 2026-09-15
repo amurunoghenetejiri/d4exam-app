@@ -19,6 +19,7 @@ import {
   removeAccountFromDevice,
   saveCurrentAccountToVault,
   beginAddAccountFlow,
+  beginRefreshAccountLogin,
   signOutThisAccount,
   signOutAllAccounts,
   type AccountListItem,
@@ -38,7 +39,6 @@ export function SwitchAccountCard() {
     refresh();
   }, [refresh]);
 
-  // Keep active account tokens fresh in vault when session is present
   useEffect(() => {
     if (!session?.userId) return;
     void saveCurrentAccountToVault(session).then(() => refresh());
@@ -51,7 +51,6 @@ export function SwitchAccountCard() {
     }
     setBusyId(userId);
     try {
-      // Keep current account tokens fresh before switching
       try {
         await saveCurrentAccountToVault(session);
       } catch {
@@ -59,18 +58,30 @@ export function SwitchAccountCard() {
       }
       const result = await switchToAccount(userId);
       if (!result.ok) {
-        // Stay on current account — do NOT remove the other account from the vault
         if (result.needsLogin) {
-          toast.error(
-            result.error ||
-              "Could not switch to that account. Open Add Account and sign in once to refresh it.",
-          );
+          const email =
+            ("email" in result && (result as { email?: string }).email) ||
+            accounts.find((a) => a.userId === userId)?.email;
+          toast.error(result.error || "Session expired for that account. Sign in once to refresh it.");
+          if (email) {
+            const go = window.confirm(
+              `Session for ${email} expired on this device. Sign in once to refresh and switch?`,
+            );
+            if (go) {
+              const acc = accounts.find((a) => a.userId === userId);
+              beginRefreshAccountLogin({
+                email,
+                userId,
+                role: acc?.role ?? null,
+              });
+              return;
+            }
+          }
         } else {
           toast.error(result.error);
         }
         refresh();
       }
-      // On success, switchToAccount navigates away (full page load)
     } catch (e) {
       toast.error((e as Error).message || "Could not switch account.");
       refresh();
