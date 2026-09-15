@@ -20,6 +20,7 @@ import { OfflineStatusPill } from "@/components/OfflineStatusPill";
 import { NotificationLiveListener } from "@/components/NotificationLiveListener";
 import { NotificationPermissionPrompt } from "@/components/NotificationPermissionPrompt";
 import { AppUpdateGate } from "@/components/AppUpdateGate";
+import { FingerprintLockGate } from "@/components/security/FingerprintLockGate";
 import { AndroidApkInstallBanner } from "@/components/AndroidApkInstallBanner";
 import { useSessionUser, rememberLastPath, readLastRole, readPreferredRole, roleHome, roleFromPath, type AppRole } from "@/lib/session";
 import { initNativePushIfNeeded } from "@/lib/push";
@@ -50,8 +51,6 @@ function NativeBootstrap() {
       try {
         document.documentElement.classList.add("d4-native");
         await applyNativeStatusBar();
-        // Do NOT hide SplashScreen here — AnimatedSplash owns hideSplashSafely()
-        // so the user never sees blank navy between system splash and branded splash.
         const unsubBack = await registerAndroidBackButton();
         if (cancelled) {
           unsubBack();
@@ -191,10 +190,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
-/**
- * Instant app splash for native/PWA cold start (same simple logo design as
- * AnimatedSplash + slogan SMART. SECURE. SEAMLESS.). Website browsers never show this.
- */
 const BOOT_SPLASH_SCRIPT = `
 (function(){
   try {
@@ -227,7 +222,6 @@ function RootShell({ children }: { children: ReactNode }) {
         <style
           dangerouslySetInnerHTML={{
             __html: `
-/* Instant app splash (native/PWA only) — same design as AnimatedSplash */
 #d4-boot-splash{display:none;position:fixed;inset:0;z-index:2147483646;flex-direction:column;align-items:center;justify-content:center;background:#0b1b3a;color:#fff;font-family:system-ui,sans-serif}
 #d4-boot-splash .boot-main{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;padding:0 1.5rem}
 #d4-boot-splash img{width:min(40vw,160px);height:min(40vw,160px);object-fit:contain}
@@ -290,6 +284,7 @@ function RootComponent() {
       <NotificationLiveListener />
       <NotificationPermissionPrompt />
       <AppUpdateGate />
+      <FingerprintLockGate />
       <AndroidApkInstallBanner />
       <Outlet />
       <NativeBootstrap />
