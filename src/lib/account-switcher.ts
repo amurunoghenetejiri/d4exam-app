@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { AppRole, SessionUser } from "@/lib/session";
 import { roleHome, clearPendingLoginRole, seedPendingLoginRole } from "@/lib/session";
 import { offlineClearUser } from "@/lib/offline-cache";
+import { clearFingerprintIfUser, disableFingerprint } from "@/lib/fingerprint-lock";
 
 const VAULT_KEY = "d4_account_vault_v1";
 const ACTIVE_KEY = "d4_account_active_v1";
@@ -444,6 +445,13 @@ export async function signOutThisAccount(): Promise<void> {
     userId = getActiveAccountId();
   }
 
+  // Clear fingerprint unlock for this user so another account cannot unlock into it
+  try {
+    clearFingerprintIfUser(userId);
+  } catch {
+    /* ignore */
+  }
+
   try {
     await supabase.auth.signOut({ scope: "local" });
   } catch {
@@ -473,6 +481,11 @@ export async function signOutThisAccount(): Promise<void> {
 export async function signOutAllAccounts(): Promise<void> {
   const vault = readVault();
   const ids = vault.accounts.map((a) => a.userId);
+  try {
+    disableFingerprint();
+  } catch {
+    /* ignore */
+  }
   try {
     await supabase.auth.signOut({ scope: "local" });
   } catch {
