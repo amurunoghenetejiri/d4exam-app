@@ -61,25 +61,18 @@ export function SwitchAccountCard() {
         if (result.needsLogin) {
           const email =
             ("email" in result && (result as { email?: string }).email) ||
-            accounts.find((a) => a.userId === userId)?.email;
-          toast.error(result.error || "Session expired for that account. Sign in once to refresh it.");
-          if (email) {
-            const go = window.confirm(
-              `Session for ${email} expired on this device. Sign in once to refresh and switch?`,
-            );
-            if (go) {
-              const acc = accounts.find((a) => a.userId === userId);
-              beginRefreshAccountLogin({
-                email,
-                userId,
-                role: acc?.role ?? null,
-              });
-              return;
-            }
-          }
-        } else {
-          toast.error(result.error);
+            accounts.find((a) => a.userId === userId)?.email ||
+            "";
+          const acc = accounts.find((a) => a.userId === userId);
+          toast.message("Session expired — sign in once to refresh this account.");
+          beginRefreshAccountLogin({
+            email: email || null,
+            userId,
+            role: acc?.role ?? null,
+          });
+          return;
         }
+        toast.error(result.error);
         refresh();
       }
     } catch (e) {
