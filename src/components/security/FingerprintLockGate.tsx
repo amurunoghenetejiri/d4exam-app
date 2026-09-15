@@ -1,9 +1,10 @@
 /**
- * Full-screen fingerprint unlock gate for the native app shell.
+ * Full-screen fingerprint unlock gate for the native D4EXAM shell.
+ * Shows after splash, before any dashboard/room, when fingerprint is enabled.
  * Does not replace Supabase auth — only gates access to an existing local session.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Fingerprint, Loader2 } from "lucide-react";
+import { Fingerprint, Loader2, Check } from "lucide-react";
 import { useRouterState } from "@tanstack/react-router";
 import { App as CapApp } from "@capacitor/app";
 import { useSessionUser } from "@/lib/session";
@@ -24,14 +25,18 @@ import {
   shouldLockAfterBackground,
 } from "@/lib/fingerprint-lock";
 
+type GatePhase = "locked" | "success";
+
 export function FingerprintLockGate() {
   const native = isNativeShell();
   const { data: session, isLoading } = useSessionUser();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [locked, setLocked] = useState(false);
+  const [phase, setPhase] = useState<GatePhase>("locked");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const promptedRef = useRef(false);
+  const successTimerRef = useRef<number | null>(null);
 
   const userId = session?.userId ?? null;
 
@@ -46,23 +51,28 @@ export function FingerprintLockGate() {
   const evaluateLock = useCallback(() => {
     if (!native || isPublicAuthPath) {
       setLocked(false);
+      setPhase("locked");
       return;
     }
     if (!userId || !isFingerprintEnabledFor(userId)) {
       setLocked(false);
+      setPhase("locked");
       return;
     }
     if (isActiveCbtExamPath(pathname)) {
       setLocked(false);
+      setPhase("locked");
       return;
     }
     if (isFingerprintLocked()) {
       setLocked(true);
+      setPhase("locked");
       return;
     }
     if (shouldLockAfterBackground() || isFingerprintLocked()) {
       setFingerprintLocked(true);
       setLocked(true);
+      setPhase("locked");
     }
   }, [native, isPublicAuthPath, userId, pathname]);
 
@@ -92,6 +102,7 @@ export function FingerprintLockGate() {
           if (shouldLockAfterBackground()) {
             setFingerprintLocked(true);
             setLocked(true);
+            setPhase("locked");
             promptedRef.current = false;
           }
           clearBackgroundMark();
@@ -104,15 +115,33 @@ export function FingerprintLockGate() {
     return () => {
       cancelled = true;
       void handle?.remove();
+      if (successTimerRef.current != null) {
+        window.clearTimeout(successTimerRef.current);
+        successTimerRef.current = null;
+      }
     };
   }, [native, userId]);
 
   useEffect(() => {
-    if (!locked || promptedRef.current || busy) return;
+    if (!locked || phase !== "locked" || promptedRef.current || busy) return;
     promptedRef.current = true;
     void tryUnlock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locked]);
+  }, [locked, phase]);
+
+  function finishUnlock() {
+    setFingerprintLocked(false);
+    clearBackgroundMark();
+    markSessionUnlocked();
+    setPhase("success");
+    setMessage(null);
+    if (successTimerRef.current != null) window.clearTimeout(successTimerRef.current);
+    successTimerRef.current = window.setTimeout(() => {
+      setLocked(false);
+      setPhase("locked");
+      successTimerRef.current = null;
+    }, 850);
+  }
 
   async function tryUnlock() {
     setBusy(true);
@@ -129,11 +158,7 @@ export function FingerprintLockGate() {
         subtitle: "Use your fingerprint to continue",
       });
       if (result.ok) {
-        setFingerprintLocked(false);
-        clearBackgroundMark();
-        markSessionUnlocked();
-        setLocked(false);
-        setMessage(null);
+        finishUnlock();
         return;
       }
       if (result.code !== "cancelled") setMessage(result.message);
@@ -150,6 +175,7 @@ export function FingerprintLockGate() {
     }
     setFingerprintLocked(false);
     setLocked(false);
+    setPhase("locked");
     try {
       window.location.href = "/login";
     } catch {
@@ -161,45 +187,97 @@ export function FingerprintLockGate() {
     return null;
   }
 
+  const isSuccess = phase === "success";
+
   return (
     <div
-      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0a1a3a] px-6 text-center"
+      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0b1b3a] px-6 text-center"
+      style={{
+        paddingTop: "max(1.5rem, env(safe-area-inset-top))",
+        paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))",
+      }}
       role="dialog"
       aria-modal="true"
-      aria-label="D4EXAM locked"
+      aria-label={isSuccess ? "Unlocked" : "D4EXAM locked"}
     >
-      <div className="mb-6 grid h-16 w-16 place-items-center rounded-2xl bg-white/10">
-        <span className="text-lg font-extrabold tracking-wide text-white">
-          D<span className="text-blue-400">4</span>
-        </span>
+      {/* Brand mark */}
+      <div className="mb-8 text-center">
+        <p className="text-2xl font-extrabold tracking-[0.12em] text-white">
+          D<span className="text-[#3b82f6]">4</span>EXAM
+        </p>
+        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-400">
+          Smart Examination System
+        </p>
       </div>
-      <h1 className="text-xl font-bold text-white">App Locked</h1>
-      <p className="mt-2 max-w-xs text-sm text-slate-300">
-        Use your fingerprint to continue to D4EXAM.
-      </p>
 
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => {
-          promptedRef.current = false;
-          void tryUnlock();
-        }}
-        className="mt-8 inline-flex items-center gap-2 rounded-full bg-blue-600 px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 active:scale-[0.98] disabled:opacity-70"
-      >
-        {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Fingerprint className="h-5 w-5" />}
-        {busy ? "Checking…" : "Fingerprint"}
-      </button>
+      {isSuccess ? (
+        <>
+          <div className="relative grid h-28 w-28 place-items-center">
+            <div className="absolute inset-0 rounded-full bg-[#2563eb]/20 animate-pulse" />
+            <div className="relative grid h-24 w-24 place-items-center rounded-full bg-[#2563eb] shadow-lg shadow-blue-600/40">
+              <Check className="h-12 w-12 text-white" strokeWidth={2.5} />
+            </div>
+          </div>
+          <h1 className="mt-8 text-xl font-bold text-white">Unlocked</h1>
+          <p className="mt-2 max-w-xs text-sm text-slate-300">Opening your workspace…</p>
+        </>
+      ) : (
+        <>
+          {/* Large blue fingerprint */}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              promptedRef.current = false;
+              void tryUnlock();
+            }}
+            className="group relative grid h-28 w-28 place-items-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b1b3a] disabled:opacity-80"
+            aria-label="Unlock with fingerprint"
+          >
+            <div className="absolute inset-0 rounded-full bg-[#2563eb]/15 group-active:bg-[#2563eb]/25" />
+            <div className="absolute inset-2 rounded-full border-2 border-[#2563eb]/40" />
+            <div className="relative grid h-20 w-20 place-items-center rounded-full bg-[#2563eb]/20">
+              {busy ? (
+                <Loader2 className="h-11 w-11 animate-spin text-[#3b82f6]" />
+              ) : (
+                <Fingerprint className="h-11 w-11 text-[#3b82f6]" strokeWidth={1.5} />
+              )}
+            </div>
+          </button>
 
-      {message && <p className="mt-4 max-w-xs text-xs text-amber-200/90">{message}</p>}
+          <h1 className="mt-8 text-xl font-bold text-white">Use your fingerprint</h1>
+          <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-300">
+            Confirm it is you before opening your D4EXAM workspace.
+          </p>
 
-      <button
-        type="button"
-        onClick={usePasswordLogin}
-        className="mt-8 text-sm font-medium text-slate-400 underline-offset-2 hover:text-white hover:underline"
-      >
-        Use password / login
-      </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              promptedRef.current = false;
+              void tryUnlock();
+            }}
+            className="mt-8 inline-flex items-center gap-2 rounded-full bg-[#2563eb] px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 active:scale-[0.98] disabled:opacity-70"
+          >
+            {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Fingerprint className="h-5 w-5" />}
+            {busy ? "Checking…" : "Unlock with fingerprint"}
+          </button>
+
+          {message && (
+            <p className="mt-5 max-w-xs rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200/95">
+              {message}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={usePasswordLogin}
+            className="mt-10 text-sm font-medium text-slate-400 underline-offset-2 hover:text-white hover:underline"
+          >
+            Use password / login
+          </button>
+        </>
+      )}
     </div>
   );
 }
