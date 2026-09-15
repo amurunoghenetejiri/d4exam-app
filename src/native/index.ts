@@ -6,3 +6,4 @@ export * from "./cameraService";
 export * from "./statusBar";
 export * from "./permissions";
 export * from "./backButton";
+export * from "./fingerprintAuth";
