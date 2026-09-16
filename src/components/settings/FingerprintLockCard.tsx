@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Fingerprint, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { SectionCard } from "@/components/dashboard/kit";
@@ -22,6 +22,7 @@ export function FingerprintLockCard() {
   const [busy, setBusy] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [availability, setAvailability] = useState<FingerprintAvailability | null>(null);
+  const safetyRef = useRef<number | null>(null);
 
   const refresh = useCallback(() => {
     setEnabled(isFingerprintEnabledFor(session?.userId));
@@ -39,6 +40,7 @@ export function FingerprintLockCard() {
     });
     return () => {
       cancelled = true;
+      if (safetyRef.current != null) window.clearTimeout(safetyRef.current);
     };
   }, [native]);
 
@@ -46,42 +48,58 @@ export function FingerprintLockCard() {
     return null;
   }
 
-  const available = availability?.ok === true;
   const unavailableMsg =
-    availability && !availability.ok ? availability.message : null;
+    availability && !availability.ok && availability.reason !== "timeout"
+      ? availability.message
+      : null;
 
   async function onEnable() {
     if (!session?.userId) {
       toast.error("Sign in required.");
       return;
     }
+    if (busy) return;
     setBusy(true);
+    if (safetyRef.current != null) window.clearTimeout(safetyRef.current);
+    // Never leave the button spinning forever
+    safetyRef.current = window.setTimeout(() => {
+      setBusy(false);
+      toast.error("Fingerprint timed out. Try again.");
+    }, 12_000);
+
     try {
-      const avail = await checkFingerprintAvailable();
-      setAvailability(avail);
-      if (!avail.ok) {
-        toast.error(avail.message);
-        return;
-      }
+      // Open the system fingerprint dialog immediately on this user tap
       const auth = await authenticateWithFingerprint({
         reason: "Confirm your fingerprint to enable unlock for D4EXAM",
         title: "Enable Fingerprint",
-        subtitle: "Use your fingerprint to continue",
+        subtitle: "Touch the sensor to continue",
       });
+
       if (!auth.ok) {
         if (auth.code === "cancelled") {
           toast.message("Fingerprint cancelled.");
         } else {
           toast.error(auth.message);
+          setAvailability({
+            ok: false,
+            reason: auth.code === "unavailable" ? "no_plugin" : "unknown",
+            message: auth.message,
+          });
         }
         return;
       }
+
       enableFingerprintFor(session.userId);
       setEnabled(true);
-      toast.success("Fingerprint unlock enabled on this device.");
+      setAvailability({ ok: true, hasFingerprint: true });
+      toast.success("Fingerprint unlock enabled. It will lock after 30s in the background.");
     } catch (e) {
       toast.error((e as Error)?.message || "Could not enable fingerprint.");
     } finally {
+      if (safetyRef.current != null) {
+        window.clearTimeout(safetyRef.current);
+        safetyRef.current = null;
+      }
       setBusy(false);
     }
   }
@@ -102,8 +120,8 @@ export function FingerprintLockCard() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-slate-900">Fingerprint Unlock</p>
             <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-              Use your fingerprint to quickly and securely unlock D4EXAM. Your fingerprint stays on
-              this device — D4EXAM never stores it.
+              Use your fingerprint to unlock D4EXAM after the app is in the background for 30
+              seconds. Your fingerprint stays on this device — D4EXAM never stores it.
             </p>
             <p className="mt-2 text-xs text-slate-500">
               Status:{" "}
@@ -115,7 +133,7 @@ export function FingerprintLockCard() {
         </div>
 
         {unavailableMsg && !enabled && (
-          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">{unavailableMsg}</p>
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">{unavailableMsg}</p>
         )}
 
         {enabled ? (
@@ -123,13 +141,9 @@ export function FingerprintLockCard() {
             Disable Fingerprint
           </Button>
         ) : (
-          <Button
-            type="button"
-            disabled={busy || (availability !== null && !available)}
-            onClick={() => void onEnable()}
-          >
+          <Button type="button" disabled={busy} onClick={() => void onEnable()}>
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {busy ? "Waiting for fingerprint…" : "Enable Fingerprint"}
+            {busy ? "Touch the fingerprint sensor…" : "Enable Fingerprint"}
           </Button>
         )}
       </div>
