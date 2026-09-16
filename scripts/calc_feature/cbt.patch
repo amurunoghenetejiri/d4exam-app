@@ -1,0 +1,68 @@
+--- a/src/components/cbt/CbtExamSession.impl.tsx
++++ b/src/components/cbt/CbtExamSession.impl.tsx
+@@ -17,6 +17,7 @@
+ import { toast } from "sonner";
+ import { ExamCameraPip, type FaceSecurityEvent } from "@/components/cbt/ExamCameraPip";
++import { ExamCalculator, ExamCalculatorFab } from "@/components/cbt/ExamCalculator";
+ import { saveCbtResult } from "@/lib/cbt-save-result";
+ import { logSecurityEvent } from "@/lib/cbt-security";
+ import { mapFaceSecurityEvent } from "@/lib/live-monitor";
+@@ -128,6 +129,8 @@
+   const [paused, setPaused] = useState(false);
+   const [warnBanner, setWarnBanner] = useState<string | null>(null);
++  const [calcOpen, setCalcOpen] = useState(false);
++  const calcOpenRef = useRef(false);
+   const [fsGate, setFsGate] = useState(false);
+   const [pauseRemainingSec, setPauseRemainingSec] = useState<number | null>(null);
+   const [isOfficerPause, setIsOfficerPause] = useState(false);
+@@ -198,7 +201,7 @@
+     enabled: Boolean(id),
+     queryFn: async () => {
+       const { data } = await supabase.from("exam_settings")
+-        .select("exam_id, fullscreen, tab_monitoring, max_tab_switches, block_copy_paste, randomize_questions, randomize_options, require_camera, require_microphone, face_detection, max_face_warnings, require_screen_share, screen_share_mode, threshold_action, face_violation_action, pause_duration_seconds, total_marks, instructions, result_visibility, questions_to_answer")
++        .select("exam_id, fullscreen, tab_monitoring, max_tab_switches, block_copy_paste, randomize_questions, randomize_options, require_camera, require_microphone, face_detection, max_face_warnings, require_screen_share, screen_share_mode, threshold_action, face_violation_action, pause_duration_seconds, total_marks, instructions, result_visibility, questions_to_answer, allow_calculator, calculator_type")
+         .eq("exam_id", id).maybeSingle();
+       return data as ExamSettingsRow | null;
+     },
+@@ -542,6 +545,13 @@
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [started, done, previewMode, student?.studentId, id, liveAttemptId]);
+ 
++  useEffect(() => {
++    calcOpenRef.current = calcOpen;
++    try {
++      (window as unknown as { __d4CalcOpen?: boolean }).__d4CalcOpen = calcOpen;
++    } catch { /* ignore */ }
++  }, [calcOpen]);
++
+   // Integrity: fullscreen exit + app background / tab switch
+   useEffect(() => {
+     if (!started || done || previewMode) return;
+@@ -588,6 +598,10 @@
+ 
+     const recordTabLeave = () => {
+       if (finishingRef.current || doneRef.current) return;
++      // In-exam calculator is authorized — never count as tab leave
++      try {
++        if (calcOpenRef.current || (window as unknown as { __d4CalcOpen?: boolean }).__d4CalcOpen) return;
++      } catch { /* ignore */ }
+       if (!security.tabMonitoring) {
+         leftExamSessionRef.current = true;
+         void flushAttemptProgress();
+@@ -1407,6 +1421,16 @@
+           </div>
+         </div>
+       )}
++      {started && !done && !previewMode && Boolean(security.allowCalculator) && (
++        <>
++          {!calcOpen && <ExamCalculatorFab onClick={() => setCalcOpen(true)} />}
++          <ExamCalculator
++            open={calcOpen}
++            mode={security.calculatorType === "scientific" ? "scientific" : "basic"}
++            onClose={() => setCalcOpen(false)}
++          />
++        </>
++      )}
+     </div>
+   );
+ }
