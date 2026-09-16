@@ -2,17 +2,19 @@
  * Client-side push registration.
  *
  * Native Android APK:
- * - NEVER use web FCM / service worker / browser Notification (those show as Chrome)
- * - Use Capacitor permission + D4EXAM Local Notifications for system tray
- * - Do not call PushNotifications.register() without google-services (process crash)
+ * - Capacitor PushNotifications.register() → real FCM token (background delivery)
+ * - Requires google-services.json in the Android app module for FCM
+ * - Never save fake native-* tokens (FCM cannot deliver to them)
+ * - System tray uses D4EXAM Local Notifications channel (app icon, not Chrome)
  *
- * Web/PWA: Firebase web push (may show as Chrome — expected in browser only)
+ * Web/PWA:
+ * - Firebase web push via service worker (icon-192 / logo — app branding)
+ * - Background handled by public/firebase-messaging-sw.js
  */
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getMessaging, getToken, isSupported, onMessage, type Messaging } from "firebase/messaging";
 import { FIREBASE_WEB_CONFIG, FIREBASE_VAPID_KEY } from "@/lib/firebase-config";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { isNativeShell, getRuntimePlatform } from "@/native/platform";
 import { showD4ExamNativeNotification, bindLocalNotificationActions } from "@/native/localNotify";
 import { notificationsEnabledConfirm } from "@/lib/notify-messages";
@@ -21,8 +23,10 @@ let app: FirebaseApp | null = null;
 let messaging: Messaging | null = null;
 let nativePermissionCache: "granted" | "denied" | "default" | "unsupported" | null = null;
 let nativeListenersBound = false;
+let webOnMessageBound = false;
 
-const ENABLE_NATIVE_FCM_REGISTER = false;
+/** Real FCM registration (needs google-services.json in APK build). */
+const ENABLE_NATIVE_FCM_REGISTER = true;
 
 export type PushPermissionState = "granted" | "denied" | "default" | "unsupported";
 
@@ -128,6 +132,16 @@ export async function getFirebaseMessaging(): Promise<Messaging | null> {
   return messaging;
 }
 
+function absIcon(path: string): string {
+  if (typeof window === "undefined") return path;
+  try {
+    return new URL(path, window.location.origin).href;
+  } catch {
+    return path;
+  }
+}
+
+/** System-tray notification with D4EXAM icon (not Chrome default). */
 function showLocalNotification(title: string, body: string, link?: string | null) {
   if (isNativeShell()) {
     void showD4ExamNativeNotification(title, body, link);
@@ -135,18 +149,53 @@ function showLocalNotification(title: string, body: string, link?: string | null
   }
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
-  try {
-    const n = new Notification(title, { body, icon: "/icon-192.png", badge: "/favicon.png" });
-    if (link) {
+  const icon = absIcon("/icon-192.png");
+  const badge = absIcon("/icon-192.png");
+  const pathLink = (() => {
+    let path = String(link || "/");
+    if (path.startsWith("http")) {
+      try {
+        const u = new URL(path);
+        path = u.pathname + (u.search || "");
+      } catch {
+        /* keep */
+      }
+    }
+    if (!path.startsWith("/")) path = `/${path}`;
+    return path;
+  })();
+  void (async () => {
+    try {
+      if ("serviceWorker" in navigator) {
+        const reg =
+          (await navigator.serviceWorker.getRegistration()) ||
+          (await navigator.serviceWorker.ready.catch(() => null));
+        if (reg?.showNotification) {
+          await reg.showNotification(title, {
+            body,
+            icon,
+            badge,
+            data: { link: pathLink, title },
+            tag: "d4exam-notification",
+            renotify: true,
+          });
+          return;
+        }
+      }
+    } catch {
+      /* fall through */
+    }
+    try {
+      const n = new Notification(title, { body, icon, badge });
       n.onclick = () => {
         window.focus();
-        { let path = String(link||""); if (path.startsWith("http")) { try { const u=new URL(path); path=u.pathname+(u.search||"");} catch{} } if (!path.startsWith("/")) path="/"+path; if (path.startsWith("/student/exam")) path="/student/examinations"; if (path.startsWith("/student/results/")) path="/student/results"; window.location.assign((window.location.origin||"")+path); }
+        window.location.assign(`${window.location.origin || ""}${pathLink}`);
         n.close();
       };
+    } catch {
+      /* ignore */
     }
-  } catch {
-    /* ignore */
-  }
+  })();
 }
 
 async function ensureAndroidChannel(): Promise<void> {
@@ -185,14 +234,11 @@ async function bindNativePushListeners(userId: string, role?: string | null): Pr
       try {
         const data = notification.data as Record<string, string> | undefined;
         const title = data?.title || notification.title || "D4EXAM";
-        // Prefer full message from data payload (not truncated shade preview)
         const body = data?.message || data?.body || notification.body || "";
         const actionLabel = data?.actionLabel || data?.action_label || undefined;
-        toast.info(title, { description: body.slice(0, 180) });
         void showD4ExamNativeNotification(title, body, data?.link || data?.actionLink, {
           actionLabel,
         });
-        // If payload includes exam countdown start, client may start local live timer
         if (data?.examCountdown === "1" && data.examId && data.startIso) {
           void import("@/native/localNotify").then((m) => {
             m.startExamCountdownNotification({
@@ -216,12 +262,13 @@ async function bindNativePushListeners(userId: string, role?: string | null): Pr
         const data = action.notification?.data as Record<string, string> | undefined;
         let link = (data?.link || data?.actionLink || data?.url || "").trim();
         if (!link) link = "/student/notifications";
-        // Prefer in-app path so Capacitor WebView stays in the app (avoid external 404)
         if (link.startsWith("http")) {
           try {
             const u = new URL(link);
             link = u.pathname + (u.search || "");
-          } catch { /* keep */ }
+          } catch {
+            /* keep */
+          }
         }
         if (!link.startsWith("/")) link = `/${link}`;
         if (typeof window !== "undefined") {
@@ -257,7 +304,6 @@ async function enableNativePushNotifications(
       }
       if (lp.display === "granted") {
         nativePermissionCache = "granted";
-        // Confirmation ONLY when user just granted (not on every login)
         if (!wasGranted) {
           try {
             const key = `d4_notif_enabled_once:${userId}`;
@@ -314,9 +360,9 @@ async function enableNativePushNotifications(
       /* ignore */
     }
 
-    const token = `native-${userId}-${getRuntimePlatform()}`;
-    await saveDeviceToken(userId, token, role);
-    return { ok: true, token };
+    // Real FCM token is saved by the "registration" listener after PushNotifications.register().
+    // Do NOT save a fake native-* token — FCM cannot deliver to those.
+    return { ok: true };
   } catch (e) {
     console.warn("[D4EXAM] enableNativePushNotifications failed", e);
     return { ok: false, error: (e as Error).message || "Native push failed" };
@@ -328,6 +374,10 @@ async function saveDeviceToken(
   token: string,
   role?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
+  if (!token || /^native-/i.test(token) || token.length < 32) {
+    return { ok: false, error: "invalid fcm token" };
+  }
+
   const ua =
     typeof navigator !== "undefined"
       ? `${navigator.userAgent} | platform=${getRuntimePlatform()} | native=${isNativeShell() ? "1" : "0"}`
@@ -396,7 +446,10 @@ async function enableWebPushNotifications(
   }
 
   try {
-    const permission = await Notification.requestPermission();
+    let permission = Notification.permission;
+    if (permission !== "granted") {
+      permission = await Notification.requestPermission();
+    }
     if (permission !== "granted") {
       return {
         ok: false,
@@ -405,7 +458,15 @@ async function enableWebPushNotifications(
     }
 
     if ("serviceWorker" in navigator) {
-      await navigator.serviceWorker.register("/firebase-messaging-sw.js", { scope: "/" });
+      const reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
+        scope: "/",
+        updateViaCache: "none",
+      });
+      try {
+        await reg.update();
+      } catch {
+        /* ignore */
+      }
       await navigator.serviceWorker.ready;
     }
 
@@ -422,20 +483,20 @@ async function enableWebPushNotifications(
     const saved = await saveDeviceToken(userId, token, role);
     if (!saved.ok) return { ok: false, error: saved.error || "Could not save device" };
 
-    onMessage(msg, (payload) => {
-      try {
-        const data = (payload.data || {}) as Record<string, string>;
-        const title = payload.notification?.title || data.title || "D4EXAM";
-        const body =
-          data.message || data.body || payload.notification?.body || "";
-        const link = data.link || data.actionLink || "/";
-        const actionLabel = data.actionLabel || data.action_label || undefined;
-        void showD4ExamNativeNotification(title, body, link, { actionLabel });
-        toast.info(title, { description: body.slice(0, 180) });
-      } catch {
-        /* ignore */
-      }
-    });
+    if (!webOnMessageBound) {
+      webOnMessageBound = true;
+      onMessage(msg, (payload) => {
+        try {
+          const data = (payload.data || {}) as Record<string, string>;
+          const title = payload.notification?.title || data.title || "D4EXAM";
+          const body = data.message || data.body || payload.notification?.body || "";
+          const link = data.link || data.actionLink || "/";
+          showLocalNotification(title, body, link);
+        } catch {
+          /* ignore */
+        }
+      });
+    }
 
     return { ok: true, token };
   } catch (e) {
@@ -498,6 +559,23 @@ export async function initNativePushIfNeeded(
     if (state === "granted") {
       await enableNativePushNotifications(userId, role, { requestPermission: false });
     }
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Re-register web push when permission already granted (every session / tab focus). */
+export async function initWebPushIfNeeded(
+  userId?: string | null,
+  role?: string | null,
+): Promise<void> {
+  if (isNativeShell()) return;
+  if (!userId) return;
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    await enableWebPushNotifications(userId, role);
+    await refreshPushLastSeen(userId);
   } catch {
     /* ignore */
   }

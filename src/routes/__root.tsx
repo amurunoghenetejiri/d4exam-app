@@ -23,7 +23,7 @@ import { AppUpdateGate } from "@/components/AppUpdateGate";
 import { FingerprintLockGate } from "@/components/security/FingerprintLockGate";
 import { AndroidApkInstallBanner } from "@/components/AndroidApkInstallBanner";
 import { useSessionUser, rememberLastPath, readLastRole, readPreferredRole, roleHome, roleFromPath, type AppRole } from "@/lib/session";
-import { initNativePushIfNeeded } from "@/lib/push";
+import { initNativePushIfNeeded, initWebPushIfNeeded } from "@/lib/push";
 import { isNativeShell } from "@/native/platform";
 import { applyNativeStatusBar } from "@/native/statusBar";
 import { registerAndroidBackButton } from "@/native/backButton";
@@ -73,6 +73,24 @@ function NativeBootstrap() {
         /* ignore */
       }
     };
+  }, [session?.userId, session?.role]);
+  return null;
+}
+
+
+function WebPushBootstrap() {
+  const { data: session } = useSessionUser();
+  useEffect(() => {
+    if (!session?.userId) return;
+    if (isNativeShell()) return;
+    void initWebPushIfNeeded(session.userId, session.role);
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        void initWebPushIfNeeded(session.userId, session.role);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, [session?.userId, session?.role]);
   return null;
 }
@@ -290,6 +308,7 @@ function RootComponent() {
       <AndroidApkInstallBanner />
       <Outlet />
       <NativeBootstrap />
+      <WebPushBootstrap />
       <AnimatedSplash />
       <Toaster />
     </QueryClientProvider>

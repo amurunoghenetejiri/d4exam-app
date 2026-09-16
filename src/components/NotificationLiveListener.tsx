@@ -1,14 +1,12 @@
 /**
- * Live in-app + native D4EXAM tray (not Chrome) when a notifications row is inserted.
- * Skips spammy countdown tick rows — those are handled by one ongoing local notification.
+ * Keep notification inbox counts fresh when a row is inserted.
+ * Delivery is push-only (FCM / system tray) — no in-app toast banners here.
+ * CBT integrity alerts and success toasts stay in their own flows.
  */
 import { useEffect, useRef } from "react";
-import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionUser } from "@/lib/session";
-import { isNativeShell } from "@/native/platform";
-import { showD4ExamNativeNotification } from "@/native/localNotify";
 
 function isCountdownSpam(row: {
   title?: string;
@@ -22,65 +20,6 @@ function isCountdownSpam(row: {
   if (title.includes("starts in") || msg.includes("starts in")) return true;
   if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(msg.trim())) return true;
   return false;
-}
-
-/** Match Notification 20.0 action labels from type/title/message */
-function actionLabelFor(row: {
-  title?: string;
-  message?: string;
-  type?: string;
-  link?: string | null;
-}): string {
-  const ty = String(row.type || "").toLowerCase();
-  const msg = String(row.message || "").toLowerCase();
-  const title = String(row.title || "").toLowerCase();
-  if (
-    ty.includes("result") ||
-    title.includes("result released") ||
-    title.includes("result held") ||
-    msg.includes("result has been released") ||
-    msg.includes("result is now available")
-  )
-    return "VIEW RESULT";
-  if (title.includes("awaiting approval") || msg.includes("for your review and approval"))
-    return "REVIEW EXAM";
-  if (
-    ty === "exam_available" ||
-    title.includes("starting now") ||
-    msg.includes("starting now") ||
-    msg.includes("you can now enter the examination")
-  )
-    return "START EXAM";
-  if (title.includes("changes requested") || msg.includes("requested changes"))
-    return "EDIT EXAM";
-  if (ty.includes("reject") || title.includes("not approved"))
-    return "REVIEW EXAM";
-  if (title.includes("live examination") || title.includes("monitoring") || msg.includes("live monitoring"))
-    return "OPEN MONITORING";
-  if (title.includes("scheduled") || ty.includes("exam_scheduled") || title.includes("examination"))
-    return "VIEW EXAM";
-  if (title.includes("welcome"))
-    return "OPEN DASHBOARD";
-  if (row.link) return "VIEW DETAILS";
-  return "VIEW DETAILS";
-}
-
-function safeLink(link?: string | null): string {
-  let raw = (link || "").trim();
-  if (!raw) return "/student/notifications";
-  if (raw.startsWith("http")) {
-    try {
-      const u = new URL(raw);
-      raw = u.pathname + (u.search || "");
-    } catch {
-      return "/student/notifications";
-    }
-  }
-  if (!raw.startsWith("/")) raw = `/${raw}`;
-  // Stable student destinations (avoid 404 on exam deep links)
-  if (raw.startsWith("/student/exam")) return "/student/examinations";
-  if (raw.startsWith("/student/results/")) return "/student/results";
-  return raw;
 }
 
 export function NotificationLiveListener() {
@@ -126,17 +65,7 @@ export function NotificationLiveListener() {
               return;
             }
 
-            const title = row.title || "D4EXAM";
-            const body = row.message || "";
-            const link = safeLink(row.link);
-            const actionLabel = actionLabelFor({ ...row, link });
-            toast.info(title, {
-              description: body,
-              duration: 10_000,
-            });
-            if (isNativeShell()) {
-              void showD4ExamNativeNotification(title, body, link, { actionLabel });
-            }
+            // Push (FCM / system notification) is the only delivery channel.
             void queryClient.invalidateQueries({ queryKey: ["count", "notifications"] });
             void queryClient.invalidateQueries({
               queryKey: ["count", "notifications", "unread", userId],

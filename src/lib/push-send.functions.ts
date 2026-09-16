@@ -110,7 +110,7 @@ async function sendFcmV1(
   const projectId = sa.project_id || process.env["FIREBASE_PROJECT_ID"] || "d4exam-6506a";
   const url = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
   const origin = appOrigin();
-  const icon = `${origin}/logo.png`;
+  const icon = `${origin}/icon-192.png`;
   const absoluteLink = link.startsWith("http")
     ? link
     : `${origin}${link.startsWith("/") ? link : `/${link}`}`;
@@ -182,7 +182,7 @@ async function sendFcmLegacy(
   actionLabel?: string | null,
 ) {
   const origin = appOrigin();
-  const icon = `${origin}/logo.png`;
+  const icon = `${origin}/icon-192.png`;
   const fullBody = String(body || "");
   const fullTitle = String(title || "D4EXAM");
   const action = (actionLabel || "").trim();
@@ -226,6 +226,13 @@ function isNativeDeviceUa(ua: string | null | undefined): boolean {
   return /native=1/i.test(ua) || /platform=android/i.test(ua);
 }
 
+/** Fake native-* placeholders cannot receive FCM — skip them. */
+function isValidFcmToken(token: string | null | undefined): boolean {
+  if (!token) return false;
+  if (/^native-/i.test(token)) return false;
+  return token.length >= 32;
+}
+
 export const dispatchPushToUser = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => {
     const raw =
@@ -261,24 +268,29 @@ export const dispatchPushToUser = createServerFn({ method: "POST" })
       return { sent: 0, failed: 0, skipped: true as const, reason: "no devices" };
     }
 
-    const nativeOnes = list.filter((d) => isNativeDeviceUa(d.user_agent));
-    // Prefer native APK tokens so we do not fire Chrome web-push tokens
-    const preferred = nativeOnes.length > 0 ? nativeOnes : list;
+    // Only real FCM / web-push tokens (skip fake native-* placeholders)
+    const valid = list.filter((d) => isValidFcmToken(d.token));
+    if (!valid.length) {
+      return {
+        sent: 0,
+        failed: 0,
+        skipped: true as const,
+        reason: "no valid fcm tokens (re-enable notifications on device)",
+      };
+    }
 
-    // Disable leftover web tokens when user has native devices (stops Chrome spam)
-    if (nativeOnes.length > 0) {
-      for (const d of list) {
-        if (!isNativeDeviceUa(d.user_agent)) {
-          void sb
-            .from("push_devices")
-            .update({ enabled: false, updated_at: new Date().toISOString() } as never)
-            .eq("id", d.id);
-        }
+    // Deliver to EVERY valid device (native APK + Chrome/web)
+    for (const d of list) {
+      if (!isValidFcmToken(d.token)) {
+        void sb
+          .from("push_devices")
+          .update({ enabled: false, updated_at: new Date().toISOString() } as never)
+          .eq("id", d.id);
       }
     }
 
     const seen = new Set<string>();
-    const unique = preferred.filter((d) => {
+    const unique = valid.filter((d) => {
       const t = d.token;
       if (!t || seen.has(t)) return false;
       seen.add(t);

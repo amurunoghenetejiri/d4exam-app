@@ -87,24 +87,12 @@ export function InstallAndPushPrompt() {
     if (pushTried.current) return;
 
     // Only request once per device until granted/denied. Never re-prompt on every login.
-    try {
-      const k = `d4_push_prompted:${session.userId}`;
-      if (localStorage.getItem(k) === "1") {
-        const st = getPushPermissionState();
-        if (st === "granted" || st === "denied") {
-          pushTried.current = true;
-          return;
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-
+    // Always re-register when already granted (keeps FCM token + SW fresh for background).
+    // Only skip the permission *prompt* if we already asked this user.
     pushTried.current = true;
     const delay = isNativeShell() ? 800 : 1200;
     const t = window.setTimeout(() => {
       const st0 = getPushPermissionState();
-      // Already decided — register silently without system dialog noise
       if (st0 === "granted") {
         void enablePushNotifications(session.userId, session.role, { requestPermission: false }).catch(
           () => undefined,
@@ -124,13 +112,19 @@ export function InstallAndPushPrompt() {
         }
         return;
       }
+      // default — only prompt once per user on this device
+      try {
+        const k = `d4_push_prompted:${session.userId}`;
+        if (localStorage.getItem(k) === "1") return;
+      } catch {
+        /* ignore */
+      }
       void enablePushNotifications(session.userId, session.role).then((r) => {
         try {
           localStorage.setItem(`d4_push_prompted:${session.userId}`, "1");
         } catch {
           /* ignore */
         }
-        // Allow one retry only if still default (user dismissed without choosing)
         if (!r.ok) {
           const st = getPushPermissionState();
           if (st === "default") {
