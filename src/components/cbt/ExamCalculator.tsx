@@ -694,8 +694,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
           ))}
         </div>
       </div>
-    </div>
-  ),
+    </div>,
     document.body,
   );
 }
