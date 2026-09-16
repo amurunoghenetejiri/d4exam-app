@@ -28,6 +28,7 @@ import { isNativeShell } from "@/native/platform";
 import { applyNativeStatusBar } from "@/native/statusBar";
 import { registerAndroidBackButton } from "@/native/backButton";
 import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
+import { startAccountVaultKeepAlive } from "@/lib/account-switcher";
 
 function NativeBootstrap() {
   const { data: session } = useSessionUser();
@@ -227,7 +228,7 @@ function RootShell({ children }: { children: ReactNode }) {
 #d4-boot-splash img{width:min(40vw,160px);height:min(40vw,160px);object-fit:contain}
 #d4-boot-splash .t{margin-top:1.25rem;font-weight:800;letter-spacing:.14em;font-size:clamp(1.5rem,6vw,2.25rem)}
 #d4-boot-splash .t span.b{color:#2563eb}
-#d4-boot-splash .s{margin-top:.5rem;font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:#94a3b8;font-weight:600}
+#d4-boot-splash .s{margin-top:.5rem;font-size:10px;letter-spacing:.28em;color:#94a3b8;font-weight:600}
 #d4-boot-splash .slogan{position:absolute;bottom:max(1.5rem,env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:10px;letter-spacing:.28em;color:#94a3b8;font-weight:600;padding:0 2rem}
 #d4-boot-splash .slogan span.hi{color:#60a5fa}
 `,
@@ -273,6 +274,7 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   useEffect(() => {
     installGlobalErrorHandlers();
+    startAccountVaultKeepAlive();
   }, []);
 
   return (
