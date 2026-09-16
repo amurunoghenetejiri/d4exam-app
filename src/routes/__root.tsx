@@ -232,6 +232,19 @@ const BOOT_SPLASH_SCRIPT = `
     if (sessionStorage.getItem('d4exam_splash_shown_v6') === '1') return;
     var el = document.getElementById('d4-boot-splash');
     if (el) el.style.display = 'flex';
+    // Safety: never leave the HTML boot splash up forever if React is slow/offline
+    function hideBoot(){
+      try {
+        var b = document.getElementById('d4-boot-splash');
+        if (!b) return;
+        b.style.opacity = '0';
+        b.style.pointerEvents = 'none';
+        setTimeout(function(){ try { b.remove(); } catch(e){} }, 200);
+      } catch(e){}
+    }
+    setTimeout(hideBoot, 4000);
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideBoot, 3500); });
+    window.addEventListener('load', function(){ setTimeout(hideBoot, 2500); });
   } catch(e){}
 })();
 `;
