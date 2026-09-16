@@ -23,16 +23,13 @@ export type SavedAccount = {
   schoolName: string | null;
   schoolCode: string | null;
   identifier: string | null;
-  /** Supabase session tokens — never passwords */
   accessToken: string;
   refreshToken: string;
   savedAt: number;
   lastUsedAt: number;
 };
 
-type Vault = {
-  accounts: SavedAccount[];
-};
+type Vault = { accounts: SavedAccount[] };
 
 function readVault(): Vault {
   if (typeof window === "undefined") return { accounts: [] };
@@ -57,8 +54,7 @@ function writeVault(vault: Vault): void {
 }
 
 export function listSavedAccounts(): SavedAccount[] {
-  const accounts = readVault().accounts;
-  return [...accounts].sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0));
+  return [...readVault().accounts].sort((a, b) => (b.lastUsedAt || 0) - (a.lastUsedAt || 0));
 }
 
 export function getActiveAccountId(): string | null {
@@ -80,7 +76,6 @@ function setActiveAccountId(userId: string | null): void {
   }
 }
 
-/** Public metadata only — never tokens */
 export type AccountListItem = {
   userId: string;
   email: string;
@@ -129,10 +124,16 @@ export function roleLabel(role: AppRole | string | null | undefined): string {
   }
 }
 
-/**
- * Save/update the current Supabase session into the device vault.
- * Call after successful login when user opts in (or always for "Remember").
- */
+function envSupabase(): { url: string; key: string } {
+  const env =
+    typeof import.meta !== "undefined"
+      ? (import.meta as unknown as { env?: Record<string, string> }).env || {}
+      : {};
+  const url = String(env["VITE_SUPABASE_URL"] || "").replace(/\/$/, "");
+  const key = String(env["VITE_SUPABASE_PUBLISHABLE_KEY"] || env["VITE_SUPABASE_ANON_KEY"] || "");
+  return { url, key };
+}
+
 export async function saveCurrentAccountToVault(sessionUser?: SessionUser | null): Promise<boolean> {
   try {
     const { data } = await supabase.auth.getSession();
@@ -174,7 +175,6 @@ export async function saveCurrentAccountToVault(sessionUser?: SessionUser | null
   }
 }
 
-/** Refresh tokens in vault after a successful session refresh */
 export async function touchActiveAccountTokens(): Promise<void> {
   try {
     const { data } = await supabase.auth.getSession();
@@ -200,7 +200,6 @@ export function isAccountSaved(userId: string): boolean {
   return readVault().accounts.some((a) => a.userId === userId);
 }
 
-/** Remove one account from this device only (does not delete D4EXAM account). */
 export async function removeAccountFromDevice(userId: string): Promise<void> {
   const vault = readVault();
   vault.accounts = vault.accounts.filter((a) => a.userId !== userId);
@@ -213,7 +212,45 @@ export async function removeAccountFromDevice(userId: string): Promise<void> {
   if (getActiveAccountId() === userId) setActiveAccountId(null);
 }
 
-/** Switch active session to a saved account. Full page navigation to role home. */
+async function refreshViaApi(
+  refreshToken: string,
+): Promise<{ access: string; refresh: string; uid: string } | null> {
+  try {
+    const { url, key } = envSupabase();
+    if (!url || !key) return null;
+    const res = await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: key,
+        ...(key.startsWith("sb_publishable_") || key.startsWith("sb_secret_")
+          ? {}
+          : { Authorization: `Bearer ${key}` }),
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      access_token?: string;
+      refresh_token?: string;
+      user?: { id?: string };
+    };
+    if (!json.access_token || !json.refresh_token) return null;
+    return {
+      access: json.access_token,
+      refresh: json.refresh_token,
+      uid: String(json.user?.id || ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Switch to a saved account.
+ * Flow: refresh target tokens → local signOut → setSession(new) → navigate.
+ * On any failure, restore previous session so the user is never left logged out.
+ */
 export async function switchToAccount(
   userId: string,
 ): Promise<{ ok: true } | { ok: false; error: string; needsLogin?: boolean; email?: string }> {
@@ -255,8 +292,8 @@ export async function switchToAccount(
     return { ok: true };
   }
 
-  const refreshTok = (account.refreshToken || "").trim();
-  const accessTok = (account.accessToken || "").trim();
+  let refreshTok = (account.refreshToken || "").trim();
+  let accessTok = (account.accessToken || "").trim();
   if (!refreshTok && !accessTok) {
     return {
       ok: false,
@@ -281,83 +318,6 @@ export async function switchToAccount(
     }
   }
 
-  async function refreshViaApi(
-    refreshToken: string,
-  ): Promise<{ access: string; refresh: string; uid: string } | null> {
-    try {
-      const client = supabase as unknown as { supabaseUrl?: string; supabaseKey?: string };
-      const base =
-        client.supabaseUrl ||
-        (typeof import.meta !== "undefined"
-          ? (import.meta as unknown as { env?: Record<string, string> }).env?.["VITE_SUPABASE_URL"]
-          : "") ||
-        "";
-      const key =
-        client.supabaseKey ||
-        (typeof import.meta !== "undefined"
-          ? (import.meta as unknown as { env?: Record<string, string> }).env?.[
-              "VITE_SUPABASE_PUBLISHABLE_KEY"
-            ]
-          : "") ||
-        "";
-      if (!base || !key) return null;
-      const res = await fetch(`${base.replace(/\/$/, "")}/auth/v1/token?grant_type=refresh_token`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: key,
-          ...(key.startsWith("sb_publishable_") || key.startsWith("sb_secret_")
-            ? {}
-            : { Authorization: `Bearer ${key}` }),
-        },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
-      if (!res.ok) return null;
-      const json = (await res.json()) as {
-        access_token?: string;
-        refresh_token?: string;
-        user?: { id?: string };
-      };
-      if (!json.access_token || !json.refresh_token) return null;
-      return {
-        access: json.access_token,
-        refresh: json.refresh_token,
-        uid: String(json.user?.id || ""),
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  async function commitSession(
-    access: string,
-    refresh: string,
-    expectedUid?: string,
-  ): Promise<boolean> {
-    try {
-      const { data, error } = await supabase.auth.setSession({
-        access_token: access,
-        refresh_token: refresh,
-      });
-      if (error || !data.session?.access_token) return false;
-      const uid = String(data.session.user?.id || "");
-      if (expectedUid && uid && uid !== String(expectedUid)) return false;
-      if (uid && uid !== targetId) return false;
-
-      account.accessToken = data.session.access_token;
-      account.refreshToken = data.session.refresh_token || refresh;
-      account.lastUsedAt = Date.now();
-      const idx = vault.accounts.findIndex((a) => String(a.userId) === targetId);
-      if (idx >= 0) vault.accounts[idx] = { ...vault.accounts[idx], ...account };
-      else vault.accounts.push(account);
-      writeVault(vault);
-      setActiveAccountId(targetId);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   function goHome(): { ok: true } {
     if (account.role) seedPendingLoginRole(account.role);
     if (typeof window !== "undefined") {
@@ -371,60 +331,76 @@ export async function switchToAccount(
   }
 
   try {
-    // Prefer setSession first — NEVER signOut the current account until the new one is committed.
-    if (accessTok && refreshTok) {
-      const ok = await commitSession(accessTok, refreshTok, targetId);
-      if (ok) return goHome();
-    }
-
+    // 1) Always try to refresh the TARGET account tokens first (while still on current session)
     if (refreshTok) {
       const api = await refreshViaApi(refreshTok);
       if (api && (!api.uid || api.uid === targetId)) {
-        const ok = await commitSession(api.access, api.refresh, targetId);
-        if (ok) return goHome();
+        accessTok = api.access;
+        refreshTok = api.refresh;
       }
     }
 
-    if (refreshTok) {
-      try {
-        const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshTok });
-        if (!error && data.session?.access_token) {
-          const uid = String(data.session.user?.id || "");
-          if (!uid || uid === targetId) {
-            const ok = await commitSession(
-              data.session.access_token,
-              data.session.refresh_token || refreshTok,
-              targetId,
-            );
-            if (ok) return goHome();
-          }
-        }
-      } catch {
-        /* continue */
-      }
+    if (!accessTok || !refreshTok) {
+      await restorePrevious();
+      return {
+        ok: false,
+        error: "Session for that account expired on this device. Sign in once to refresh it.",
+        needsLogin: true,
+        email: account.email,
+      };
     }
 
-    // Final attempt with stored access+refresh after other paths failed
-    if (accessTok && refreshTok) {
-      const ok = await commitSession(accessTok, refreshTok, targetId);
-      if (ok) return goHome();
+    // 2) Clear local session so setSession for a different user is accepted
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {
+      /* ignore */
+    }
+    await new Promise((r) => setTimeout(r, 40));
+
+    // 3) Commit target session
+    const { data, error } = await supabase.auth.setSession({
+      access_token: accessTok,
+      refresh_token: refreshTok,
+    });
+
+    if (error || !data.session?.access_token) {
+      await restorePrevious();
+      return {
+        ok: false,
+        error: "Session for that account expired on this device. Sign in once to refresh it.",
+        needsLogin: true,
+        email: account.email,
+      };
     }
 
-    // Failed: restore previous session so user is NOT left logged out
-    await restorePrevious();
-    return {
-      ok: false,
-      error: "Session for that account expired on this device. Sign in once to refresh it.",
-      needsLogin: true,
-      email: account.email,
-    };
+    const uid = String(data.session.user?.id || "");
+    if (uid && uid !== targetId) {
+      await restorePrevious();
+      return {
+        ok: false,
+        error: "Could not switch to that account. Sign in once more.",
+        needsLogin: true,
+        email: account.email,
+      };
+    }
+
+    account.accessToken = data.session.access_token;
+    account.refreshToken = data.session.refresh_token || refreshTok;
+    account.lastUsedAt = Date.now();
+    const idx = vault.accounts.findIndex((a) => String(a.userId) === targetId);
+    if (idx >= 0) vault.accounts[idx] = { ...vault.accounts[idx], ...account };
+    else vault.accounts.push(account);
+    writeVault(vault);
+    setActiveAccountId(targetId);
+
+    return goHome();
   } catch (e) {
     await restorePrevious();
     return { ok: false, error: (e as Error).message || "Could not switch account." };
   }
 }
 
-/** Open login pre-filled so a saved account can refresh its session on this device. */
 export function beginRefreshAccountLogin(opts: {
   email?: string | null;
   userId?: string | null;
@@ -454,13 +430,11 @@ export function beginRefreshAccountLogin(opts: {
   q.set("addAccount", "1");
   q.set("switch", "1");
   if (opts.email) q.set("email", opts.email);
-  // Soft local sign-out only after flags are set, so login page is reachable
   void supabase.auth.signOut({ scope: "local" }).finally(() => {
     window.location.href = `/login?${q.toString()}`;
   });
 }
 
-/** Log out of the current account only; keep other saved accounts. */
 export async function signOutThisAccount(): Promise<void> {
   let userId: string | null = null;
   try {
@@ -469,14 +443,11 @@ export async function signOutThisAccount(): Promise<void> {
   } catch {
     userId = getActiveAccountId();
   }
-
-  // Clear fingerprint unlock for this user so another account cannot unlock into it
   try {
     clearFingerprintIfUser(userId);
   } catch {
     /* ignore */
   }
-
   try {
     await supabase.auth.signOut({ scope: "local" });
   } catch {
@@ -487,22 +458,13 @@ export async function signOutThisAccount(): Promise<void> {
     }
   }
   clearPendingLoginRole();
-
-  if (userId) {
-    await removeAccountFromDevice(userId);
-  }
-
+  if (userId) await removeAccountFromDevice(userId);
   const remaining = listSavedAccounts();
-  if (remaining.length > 0) {
-    if (typeof window !== "undefined") {
-      window.location.href = "/login?switched=1";
-    }
-    return;
+  if (typeof window !== "undefined") {
+    window.location.href = remaining.length > 0 ? "/login?switched=1" : "/login";
   }
-  if (typeof window !== "undefined") window.location.href = "/login";
 }
 
-/** Log out of all accounts on this device. */
 export async function signOutAllAccounts(): Promise<void> {
   const vault = readVault();
   const ids = vault.accounts.map((a) => a.userId);
