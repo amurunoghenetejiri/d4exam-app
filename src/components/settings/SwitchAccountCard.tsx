@@ -19,7 +19,6 @@ import {
   removeAccountFromDevice,
   saveCurrentAccountToVault,
   beginAddAccountFlow,
-  beginRefreshAccountLogin,
   signOutThisAccount,
   signOutAllAccounts,
   type AccountListItem,
@@ -51,6 +50,7 @@ export function SwitchAccountCard() {
     }
     setBusyId(userId);
     try {
+      // Save this account’s latest tokens so we can switch back later
       try {
         await saveCurrentAccountToVault(session);
       } catch {
@@ -58,23 +58,11 @@ export function SwitchAccountCard() {
       }
       const result = await switchToAccount(userId);
       if (!result.ok) {
-        if (result.needsLogin) {
-          const email =
-            ("email" in result && (result as { email?: string }).email) ||
-            accounts.find((a) => a.userId === userId)?.email ||
-            "";
-          const acc = accounts.find((a) => a.userId === userId);
-          toast.message("Session expired — sign in once to refresh this account.");
-          beginRefreshAccountLogin({
-            email: email || null,
-            userId,
-            role: acc?.role ?? null,
-          });
-          return;
-        }
-        toast.error(result.error);
+        // Stay on current account — never send user to a “refresh account” login
+        toast.error(result.error || "Could not switch account.");
         refresh();
       }
+      // On success, switchToAccount does a full navigation away
     } catch (e) {
       toast.error((e as Error).message || "Could not switch account.");
       refresh();
@@ -273,7 +261,7 @@ export function SwitchAccountCard() {
 
         <p className="text-xs text-slate-400">
           Removing an account only clears it from this device. It does not delete the account on
-          D4EXAM. Passwords are never stored.
+          D4EXAM. Passwords are never stored. Switch opens the other account immediately.
         </p>
       </div>
     </SectionCard>
