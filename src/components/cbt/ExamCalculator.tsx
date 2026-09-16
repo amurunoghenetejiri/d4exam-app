@@ -1,7 +1,7 @@
 /**
  * Full-screen in-exam calculator (basic + scientific).
- * Student title is always "Calculator" (never shows Basic/Scientific).
- * Behaves like a normal phone calculator: auto-evaluates on operators; = shows result.
+ * Student title is always "Calculator" (never Basic/Scientific).
+ * Expression at top, live auto-result below. Safe parser (no eval).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Calculator as CalcIcon, X } from "lucide-react";
@@ -12,6 +12,8 @@ import { isNativeShell } from "@/native/platform";
 export type CalculatorMode = "basic" | "scientific";
 type AngleMode = "DEG" | "RAD" | "GRAD";
 type Props = { open: boolean; mode: CalculatorMode; onClose: () => void };
+
+type KeyDef = { label: string; action: string; className?: string; span?: number };
 
 function toRad(x: number, angle: AngleMode): number {
   if (angle === "DEG") return (x * Math.PI) / 180;
@@ -28,58 +30,214 @@ function formatResult(v: number): string {
   if (!Number.isFinite(v)) return "Error";
   if (Object.is(v, -0)) return "0";
   if (Number.isInteger(v) && Math.abs(v) < 1e15) return String(v);
+  const abs = Math.abs(v);
+  if (abs !== 0 && (abs >= 1e12 || abs < 1e-9)) return v.toExponential(6).replace(/\.?0+e/, "e");
   const s = Number(v.toPrecision(12)).toString();
   return s;
 }
 
-function applyBinary(a: number, op: string, b: number): number {
-  switch (op) {
-    case "+":
-      return a + b;
-    case "−":
-    case "-":
-      return a - b;
-    case "×":
-    case "*":
-      return a * b;
-    case "÷":
-    case "/":
-      return b === 0 ? NaN : a / b;
-    case "%":
-      return a % b;
-    case "^":
-      return Math.pow(a, b);
-    default:
-      return b;
+/** Tokenize expression for safe evaluation. */
+function tokenize(expr: string): string[] {
+  const s = expr.replace(/\s+/g, "");
+  const out: string[] = [];
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i]!;
+    if ("+-×÷*/^()%,".includes(c) || c === "−") {
+      out.push(c === "*" ? "×" : c === "/" ? "÷" : c === "-" ? "−" : c);
+      i++;
+      continue;
+    }
+    if (/[0-9.]/.test(c)) {
+      let j = i + 1;
+      while (j < s.length && /[0-9.]/.test(s[j]!)) j++;
+      out.push(s.slice(i, j));
+      i = j;
+      continue;
+    }
+    // multi-char functions / constants
+    const rest = s.slice(i).toLowerCase();
+    const fns = [
+      "asin", "acos", "atan", "sin", "cos", "tan", "log10", "log", "ln",
+      "sqrt", "cbrt", "exp", "abs", "pi", "e",
+    ];
+    let matched = false;
+    for (const fn of fns) {
+      if (rest.startsWith(fn)) {
+        out.push(fn);
+        i += fn.length;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      // unknown char — skip
+      i++;
+    }
+  }
+  return out;
+}
+
+type AngleCtx = { angle: AngleMode };
+
+function evalTokens(tokens: string[], ctx: AngleCtx): number {
+  // Recursive descent: expr = term ((+|−) term)*
+  // term = power ((×|÷|%) power)*
+  // power = unary (^ unary)*
+  // unary = (+|−) unary | primary
+  // primary = number | const | fn ( expr ) | ( expr )
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const take = () => tokens[pos++];
+
+  function parseExpr(): number {
+    let v = parseTerm();
+    while (peek() === "+" || peek() === "−") {
+      const op = take()!;
+      const r = parseTerm();
+      v = op === "+" ? v + r : v - r;
+    }
+    return v;
+  }
+  function parseTerm(): number {
+    let v = parsePower();
+    while (peek() === "×" || peek() === "÷" || peek() === "%") {
+      const op = take()!;
+      const r = parsePower();
+      if (op === "×") v = v * r;
+      else if (op === "÷") v = r === 0 ? NaN : v / r;
+      else v = v % r;
+    }
+    return v;
+  }
+  function parsePower(): number {
+    let v = parseUnary();
+    if (peek() === "^") {
+      take();
+      const r = parsePower(); // right-assoc
+      v = Math.pow(v, r);
+    }
+    return v;
+  }
+  function parseUnary(): number {
+    if (peek() === "+") {
+      take();
+      return parseUnary();
+    }
+    if (peek() === "−") {
+      take();
+      return -parseUnary();
+    }
+    return parsePrimary();
+  }
+  function parsePrimary(): number {
+    const t = peek();
+    if (t == null) return NaN;
+    if (/^[0-9]*\.?[0-9]+$/.test(t)) {
+      take();
+      return Number(t);
+    }
+    if (t === "pi") {
+      take();
+      return Math.PI;
+    }
+    if (t === "e") {
+      take();
+      return Math.E;
+    }
+    const fns: Record<string, (x: number) => number> = {
+      sin: (x) => Math.sin(toRad(x, ctx.angle)),
+      cos: (x) => Math.cos(toRad(x, ctx.angle)),
+      tan: (x) => Math.tan(toRad(x, ctx.angle)),
+      asin: (x) => fromRad(Math.asin(x), ctx.angle),
+      acos: (x) => fromRad(Math.acos(x), ctx.angle),
+      atan: (x) => fromRad(Math.atan(x), ctx.angle),
+      log: (x) => Math.log10(x),
+      log10: (x) => Math.log10(x),
+      ln: (x) => Math.log(x),
+      sqrt: (x) => Math.sqrt(x),
+      cbrt: (x) => Math.cbrt(x),
+      exp: (x) => Math.exp(x),
+      abs: (x) => Math.abs(x),
+    };
+    if (t in fns) {
+      take();
+      if (peek() === "(") {
+        take();
+        const arg = parseExpr();
+        if (peek() === ")") take();
+        return fns[t]!(arg);
+      }
+      // function without paren yet — incomplete
+      return NaN;
+    }
+    if (t === "(") {
+      take();
+      const v = parseExpr();
+      if (peek() === ")") take();
+      return v;
+    }
+    take();
+    return NaN;
+  }
+
+  try {
+    const v = parseExpr();
+    if (pos < tokens.length) return NaN; // trailing junk
+    return v;
+  } catch {
+    return NaN;
   }
 }
 
-type KeyDef = { label: string; action: string; className?: string; span?: number };
+/** Live-evaluate if expression is complete enough; else null. */
+function tryLiveEval(expr: string, angle: AngleMode): string | null {
+  let trimmed = expr.trim();
+  if (!trimmed) return null;
+  // incomplete trailing operator or bare function name
+  if (/[+\-−×÷*/^]$/.test(trimmed)) return null;
+  if (/(sin|cos|tan|asin|acos|atan|log|ln|sqrt|cbrt|exp)\s*$/i.test(trimmed)) return null;
+  // Auto-close open parentheses for live preview (e.g. cos(60 → cos(60))
+  const open = (trimmed.match(/\(/g) || []).length;
+  const close = (trimmed.match(/\)/g) || []).length;
+  if (open > close) trimmed = trimmed + ")".repeat(open - close);
+  if (/\($/.test(trimmed.replace(/\)$/, ""))) return null;
+  try {
+    const tokens = tokenize(trimmed);
+    if (!tokens.length) return null;
+    const v = evalTokens(tokens, { angle });
+    if (!Number.isFinite(v)) return null;
+    return formatResult(v);
+  } catch {
+    return null;
+  }
+}
 
-const BASIC: KeyDef[][] = [
+
+const BASIC_ROWS: KeyDef[][] = [
   [
-    { label: "AC", action: "clear", className: "bg-amber-500 text-white font-bold" },
-    { label: "⌫", action: "back", className: "bg-amber-500 text-white font-bold" },
-    { label: "%", action: "percent", className: "bg-slate-600/60 text-white" },
-    { label: "÷", action: "÷", className: "bg-slate-600/60 text-white" },
+    { label: "AC", action: "ac", className: "bg-amber-500 text-white font-bold" },
+    { label: "⌫", action: "del", className: "bg-amber-500 text-white font-bold" },
+    { label: "%", action: "%" },
+    { label: "÷", action: "÷" },
   ],
   [
     { label: "7", action: "7" },
     { label: "8", action: "8" },
     { label: "9", action: "9" },
-    { label: "×", action: "×", className: "bg-slate-600/60 text-white" },
+    { label: "×", action: "×" },
   ],
   [
     { label: "4", action: "4" },
     { label: "5", action: "5" },
     { label: "6", action: "6" },
-    { label: "−", action: "−", className: "bg-slate-600/60 text-white" },
+    { label: "−", action: "−" },
   ],
   [
     { label: "1", action: "1" },
     { label: "2", action: "2" },
     { label: "3", action: "3" },
-    { label: "+", action: "+", className: "bg-slate-600/60 text-white" },
+    { label: "+", action: "+" },
   ],
   [
     { label: "0", action: "0", span: 2 },
@@ -88,79 +246,82 @@ const BASIC: KeyDef[][] = [
   ],
 ];
 
-function sci(shift: boolean): KeyDef[][] {
+function scientificRows(angle: AngleMode): KeyDef[][] {
   return [
     [
-      { label: "SHIFT", action: "shift", className: shift ? "bg-[#2563eb] text-white" : "bg-[#3b82f6] text-white" },
-      { label: "DEG", action: "angle", className: "bg-slate-600/70 text-white text-[10px]" },
-      { label: "⌫", action: "back", className: "bg-amber-500 text-white font-bold" },
-      { label: "AC", action: "clear", className: "bg-amber-500 text-white font-bold" },
+      { label: angle, action: "angle" },
+      { label: "FSE", action: "noop" },
+      { label: "MTRX", action: "noop" },
+      { label: "⌫", action: "del", className: "bg-amber-500 text-white font-bold" },
+      { label: "AC", action: "ac", className: "bg-amber-500 text-white font-bold" },
     ],
     [
-      { label: shift ? "sin⁻¹" : "sin", action: shift ? "asin" : "sin" },
-      { label: shift ? "cos⁻¹" : "cos", action: shift ? "acos" : "cos" },
-      { label: shift ? "tan⁻¹" : "tan", action: shift ? "atan" : "tan" },
-      { label: "log", action: "log10" },
-      { label: "ln", action: "ln" },
-      { label: "√", action: "sqrt" },
+      { label: "sin", action: "sin(" },
+      { label: "cos", action: "cos(" },
+      { label: "tan", action: "tan(" },
+      { label: "log₁₀", action: "log(" },
+      { label: "ln", action: "ln(" },
+      { label: "π", action: "pi" },
     ],
     [
-      { label: "π", action: "π" },
-      { label: "e", action: "e" },
-      { label: "x²", action: "sq" },
-      { label: "x³", action: "cube" },
+      { label: "hyp", action: "noop" },
+      { label: "sin⁻¹", action: "asin(" },
+      { label: "cos⁻¹", action: "acos(" },
+      { label: "tan⁻¹", action: "atan(" },
       { label: "xʸ", action: "^" },
-      { label: "x⁻¹", action: "inv" },
+      { label: "10ˣ", action: "10^" },
     ],
     [
-      { label: "(", action: "(" },
-      { label: ")", action: ")" },
-      { label: "%", action: "percent", className: "bg-slate-600/60 text-white" },
-      { label: "÷", action: "÷", className: "bg-slate-600/60 text-white" },
-      { label: "×", action: "×", className: "bg-slate-600/60 text-white" },
-      { label: "−", action: "−", className: "bg-slate-600/60 text-white" },
+      { label: "x²", action: "sq" },
+      { label: "³√x", action: "cbrt(" },
+      { label: "√x", action: "sqrt(" },
+      { label: "eˣ", action: "exp(" },
+      { label: "x⁻¹", action: "inv" },
+      { label: "e", action: "e" },
     ],
     [
       { label: "7", action: "7" },
       { label: "8", action: "8" },
       { label: "9", action: "9" },
+      { label: "(", action: "(" },
+      { label: ")", action: ")" },
+      { label: "%", action: "%" },
+    ],
+    [
       { label: "4", action: "4" },
       { label: "5", action: "5" },
       { label: "6", action: "6" },
+      { label: "×", action: "×" },
+      { label: "÷", action: "÷" },
     ],
     [
       { label: "1", action: "1" },
       { label: "2", action: "2" },
       { label: "3", action: "3" },
-      { label: "0", action: "0" },
-      { label: ".", action: "." },
-      { label: "+", action: "+", className: "bg-slate-600/60 text-white" },
+      { label: "−", action: "−" },
+      { label: "+", action: "+" },
     ],
-    [{ label: "=", action: "=", className: "bg-[#2563eb] text-white font-bold", span: 6 }],
+    [
+      { label: "0", action: "0", span: 2 },
+      { label: ".", action: "." },
+      { label: "=", action: "=", className: "bg-[#2563eb] text-white font-bold", span: 2 },
+    ],
   ];
 }
 
-const OPS = new Set(["+", "−", "-", "×", "*", "÷", "/", "^"]);
-
 export function ExamCalculator({ open, mode, onClose }: Props) {
-  const [display, setDisplay] = useState("0");
-  const [acc, setAcc] = useState<number | null>(null);
-  const [pendingOp, setPendingOp] = useState<string | null>(null);
-  const [entering, setEntering] = useState(false);
-  const [history, setHistory] = useState("");
-  const [shift, setShift] = useState(false);
+  const [expr, setExpr] = useState("");
+  const [result, setResult] = useState("0");
+  const [finalized, setFinalized] = useState(false);
+  const [error, setError] = useState(false);
   const [angle, setAngle] = useState<AngleMode>("DEG");
-  const [justEvaluated, setJustEvaluated] = useState(false);
 
   useEffect(() => {
     if (!open) {
-      setDisplay("0");
-      setAcc(null);
-      setPendingOp(null);
-      setEntering(false);
-      setHistory("");
-      setShift(false);
-      setJustEvaluated(false);
+      setExpr("");
+      setResult("0");
+      setFinalized(false);
+      setError(false);
     }
   }, [open]);
 
@@ -193,242 +354,223 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
     return () => {
       cancelled = true;
       window.removeEventListener("d4-close-calculator", onCustom);
+      try {
+        delete (window as unknown as { __d4CloseCalc?: () => void }).__d4CloseCalc;
+      } catch {
+        /* ignore */
+      }
       void handle?.remove();
     };
   }, [open, onClose]);
 
-  const currentValue = useCallback((): number => {
-    const n = Number(display);
-    return Number.isFinite(n) ? n : 0;
-  }, [display]);
+  // Live auto-calculate whenever expression changes
+  useEffect(() => {
+    if (finalized) return;
+    if (!expr) {
+      setResult("0");
+      setError(false);
+      return;
+    }
+    const live = tryLiveEval(expr, angle);
+    if (live != null) {
+      setResult(live);
+      setError(false);
+    }
+  }, [expr, angle, finalized]);
 
-  const applyUnary = useCallback(
-    (fn: (x: number) => number) => {
-      try {
-        const v = fn(currentValue());
-        const s = formatResult(v);
-        setDisplay(s);
-        setEntering(false);
-        setJustEvaluated(true);
-        setHistory("");
-        setShift(false);
-      } catch {
-        setDisplay("Error");
-        setJustEvaluated(true);
+  const append = useCallback((chunk: string) => {
+    setError(false);
+    if (finalized) {
+      setFinalized(false);
+      if (/^[+\-−×÷*/^%]/.test(chunk) || chunk === "^") {
+        setExpr(result + chunk);
+      } else {
+        setExpr(chunk);
       }
-    },
-    [currentValue],
-  );
+      return;
+    }
+    setExpr((prev) => prev + chunk);
+  }, [finalized, result]);
 
   const applyAction = useCallback(
     (action: string) => {
-      if (action === "clear") {
-        setDisplay("0");
-        setAcc(null);
-        setPendingOp(null);
-        setEntering(false);
-        setHistory("");
-        setJustEvaluated(false);
-        setShift(false);
+      if (action === "noop") return;
+      if (action === "ac") {
+        setExpr("");
+        setResult("0");
+        setFinalized(false);
+        setError(false);
         return;
       }
-      if (action === "back") {
-        if (!entering || justEvaluated) {
-          setDisplay("0");
-          setEntering(false);
-          setJustEvaluated(false);
-          return;
-        }
-        setDisplay((d) => {
-          if (d.length <= 1 || (d.length === 2 && d.startsWith("-"))) return "0";
-          return d.slice(0, -1);
+      if (action === "del") {
+        setFinalized(false);
+        setError(false);
+        setExpr((e) => {
+          if (!e) return "";
+          // remove function tokens as units
+          const fns = ["asin(", "acos(", "atan(", "sin(", "cos(", "tan(", "log(", "ln(", "sqrt(", "cbrt(", "exp(", "10^"];
+          for (const f of fns) {
+            if (e.endsWith(f)) return e.slice(0, -f.length);
+          }
+          if (e.endsWith("pi")) return e.slice(0, -2);
+          return e.slice(0, -1);
         });
-        return;
-      }
-      if (action === "shift") {
-        setShift((s) => !s);
         return;
       }
       if (action === "angle") {
         setAngle((a) => (a === "DEG" ? "RAD" : a === "RAD" ? "GRAD" : "DEG"));
         return;
       }
-
-      if (/^[0-9]$/.test(action)) {
-        if (!entering || justEvaluated || display === "Error") {
-          setDisplay(action);
-          setEntering(true);
-          setJustEvaluated(false);
-          if (justEvaluated) {
-            setAcc(null);
-            setPendingOp(null);
-            setHistory("");
-          }
-        } else {
-          setDisplay((d) => (d === "0" ? action : d + action));
+      if (action === "=") {
+        const toEval = expr || result;
+        const live = tryLiveEval(toEval, angle);
+        if (live == null || live === "Error") {
+          setResult("Error");
+          setError(true);
+          setFinalized(true);
+          return;
         }
+        setResult(live);
+        setExpr(toEval);
+        setFinalized(true);
+        setError(false);
         return;
       }
-      if (action === ".") {
-        if (!entering || justEvaluated || display === "Error") {
-          setDisplay("0.");
-          setEntering(true);
-          setJustEvaluated(false);
-          if (justEvaluated) {
-            setAcc(null);
-            setPendingOp(null);
-            setHistory("");
-          }
-        } else if (!display.includes(".")) {
-          setDisplay((d) => d + ".");
-        }
+      if (action === "sq") {
+        // square current value or wrap expression
+        setFinalized(false);
+        setExpr((e) => {
+          if (finalized) return `(${result})^2`;
+          if (!e) return "";
+          return `(${e})^2`;
+        });
         return;
       }
-
-      if (action === "π") {
-        setDisplay(formatResult(Math.PI));
-        setEntering(false);
-        setJustEvaluated(true);
+      if (action === "inv") {
+        setFinalized(false);
+        setExpr((e) => {
+          if (finalized) return `1/(${result})`;
+          if (!e) return "1/(";
+          return `1/(${e})`;
+        });
+        return;
+      }
+      if (action === "pi") {
+        append("pi");
         return;
       }
       if (action === "e") {
-        setDisplay(formatResult(Math.E));
-        setEntering(false);
-        setJustEvaluated(true);
+        append("e");
         return;
       }
-
-      if (action === "sin") return applyUnary((x) => Math.sin(toRad(x, angle)));
-      if (action === "cos") return applyUnary((x) => Math.cos(toRad(x, angle)));
-      if (action === "tan") return applyUnary((x) => Math.tan(toRad(x, angle)));
-      if (action === "asin") return applyUnary((x) => fromRad(Math.asin(x), angle));
-      if (action === "acos") return applyUnary((x) => fromRad(Math.acos(x), angle));
-      if (action === "atan") return applyUnary((x) => fromRad(Math.atan(x), angle));
-      if (action === "log10") return applyUnary((x) => Math.log10(x));
-      if (action === "ln") return applyUnary((x) => Math.log(x));
-      if (action === "sqrt") return applyUnary((x) => Math.sqrt(x));
-      if (action === "sq") return applyUnary((x) => x * x);
-      if (action === "cube") return applyUnary((x) => x * x * x);
-      if (action === "inv") return applyUnary((x) => (x === 0 ? NaN : 1 / x));
-      if (action === "percent") return applyUnary((x) => x / 100);
-
-      if (action === "=") {
-        if (pendingOp != null && acc != null) {
-          const result = applyBinary(acc, pendingOp, currentValue());
-          const s = formatResult(result);
-          setDisplay(s);
-          setAcc(null);
-          setPendingOp(null);
-          setHistory("");
-          setEntering(false);
-          setJustEvaluated(true);
-        } else {
-          setJustEvaluated(true);
-          setEntering(false);
-        }
-        setShift(false);
+      if (action === "10^") {
+        append("10^");
         return;
       }
-
-      if (OPS.has(action)) {
-        const val = currentValue();
-        if (pendingOp != null && acc != null && entering) {
-          const result = applyBinary(acc, pendingOp, val);
-          const s = formatResult(result);
-          if (s === "Error") {
-            setDisplay("Error");
-            setAcc(null);
-            setPendingOp(null);
-            setHistory("");
-            setEntering(false);
-            setJustEvaluated(true);
-            return;
-          }
-          setDisplay(s);
-          setAcc(result);
-          setHistory(`${s} ${action}`);
-        } else {
-          setAcc(val);
-          setHistory(`${formatResult(val)} ${action}`);
-        }
-        setPendingOp(action);
-        setEntering(false);
-        setJustEvaluated(false);
-        setShift(false);
+      if (
+        action.endsWith("(") ||
+        action === "(" ||
+        action === ")" ||
+        /^[0-9.]$/.test(action) ||
+        ["+", "−", "×", "÷", "^", "%"].includes(action)
+      ) {
+        if (action === ")" && !expr && !finalized) return;
+        append(action);
         return;
       }
+      append(action);
     },
-    [display, entering, justEvaluated, pendingOp, acc, angle, currentValue, applyUnary],
+    [append, angle, expr, finalized, result],
   );
 
-  const rows = useMemo(() => (mode === "scientific" ? sci(shift) : BASIC), [mode, shift]);
+  const rows = useMemo(
+    () => (mode === "scientific" ? scientificRows(angle) : BASIC_ROWS),
+    [mode, angle],
+  );
+
   if (!open) return null;
+
+  const exprShown = finalized ? expr : expr || " ";
+  const resultShown = error ? "Error" : result;
 
   return (
     <div
-      className="fixed inset-0 z-[220] flex h-[100dvh] w-full flex-col bg-[#020617]"
+      className="fixed inset-0 z-[200] flex flex-col bg-[#0b1b3a]"
+      style={{
+        width: "100%",
+        height: "100%",
+        minHeight: "100dvh",
+        maxHeight: "100dvh",
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+        paddingLeft: "env(safe-area-inset-left)",
+        paddingRight: "env(safe-area-inset-right)",
+      }}
       role="dialog"
       aria-modal="true"
       aria-label="Calculator"
-      style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <div className="flex h-full w-full max-w-lg flex-col self-center sm:max-w-xl">
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#1e3a5f] px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-[#2563eb]/20 text-[#60a5fa]">
-              <CalcIcon className="h-4.5 w-4.5" />
-            </div>
-            <div>
-              <p className="text-sm font-bold tracking-tight text-white">Calculator</p>
-              {mode === "scientific" && (
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{angle}</p>
-              )}
-            </div>
+      {/* Header — title is always "Calculator" for students */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#1e3a5f] px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#2563eb] text-white">
+            <CalcIcon className="h-5 w-5" />
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-10 w-10 place-items-center rounded-full text-slate-300 hover:bg-white/10"
-            aria-label="Close calculator"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <h2 className="truncate text-lg font-bold text-white">Calculator</h2>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="grid h-10 w-10 place-items-center rounded-full text-slate-300 hover:bg-white/10"
+          aria-label="Close calculator"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
 
-        <div className="mx-3 mt-3 shrink-0 rounded-xl border border-[#1e3a5f] bg-[#06101f] px-4 py-4 text-right">
-          <p className="min-h-[1.25rem] truncate text-xs text-slate-400">{history || " "}</p>
-          <p className="mt-1 break-all font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">
-            {display}
-          </p>
-        </div>
+      {/* Display: expression top, live result bottom */}
+      <div className="mx-3 mt-3 shrink-0 rounded-2xl border border-[#2563eb]/40 bg-[#06101f] px-4 py-5 text-right">
+        <p className="min-h-[1.25rem] break-all font-mono text-sm text-slate-400 sm:text-base">
+          {exprShown}
+        </p>
+        <p
+          className={cn(
+            "mt-2 break-all font-mono tabular-nums text-white",
+            finalized ? "text-4xl font-extrabold sm:text-5xl" : "text-3xl font-bold sm:text-4xl",
+            error && "text-red-400",
+          )}
+        >
+          {resultShown}
+        </p>
+      </div>
 
-        <div className="mt-3 flex min-h-0 flex-1 flex-col px-3 pb-3">
-          <div className="flex flex-1 flex-col gap-1.5">
-            {rows.map((row, ri) => (
-              <div
-                key={ri}
-                className="grid flex-1 gap-1.5"
-                style={{
-                  gridTemplateColumns: `repeat(${row.reduce((a, k) => a + (k.span || 1), 0)}, minmax(0, 1fr))`,
-                }}
-              >
-                {row.map((k) => (
-                  <button
-                    key={`${ri}-${k.label}-${k.action}`}
-                    type="button"
-                    onClick={() => applyAction(k.action)}
-                    className={cn(
-                      "min-h-[2.75rem] rounded-xl bg-[#12263f] text-base font-semibold text-slate-100 transition hover:bg-[#1a3354] active:scale-[0.97]",
-                      k.className,
-                    )}
-                    style={k.span ? { gridColumn: `span ${k.span}` } : undefined}
-                  >
-                    {k.label === "DEG" ? angle : k.label}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
+      {/* Keys */}
+      <div className="mt-2 flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
+        <div className="flex flex-1 flex-col gap-1.5">
+          {rows.map((row, ri) => (
+            <div
+              key={ri}
+              className="grid flex-1 gap-1.5"
+              style={{
+                gridTemplateColumns: `repeat(${row.reduce((a, k) => a + (k.span || 1), 0)}, minmax(0, 1fr))`,
+              }}
+            >
+              {row.map((k) => (
+                <button
+                  key={`${ri}-${k.label}-${k.action}`}
+                  type="button"
+                  onClick={() => applyAction(k.action)}
+                  className={cn(
+                    "min-h-[2.5rem] rounded-xl bg-[#12263f] text-[13px] font-semibold text-slate-100 transition hover:bg-[#1a3354] active:scale-[0.97] sm:text-base",
+                    k.className,
+                  )}
+                  style={k.span ? { gridColumn: `span ${k.span}` } : undefined}
+                >
+                  {k.label}
+                </button>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     </div>
