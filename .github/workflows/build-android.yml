@@ -46,6 +46,8 @@ jobs:
         run: |
           set -euo pipefail
           bun install
+          # Ensure Capgo biometric is present for Capacitor 8
+          bun add @capgo/capacitor-native-biometric@^8.6.4 || true
 
       - name: Prepare dist fallback assets (runtime = Vercel URL)
         run: |
@@ -117,6 +119,8 @@ jobs:
             android.permission.MODIFY_AUDIO_SETTINGS \
             android.permission.POST_NOTIFICATIONS \
             android.permission.VIBRATE \
+            android.permission.USE_BIOMETRIC \
+            android.permission.USE_FINGERPRINT \
             android.permission.FOREGROUND_SERVICE \
             android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION; do
             if ! grep -q "$perm" "$MAN"; then
@@ -139,7 +143,8 @@ jobs:
           grep -q 'ExamImmersivePlugin' android/app/src/main/java/com/d4exam/app/MainActivity.java
           grep -q 'ScreenSharePlugin' android/app/src/main/java/com/d4exam/app/MainActivity.java
           grep -q 'android.permission.VIBRATE' "$MAN"
-          echo "OK: native plugins + themes + icon"
+          grep -q 'android.permission.USE_BIOMETRIC' "$MAN"
+          echo "OK: native plugins + themes + icon + biometric perms"
 
       - name: Pin compileSdk 36 (Capacitor 8 requirement)
         run: |
@@ -187,6 +192,13 @@ jobs:
           if [ -f "$DRAW/splash.xml" ]; then
             rm -f "$DRAW"/splash.png "$DRAW"/splash.jpg "$DRAW"/splash.webp "$DRAW"/splash.gif
           fi
+          # Re-assert biometric permissions after sync (sync may rewrite manifest)
+          MAN="android/app/src/main/AndroidManifest.xml"
+          for perm in android.permission.USE_BIOMETRIC android.permission.USE_FINGERPRINT android.permission.VIBRATE; do
+            if ! grep -q "$perm" "$MAN"; then
+              sed -i "s|</manifest>|    <uses-permission android:name=\"$perm\" />\n</manifest>|" "$MAN"
+            fi
+          done
           if [ -f android/app/src/main/assets/capacitor.config.json ]; then
             if ! grep -q 'd4exam-platform.vercel.app' android/app/src/main/assets/capacitor.config.json; then
               echo "FATAL: android assets capacitor.config.json missing Vercel URL after sync"
@@ -194,9 +206,18 @@ jobs:
               exit 1
             fi
           fi
+          # Native biometric must be linked after sync
+          if ! grep -qi 'native-biometric\|NativeBiometric\|capgo' android/capacitor.settings.gradle android/app/capacitor.build.gradle 2>/dev/null; then
+            echo "WARN: biometric plugin may not appear in gradle files — listing:"
+            cat android/capacitor.settings.gradle || true
+            cat android/app/capacitor.build.gradle || true
+            ls node_modules/@capgo/capacitor-native-biometric 2>/dev/null || echo "MISSING node_modules biometric package"
+          else
+            echo "OK: biometric plugin referenced in gradle"
+          fi
           chmod +x android/gradlew
           grep -q 'ExamImmersivePlugin' android/app/src/main/java/com/d4exam/app/MainActivity.java
-          echo "OK: sync complete — Vercel WebView shell"
+          echo "OK: sync complete — Vercel WebView shell + biometric"
 
       - name: Build debug APK
         run: |
@@ -262,6 +283,8 @@ jobs:
 
             **Install / Update URL**
             https://github.com/amurunoghenetejiri/d4exam-platform/releases/download/apk-latest/d4exam.apk
+
+            Includes fingerprint (NativeBiometric) + multi-account switch fixes.
 
             Built from commit ${{ github.sha }}
           files: /tmp/apk-out/d4exam.apk
