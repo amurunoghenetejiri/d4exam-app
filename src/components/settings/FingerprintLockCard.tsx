@@ -23,6 +23,7 @@ export function FingerprintLockCard() {
   const [enabled, setEnabled] = useState(false);
   const [availability, setAvailability] = useState<FingerprintAvailability | null>(null);
   const safetyRef = useRef<number | null>(null);
+  const runningRef = useRef(false);
 
   const refresh = useCallback(() => {
     setEnabled(isFingerprintEnabledFor(session?.userId));
@@ -40,7 +41,10 @@ export function FingerprintLockCard() {
     });
     return () => {
       cancelled = true;
-      if (safetyRef.current != null) window.clearTimeout(safetyRef.current);
+      if (safetyRef.current != null) {
+        window.clearTimeout(safetyRef.current);
+        safetyRef.current = null;
+      }
     };
   }, [native]);
 
@@ -53,19 +57,30 @@ export function FingerprintLockCard() {
       ? availability.message
       : null;
 
+  function clearBusy() {
+    if (safetyRef.current != null) {
+      window.clearTimeout(safetyRef.current);
+      safetyRef.current = null;
+    }
+    runningRef.current = false;
+    setBusy(false);
+  }
+
   async function onEnable() {
     if (!session?.userId) {
       toast.error("Sign in required.");
       return;
     }
-    if (busy) return;
+    if (runningRef.current || busy) return;
+    runningRef.current = true;
     setBusy(true);
+
+    // Hard safety: never leave the button spinning (plugin hang / missing prompt)
     if (safetyRef.current != null) window.clearTimeout(safetyRef.current);
-    // Never leave the button spinning forever
     safetyRef.current = window.setTimeout(() => {
-      setBusy(false);
-      toast.error("Fingerprint timed out. Try again.");
-    }, 12_000);
+      clearBusy();
+      toast.error("Fingerprint timed out. Make sure a fingerprint is enrolled, then try again.");
+    }, 15_000);
 
     try {
       // Open the system fingerprint dialog immediately on this user tap
@@ -96,11 +111,7 @@ export function FingerprintLockCard() {
     } catch (e) {
       toast.error((e as Error)?.message || "Could not enable fingerprint.");
     } finally {
-      if (safetyRef.current != null) {
-        window.clearTimeout(safetyRef.current);
-        safetyRef.current = null;
-      }
-      setBusy(false);
+      clearBusy();
     }
   }
 

@@ -1,6 +1,7 @@
 /**
  * Fingerprint auth for native D4EXAM (Android).
  * Opens the system BiometricPrompt — never stores fingerprint data.
+ * Must be called from a user gesture (button tap).
  */
 import { registerPlugin } from "@capacitor/core";
 import { isNativeShell } from "@/native/platform";
@@ -30,9 +31,9 @@ type NativeBiometricPlugin = {
   verifyIdentity: (opts: Record<string, unknown>) => Promise<void>;
 };
 
-const LOAD_MS = 3_000;
-const CHECK_MS = 5_000;
-const AUTH_MS = 20_000;
+const LOAD_MS = 2_500;
+const CHECK_MS = 4_000;
+const AUTH_MS = 25_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -61,35 +62,22 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 let cachedPlugin: NativeBiometricPlugin | null | undefined;
 
-async function getPlugin(): Promise<NativeBiometricPlugin | null> {
+/**
+ * Prefer Capacitor registerPlugin (works after cap sync) so we don't hang
+ * on dynamic import in the WebView.
+ */
+function getPluginSync(): NativeBiometricPlugin | null {
   if (!isNativeShell()) return null;
   if (cachedPlugin !== undefined) return cachedPlugin;
 
   try {
-    // 1) Official package export
-    const mod = await withTimeout(
-      import("@capgo/capacitor-native-biometric"),
-      LOAD_MS,
-      "fp_import",
-    );
-    const fromMod = (mod as { NativeBiometric?: NativeBiometricPlugin }).NativeBiometric;
-    if (fromMod && typeof fromMod.verifyIdentity === "function") {
-      cachedPlugin = fromMod;
-      return cachedPlugin;
-    }
-  } catch {
-    /* try registerPlugin */
-  }
-
-  try {
-    // 2) Capacitor bridge by plugin name (works after cap sync)
     const registered = registerPlugin<NativeBiometricPlugin>("NativeBiometric");
     if (registered && typeof registered.verifyIdentity === "function") {
       cachedPlugin = registered;
       return cachedPlugin;
     }
   } catch {
-    /* ignore */
+    /* fall through */
   }
 
   try {
@@ -103,6 +91,37 @@ async function getPlugin(): Promise<NativeBiometricPlugin | null> {
   } catch {
     /* ignore */
   }
+
+  return null;
+}
+
+async function getPlugin(): Promise<NativeBiometricPlugin | null> {
+  if (!isNativeShell()) return null;
+  if (cachedPlugin !== undefined) return cachedPlugin;
+
+  // Fast path: registerPlugin / Capacitor.Plugins
+  const sync = getPluginSync();
+  if (sync) return sync;
+
+  // Slow path: package export (may hang in some WebViews — hard timeout)
+  try {
+    const mod = await withTimeout(
+      import("@capgo/capacitor-native-biometric"),
+      LOAD_MS,
+      "fp_import",
+    );
+    const fromMod = (mod as { NativeBiometric?: NativeBiometricPlugin }).NativeBiometric;
+    if (fromMod && typeof fromMod.verifyIdentity === "function") {
+      cachedPlugin = fromMod;
+      return cachedPlugin;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // One more try after import
+  const again = getPluginSync();
+  if (again) return again;
 
   cachedPlugin = null;
   return null;
@@ -160,7 +179,7 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
 
 /**
  * Shows the system fingerprint dialog immediately.
- * Call this on a user tap (Enable / Unlock).
+ * Call this on a user tap (Enable / Unlock). Never hang the UI.
  */
 export async function authenticateWithFingerprint(opts?: {
   reason?: string;
@@ -174,7 +193,12 @@ export async function authenticateWithFingerprint(opts?: {
       message: "Fingerprint unlock is only available in the D4EXAM Android app.",
     };
   }
-  const plugin = await getPlugin();
+
+  // Prefer sync plugin so the OS prompt can open on the same user gesture
+  let plugin = getPluginSync();
+  if (!plugin) {
+    plugin = await getPlugin();
+  }
   if (!plugin) {
     return {
       ok: false,
