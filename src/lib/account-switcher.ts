@@ -214,13 +214,14 @@ export async function removeAccountFromDevice(userId: string): Promise<void> {
 }
 
 /** Switch active session to a saved account. Full page navigation to role home. */
-export async function switchToAccount(userId: string): Promise<{ ok: true } | { ok: false; error: string; needsLogin?: boolean; email?: string }> {
+export async function switchToAccount(
+  userId: string,
+): Promise<{ ok: true } | { ok: false; error: string; needsLogin?: boolean; email?: string }> {
   const vault = readVault();
   const account = vault.accounts.find((a) => a.userId === userId);
   if (!account) return { ok: false, error: "Account not found on this device." };
 
-  const path =
-    account.role && account.role in roleHome ? roleHome[account.role] : "/";
+  const path = account.role && account.role in roleHome ? roleHome[account.role] : "/";
   const targetId = String(userId);
 
   let prevAccess: string | null = null;
@@ -257,23 +258,32 @@ export async function switchToAccount(userId: string): Promise<{ ok: true } | { 
   const refreshTok = (account.refreshToken || "").trim();
   const accessTok = (account.accessToken || "").trim();
   if (!refreshTok && !accessTok) {
-    return { ok: false, error: "No saved session for that account. Sign in again.", needsLogin: true, email: account.email };
+    return {
+      ok: false,
+      error: "No saved session for that account. Sign in again.",
+      needsLogin: true,
+      email: account.email,
+    };
   }
 
-  async function restorePrevious(): Promise<void> {
-    if (!prevAccess || !prevRefresh) return;
+  async function restorePrevious(): Promise<boolean> {
+    if (!prevAccess || !prevRefresh) return false;
     try {
-      await supabase.auth.setSession({
+      const { data, error } = await supabase.auth.setSession({
         access_token: prevAccess,
         refresh_token: prevRefresh,
       });
+      if (error || !data.session?.access_token) return false;
       if (prevUserId) setActiveAccountId(prevUserId);
+      return true;
     } catch {
-      /* ignore */
+      return false;
     }
   }
 
-  async function refreshViaApi(refreshToken: string): Promise<{ access: string; refresh: string; uid: string } | null> {
+  async function refreshViaApi(
+    refreshToken: string,
+  ): Promise<{ access: string; refresh: string; uid: string } | null> {
     try {
       const client = supabase as unknown as { supabaseUrl?: string; supabaseKey?: string };
       const base =
@@ -285,7 +295,9 @@ export async function switchToAccount(userId: string): Promise<{ ok: true } | { 
       const key =
         client.supabaseKey ||
         (typeof import.meta !== "undefined"
-          ? (import.meta as unknown as { env?: Record<string, string> }).env?.["VITE_SUPABASE_PUBLISHABLE_KEY"]
+          ? (import.meta as unknown as { env?: Record<string, string> }).env?.[
+              "VITE_SUPABASE_PUBLISHABLE_KEY"
+            ]
           : "") ||
         "";
       if (!base || !key) return null;
@@ -307,13 +319,21 @@ export async function switchToAccount(userId: string): Promise<{ ok: true } | { 
         user?: { id?: string };
       };
       if (!json.access_token || !json.refresh_token) return null;
-      return { access: json.access_token, refresh: json.refresh_token, uid: String(json.user?.id || "") };
+      return {
+        access: json.access_token,
+        refresh: json.refresh_token,
+        uid: String(json.user?.id || ""),
+      };
     } catch {
       return null;
     }
   }
 
-  async function commitSession(access: string, refresh: string, expectedUid?: string): Promise<boolean> {
+  async function commitSession(
+    access: string,
+    refresh: string,
+    expectedUid?: string,
+  ): Promise<boolean> {
     try {
       const { data, error } = await supabase.auth.setSession({
         access_token: access,
@@ -338,45 +358,30 @@ export async function switchToAccount(userId: string): Promise<{ ok: true } | { 
     }
   }
 
+  function goHome(): { ok: true } {
+    if (account.role) seedPendingLoginRole(account.role);
+    if (typeof window !== "undefined") {
+      try {
+        window.location.replace(path);
+      } catch {
+        window.location.href = path;
+      }
+    }
+    return { ok: true };
+  }
+
   try {
-    // Prefer setSession first so current account is preserved if switch fails
+    // Prefer setSession first — NEVER signOut the current account until the new one is committed.
     if (accessTok && refreshTok) {
       const ok = await commitSession(accessTok, refreshTok, targetId);
-      if (ok) {
-        if (account.role) seedPendingLoginRole(account.role);
-        if (typeof window !== "undefined") window.location.replace(path);
-        return { ok: true };
-      }
+      if (ok) return goHome();
     }
 
     if (refreshTok) {
       const api = await refreshViaApi(refreshTok);
       if (api && (!api.uid || api.uid === targetId)) {
         const ok = await commitSession(api.access, api.refresh, targetId);
-        if (ok) {
-          if (account.role) seedPendingLoginRole(account.role);
-          if (typeof window !== "undefined") window.location.replace(path);
-          return { ok: true };
-        }
-      }
-    }
-
-    try {
-      await supabase.auth.signOut({ scope: "local" });
-    } catch {
-      /* ignore */
-    }
-    await new Promise((r) => setTimeout(r, 60));
-
-    if (refreshTok) {
-      const api = await refreshViaApi(refreshTok);
-      if (api && (!api.uid || api.uid === targetId)) {
-        const ok = await commitSession(api.access, api.refresh, targetId);
-        if (ok) {
-          if (account.role) seedPendingLoginRole(account.role);
-          if (typeof window !== "undefined") window.location.replace(path);
-          return { ok: true };
-        }
+        if (ok) return goHome();
       }
     }
 
@@ -391,11 +396,7 @@ export async function switchToAccount(userId: string): Promise<{ ok: true } | { 
               data.session.refresh_token || refreshTok,
               targetId,
             );
-            if (ok) {
-              if (account.role) seedPendingLoginRole(account.role);
-              if (typeof window !== "undefined") window.location.replace(path);
-              return { ok: true };
-            }
+            if (ok) return goHome();
           }
         }
       } catch {
@@ -403,15 +404,13 @@ export async function switchToAccount(userId: string): Promise<{ ok: true } | { 
       }
     }
 
+    // Final attempt with stored access+refresh after other paths failed
     if (accessTok && refreshTok) {
       const ok = await commitSession(accessTok, refreshTok, targetId);
-      if (ok) {
-        if (account.role) seedPendingLoginRole(account.role);
-        if (typeof window !== "undefined") window.location.replace(path);
-        return { ok: true };
-      }
+      if (ok) return goHome();
     }
 
+    // Failed: restore previous session so user is NOT left logged out
     await restorePrevious();
     return {
       ok: false,
@@ -433,8 +432,7 @@ export function beginRefreshAccountLogin(opts: {
 }): void {
   if (typeof window === "undefined") return;
   try {
-    const path =
-      opts.role && opts.role in roleHome ? roleHome[opts.role] : "/";
+    const path = opts.role && opts.role in roleHome ? roleHome[opts.role] : "/";
     window.sessionStorage.setItem(
       "d4_pending_switch",
       JSON.stringify({
@@ -456,7 +454,10 @@ export function beginRefreshAccountLogin(opts: {
   q.set("addAccount", "1");
   q.set("switch", "1");
   if (opts.email) q.set("email", opts.email);
-  window.location.href = `/login?${q.toString()}`;
+  // Soft local sign-out only after flags are set, so login page is reachable
+  void supabase.auth.signOut({ scope: "local" }).finally(() => {
+    window.location.href = `/login?${q.toString()}`;
+  });
 }
 
 /** Log out of the current account only; keep other saved accounts. */
