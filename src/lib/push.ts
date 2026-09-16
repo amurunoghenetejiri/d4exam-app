@@ -26,7 +26,8 @@ let nativeListenersBound = false;
 let webOnMessageBound = false;
 
 /** Real FCM registration (needs google-services.json in APK build). */
-const ENABLE_NATIVE_FCM_REGISTER = true;
+/** false until APK is built with google-services.json — register() crashes the process without it. */
+const ENABLE_NATIVE_FCM_REGISTER = false;
 
 export type PushPermissionState = "granted" | "denied" | "default" | "unsupported";
 
@@ -348,11 +349,12 @@ async function enableNativePushNotifications(
         } catch {
           /* ignore */
         }
+        // Only when google-services.json is in the APK. Without it, register() can kill the process after splash.
         if (ENABLE_NATIVE_FCM_REGISTER) {
           try {
             await PushNotifications.register();
-          } catch {
-            /* google-services may be missing */
+          } catch (e) {
+            console.warn("[D4EXAM] PushNotifications.register skipped/failed", e);
           }
         }
       }
