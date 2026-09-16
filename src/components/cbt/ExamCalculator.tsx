@@ -4,6 +4,7 @@
  * Expression at top, live auto-result below. Safe parser (no eval).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Calculator as CalcIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { App as CapApp } from "@capacitor/app";
@@ -58,7 +59,8 @@ function tokenize(expr: string): string[] {
     // multi-char functions / constants
     const rest = s.slice(i).toLowerCase();
     const fns = [
-      "asin", "acos", "atan", "sin", "cos", "tan", "log10", "log", "ln",
+      "asin", "acos", "atan", "sinh", "cosh", "tanh",
+      "sin", "cos", "tan", "log10", "log", "ln",
       "sqrt", "cbrt", "exp", "abs", "pi", "e",
     ];
     let matched = false;
@@ -149,6 +151,9 @@ function evalTokens(tokens: string[], ctx: AngleCtx): number {
       sin: (x) => Math.sin(toRad(x, ctx.angle)),
       cos: (x) => Math.cos(toRad(x, ctx.angle)),
       tan: (x) => Math.tan(toRad(x, ctx.angle)),
+      sinh: (x) => Math.sinh(x),
+      cosh: (x) => Math.cosh(x),
+      tanh: (x) => Math.tanh(x),
       asin: (x) => fromRad(Math.asin(x), ctx.angle),
       acos: (x) => fromRad(Math.acos(x), ctx.angle),
       atan: (x) => fromRad(Math.atan(x), ctx.angle),
@@ -191,19 +196,74 @@ function evalTokens(tokens: string[], ctx: AngleCtx): number {
 }
 
 /** Live-evaluate if expression is complete enough; else null. */
+/** Insert × for juxtaposition: 2(3), 2π, )(, 2sin → multiply */
+function insertImplicitMul(tokens: string[]): string[] {
+  if (tokens.length < 2) return tokens;
+  const out: string[] = [];
+  const isValueEnd = (tok: string) =>
+    /^[0-9]*\.?[0-9]+$/.test(tok) || tok === "pi" || tok === "e" || tok === ")";
+  const isValueStart = (tok: string) =>
+    /^[0-9]*\.?[0-9]+$/.test(tok) ||
+    tok === "pi" ||
+    tok === "e" ||
+    tok === "(" ||
+    [
+      "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh",
+      "log", "log10", "ln", "sqrt", "cbrt", "exp", "abs",
+    ].includes(tok);
+  for (let i = 0; i < tokens.length; i++) {
+    const cur = tokens[i]!;
+    if (i > 0) {
+      const prev = out[out.length - 1]!;
+      if (isValueEnd(prev) && isValueStart(cur)) {
+        out.push("×");
+      }
+    }
+    out.push(cur);
+  }
+  return out;
+}
+
+/** Pretty symbols for the expression line (not raw function names). */
+function prettifyExpr(raw: string): string {
+  let s = raw;
+  const pairs: [string, string][] = [
+    ["asin(", "sin⁻¹("],
+    ["acos(", "cos⁻¹("],
+    ["atan(", "tan⁻¹("],
+    ["sinh(", "sinh("],
+    ["cosh(", "cosh("],
+    ["tanh(", "tanh("],
+    ["sin(", "sin("],
+    ["cos(", "cos("],
+    ["tan(", "tan("],
+    ["log(", "log₁₀("],
+    ["ln(", "ln("],
+    ["sqrt(", "√("],
+    ["cbrt(", "∛("],
+    ["exp(", "e^("],
+    ["10^", "10^"],
+    ["pi", "π"],
+  ];
+  for (const [a, b] of pairs) {
+    s = s.split(a).join(b);
+  }
+  return s;
+}
+
 function tryLiveEval(expr: string, angle: AngleMode): string | null {
   let trimmed = expr.trim();
   if (!trimmed) return null;
   // incomplete trailing operator or bare function name
   if (/[+\-−×÷*/^]$/.test(trimmed)) return null;
-  if (/(sin|cos|tan|asin|acos|atan|log|ln|sqrt|cbrt|exp)\s*$/i.test(trimmed)) return null;
+  if (/(sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|log|ln|sqrt|cbrt|exp)\s*$/i.test(trimmed)) return null;
   // Auto-close open parentheses for live preview (e.g. cos(60 → cos(60))
   const open = (trimmed.match(/\(/g) || []).length;
   const close = (trimmed.match(/\)/g) || []).length;
   if (open > close) trimmed = trimmed + ")".repeat(open - close);
   if (/\($/.test(trimmed.replace(/\)$/, ""))) return null;
   try {
-    const tokens = tokenize(trimmed);
+    const tokens = insertImplicitMul(tokenize(trimmed));
     if (!tokens.length) return null;
     const v = evalTokens(tokens, { angle });
     if (!Number.isFinite(v)) return null;
@@ -246,25 +306,25 @@ const BASIC_ROWS: KeyDef[][] = [
   ],
 ];
 
-function scientificRows(angle: AngleMode): KeyDef[][] {
+function scientificRows(angle: AngleMode, hyp: boolean): KeyDef[][] {
   return [
     [
       { label: angle, action: "angle" },
       { label: "◀", action: "left" },
       { label: "▶", action: "right" },
-      { label: "⌫", action: "del", className: "bg-amber-500 text-white font-bold shadow-amber" },
-      { label: "AC", action: "ac", className: "bg-amber-500 text-white font-bold shadow-amber" },
+      { label: "⌫", action: "del", className: "bg-amber-500 text-white font-bold" },
+      { label: "AC", action: "ac", className: "bg-amber-500 text-white font-bold" },
     ],
     [
-      { label: "sin", action: "sin(" },
-      { label: "cos", action: "cos(" },
-      { label: "tan", action: "tan(" },
+      { label: hyp ? "sinh" : "sin", action: hyp ? "sinh(" : "sin(" },
+      { label: hyp ? "cosh" : "cos", action: hyp ? "cosh(" : "cos(" },
+      { label: hyp ? "tanh" : "tan", action: hyp ? "tanh(" : "tan(" },
       { label: "log₁₀", action: "log(" },
       { label: "ln", action: "ln(" },
       { label: "π", action: "pi" },
     ],
     [
-      { label: "hyp", action: "noop" },
+      { label: hyp ? "HYP●" : "hyp", action: "hyp" },
       { label: "sin⁻¹", action: "asin(" },
       { label: "cos⁻¹", action: "acos(" },
       { label: "tan⁻¹", action: "atan(" },
@@ -273,7 +333,7 @@ function scientificRows(angle: AngleMode): KeyDef[][] {
     ],
     [
       { label: "x²", action: "sq" },
-      { label: "³√x", action: "cbrt(" },
+      { label: "∛x", action: "cbrt(" },
       { label: "√x", action: "sqrt(" },
       { label: "eˣ", action: "exp(" },
       { label: "x⁻¹", action: "inv" },
@@ -316,6 +376,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
   const [finalized, setFinalized] = useState(false);
   const [error, setError] = useState(false);
   const [angle, setAngle] = useState<AngleMode>("DEG");
+  const [hyp, setHyp] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -430,7 +491,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
           if (i <= 0) return e;
           const before = e.slice(0, i);
           const after = e.slice(i);
-          const fns = ["asin(", "acos(", "atan(", "sin(", "cos(", "tan(", "log(", "ln(", "sqrt(", "cbrt(", "exp(", "10^"];
+          const fns = ["asin(", "acos(", "atan(", "sinh(", "cosh(", "tanh(", "sin(", "cos(", "tan(", "log(", "ln(", "sqrt(", "cbrt(", "exp(", "10^"];
           for (const f of fns) {
             if (before.endsWith(f)) {
               setCursor(i - f.length);
@@ -448,6 +509,10 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       }
       if (action === "angle") {
         setAngle((a) => (a === "DEG" ? "RAD" : a === "RAD" ? "GRAD" : "DEG"));
+        return;
+      }
+      if (action === "hyp") {
+        setHyp((h) => !h);
         return;
       }
       if (action === "=") {
@@ -514,17 +579,17 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
   );
 
   const rows = useMemo(
-    () => (mode === "scientific" ? scientificRows(angle) : BASIC_ROWS),
-    [mode, angle],
+    () => (mode === "scientific" ? scientificRows(angle, hyp) : BASIC_ROWS),
+    [mode, angle, hyp],
   );
 
   if (!open) return null;
 
   const resultShown = error ? "Error" : result;
 
-  return (
+  return createPortal(
     <div
-      className="fixed z-[200] flex flex-col"
+      className="d4-exam-calculator flex flex-col"
       style={{
         position: "fixed",
         top: 0,
@@ -536,12 +601,14 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         maxWidth: "100vw",
         maxHeight: "100dvh",
         margin: 0,
+        zIndex: 2147483000,
         backgroundColor: "#0b1b3a",
-        paddingTop: "env(safe-area-inset-top, 0px)",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        paddingLeft: "env(safe-area-inset-left, 0px)",
-        paddingRight: "env(safe-area-inset-right, 0px)",
+        paddingTop: "max(0.5rem, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
+        paddingLeft: "max(0.5rem, env(safe-area-inset-left, 0px))",
+        paddingRight: "max(0.5rem, env(safe-area-inset-right, 0px))",
         boxSizing: "border-box",
+        overflow: "hidden",
       }}
       role="dialog"
       aria-modal="true"
@@ -568,17 +635,24 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       {/* Display: expression top, live result bottom */}
       <div className="mx-3 mt-3 shrink-0 rounded-2xl border border-[#1e3a5f] bg-[#06101f] px-4 py-4 text-right shadow-inner shadow-black/40">
         <p className="min-h-[1.25rem] break-all font-mono text-sm text-slate-400 sm:text-base">
-          {finalized ? (
-            expr || " "
-          ) : expr ? (
-            <>
-              <span>{expr.slice(0, cursor)}</span>
-              <span className="mx-px inline-block h-[1.05em] w-[2px] animate-pulse bg-sky-400 align-middle" />
-              <span>{expr.slice(cursor)}</span>
-            </>
-          ) : (
-            <span className="inline-block h-[1.05em] w-[2px] animate-pulse bg-sky-400 align-middle" />
-          )}
+          {(() => {
+            const shown = prettifyExpr(expr);
+            // Map cursor from raw expr index roughly onto pretty string (best-effort)
+            if (finalized) return shown || " ";
+            if (!expr) {
+              return <span className="inline-block h-[1.05em] w-[2px] animate-pulse bg-sky-400 align-middle" />;
+            }
+            const leftRaw = expr.slice(0, cursor);
+            const left = prettifyExpr(leftRaw);
+            const right = prettifyExpr(expr.slice(cursor));
+            return (
+              <>
+                <span>{left}</span>
+                <span className="mx-px inline-block h-[1.05em] w-[2px] animate-pulse bg-sky-400 align-middle" />
+                <span>{right}</span>
+              </>
+            );
+          })()}
         </p>
         <p
           className={cn(
@@ -621,6 +695,8 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         </div>
       </div>
     </div>
+  ),
+    document.body,
   );
 }
 

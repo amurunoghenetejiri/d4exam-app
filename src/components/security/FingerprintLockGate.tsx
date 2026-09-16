@@ -6,6 +6,7 @@
  * School users: school logo. Super Admin only: D4EXAM logo.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Fingerprint,
   GraduationCap,
@@ -91,21 +92,8 @@ function roleIcon(role: AppRole | string | null | undefined) {
   }
 }
 
-function roleDashboardHint(role: AppRole | string | null | undefined): string {
-  switch (role) {
-    case "student":
-      return "Quick and secure access to your student dashboard.";
-    case "teacher":
-      return "Quick and secure access to your teacher dashboard.";
-    case "examination_officer":
-      return "Quick and secure access to your officer dashboard.";
-    case "school_admin":
-      return "Quick and secure access to your school admin dashboard.";
-    case "super_admin":
-      return "Quick and secure access to the super admin console.";
-    default:
-      return "Quick and secure access to your dashboard.";
-  }
+function unlockHint(): string {
+  return "Verify your identity to unlock D4EXAM securely.";
 }
 
 /** Proper name casing (not ALL CAPS). */
@@ -418,9 +406,9 @@ export function FingerprintLockGate() {
 
   const name = displayName(session?.fullName);
 
-  return (
+  return createPortal(
     <div
-      className="fixed z-[99999] flex flex-col overflow-hidden"
+      className="d4-fp-lock-overlay"
       style={{
         position: "fixed",
         top: 0,
@@ -432,63 +420,83 @@ export function FingerprintLockGate() {
         maxWidth: "100vw",
         maxHeight: "100dvh",
         margin: 0,
+        padding: 0,
+        zIndex: 2147483000,
         backgroundColor: THEME_NAVY,
         background: THEME_NAVY,
-        paddingTop: "env(safe-area-inset-top, 0px)",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        paddingLeft: "env(safe-area-inset-left, 0px)",
-        paddingRight: "env(safe-area-inset-right, 0px)",
         boxSizing: "border-box",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
       }}
       role="dialog"
       aria-modal="true"
       aria-label="Unlock with fingerprint"
     >
-      {/* Subtle theme glow only — same navy family */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse at 50% 28%, rgba(37,99,235,0.18) 0%, transparent 55%)",
+            "radial-gradient(ellipse at 50% 30%, rgba(37,99,235,0.22) 0%, transparent 58%)",
         }}
       />
 
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-between px-6 py-8">
-        <div className="flex w-full flex-col items-center pt-4">
-          {/* School logo (school users) or D4EXAM mark (super admin / missing logo) */}
+      <div
+        className="relative z-10 flex w-full flex-col items-center justify-between"
+        style={{
+          flex: 1,
+          width: "100%",
+          maxWidth: "100%",
+          paddingTop: "max(1.25rem, env(safe-area-inset-top, 0px))",
+          paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))",
+          paddingLeft: "max(1.25rem, env(safe-area-inset-left, 0px))",
+          paddingRight: "max(1.25rem, env(safe-area-inset-right, 0px))",
+          boxSizing: "border-box",
+        }}
+      >
+        <div className="flex w-full flex-col items-center pt-6">
+          {/* Logo — no white plate */}
           <div className="flex shrink-0 justify-center">
             {schoolLogo ? (
               <img
                 src={schoolLogo}
                 alt={schoolName || "School"}
-                className="h-[min(22vw,88px)] w-[min(22vw,88px)] rounded-full border-2 border-white/20 bg-white object-contain shadow-lg shadow-black/30"
+                className="h-[min(22vw,92px)] w-[min(22vw,92px)] object-contain"
+                style={{ background: "transparent" }}
                 onError={() => setLogoBroken(true)}
               />
             ) : (
               <div
-                className="grid h-[min(22vw,88px)] w-[min(22vw,88px)] place-items-center rounded-full border-2 border-[#2563eb]/45 shadow-lg shadow-black/30"
-                style={{ backgroundColor: THEME_NAVY }}
+                className="grid h-[min(22vw,92px)] w-[min(22vw,92px)] place-items-center rounded-full border border-[#2563eb]/40"
+                style={{ backgroundColor: "transparent" }}
               >
-                <img src="/logo.png" alt="D4EXAM" className="h-[68%] w-[68%] object-contain" />
+                <img src="/logo.png" alt="D4EXAM" className="h-[70%] w-[70%] object-contain" />
               </div>
             )}
           </div>
 
-          <div className="mt-5 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-slate-100">
+          {/* School name directly under logo */}
+          {!isSuperAdmin && schoolName ? (
+            <p className="mt-3 max-w-[18rem] text-center text-sm font-medium leading-snug text-slate-300">
+              {schoolName}
+            </p>
+          ) : null}
+
+          {/* Role badge */}
+          <div className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-slate-100 backdrop-blur-sm">
             <RoleIcon className="h-3.5 w-3.5 text-blue-300" aria-hidden />
             {label}
           </div>
 
-          <h1 className="mt-4 max-w-[22rem] text-center text-[1.35rem] font-bold leading-snug tracking-tight text-white sm:text-2xl">
+          {/* User name */}
+          <h1 className="mt-3 max-w-[22rem] text-center text-[1.3rem] font-bold leading-snug tracking-tight text-white sm:text-2xl">
             {name}
           </h1>
-          {!isSuperAdmin && schoolName ? (
-            <p className="mt-1.5 max-w-[20rem] text-center text-sm text-slate-400">{schoolName}</p>
-          ) : null}
         </div>
 
-        {/* Large fingerprint */}
-        <div className="flex flex-col items-center justify-center py-4">
+        <div className="flex flex-col items-center justify-center py-6">
           <button
             type="button"
             aria-label="Use fingerprint"
@@ -497,7 +505,7 @@ export function FingerprintLockGate() {
               promptedRef.current = false;
               void tryUnlock();
             }}
-            className="relative grid h-[132px] w-[132px] place-items-center focus:outline-none active:scale-[0.98]"
+            className="relative grid h-[128px] w-[128px] place-items-center focus:outline-none active:scale-[0.98]"
           >
             <span
               className={cn(
@@ -512,8 +520,8 @@ export function FingerprintLockGate() {
               )}
             />
             <span
-              className="absolute inset-[22px] rounded-full shadow-[0_0_48px_rgba(37,99,235,0.5)]"
-              style={{ backgroundColor: "rgba(11,27,58,0.92)" }}
+              className="absolute inset-[22px] rounded-full shadow-[0_0_40px_rgba(37,99,235,0.45)]"
+              style={{ backgroundColor: "rgba(11,27,58,0.85)" }}
             />
             {status === "scanning" ? (
               <span
@@ -523,7 +531,7 @@ export function FingerprintLockGate() {
             ) : null}
             <Fingerprint
               className={cn(
-                "relative z-10 h-[56px] w-[56px]",
+                "relative z-10 h-[52px] w-[52px]",
                 status === "success"
                   ? "text-emerald-400"
                   : status === "failed"
@@ -534,7 +542,7 @@ export function FingerprintLockGate() {
             />
           </button>
 
-          <p className="mt-8 text-center text-lg font-semibold text-white">
+          <p className="mt-7 text-center text-lg font-semibold text-white">
             {status === "success"
               ? "Fingerprint verified"
               : status === "scanning"
@@ -542,11 +550,11 @@ export function FingerprintLockGate() {
                 : "Use your fingerprint"}
           </p>
           <p className="mt-2 max-w-[17rem] text-center text-sm leading-relaxed text-slate-400">
-            {failedMsg || roleDashboardHint(role)}
+            {failedMsg || unlockHint()}
           </p>
         </div>
 
-        <div className="flex w-full shrink-0 justify-center pb-1">
+        <div className="flex w-full shrink-0 justify-center pb-2">
           <button
             type="button"
             onClick={usePasswordLogin}
@@ -565,6 +573,7 @@ export function FingerprintLockGate() {
           100% { top: 26%; opacity: 0.3; }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body,
   );
 }
