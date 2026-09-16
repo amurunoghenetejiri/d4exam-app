@@ -387,6 +387,16 @@ export function FingerprintLockGate() {
     }
   }
 
+  // Hide boot splash when fingerprint page is about to show (seamless navy)
+  useEffect(() => {
+    if (!native || !locked || !splashDone) return;
+    try {
+      window.dispatchEvent(new Event("d4-hide-boot-splash"));
+    } catch {
+      /* ignore */
+    }
+  }, [native, locked, splashDone]);
+
   // Cover the app as soon as splash is done and we need unlock — no white gap
   if (!native || !locked || isPublicAuthPath || !splashDone) {
     return null;
@@ -451,12 +461,12 @@ export function FingerprintLockGate() {
               <img
                 src={schoolLogo}
                 alt={schoolName || "School"}
-                className="h-[min(30vw,120px)] w-[min(30vw,120px)] rounded-full border-2 border-white/20 bg-white object-contain shadow-lg shadow-black/30"
+                className="h-[min(22vw,88px)] w-[min(22vw,88px)] rounded-full border-2 border-white/20 bg-white object-contain shadow-lg shadow-black/30"
                 onError={() => setLogoBroken(true)}
               />
             ) : (
               <div
-                className="grid h-[min(30vw,120px)] w-[min(30vw,120px)] place-items-center rounded-full border-2 border-[#2563eb]/45 shadow-lg shadow-black/30"
+                className="grid h-[min(22vw,88px)] w-[min(22vw,88px)] place-items-center rounded-full border-2 border-[#2563eb]/45 shadow-lg shadow-black/30"
                 style={{ backgroundColor: THEME_NAVY }}
               >
                 <img src="/logo.png" alt="D4EXAM" className="h-[68%] w-[68%] object-contain" />
@@ -487,7 +497,7 @@ export function FingerprintLockGate() {
               promptedRef.current = false;
               void tryUnlock();
             }}
-            className="relative grid h-[168px] w-[168px] place-items-center focus:outline-none active:scale-[0.98]"
+            className="relative grid h-[132px] w-[132px] place-items-center focus:outline-none active:scale-[0.98]"
           >
             <span
               className={cn(
@@ -497,23 +507,23 @@ export function FingerprintLockGate() {
             />
             <span
               className={cn(
-                "absolute inset-[12px] rounded-full border border-[#3b82f6]/45",
+                "absolute inset-[10px] rounded-full border border-[#3b82f6]/45",
                 status === "scanning" && "animate-pulse",
               )}
             />
             <span
-              className="absolute inset-[26px] rounded-full shadow-[0_0_48px_rgba(37,99,235,0.5)]"
+              className="absolute inset-[22px] rounded-full shadow-[0_0_48px_rgba(37,99,235,0.5)]"
               style={{ backgroundColor: "rgba(11,27,58,0.92)" }}
             />
             {status === "scanning" ? (
               <span
-                className="pointer-events-none absolute left-[28px] right-[28px] z-20 h-1.5 rounded-full bg-gradient-to-r from-transparent via-sky-300 to-transparent"
+                className="pointer-events-none absolute left-[24px] right-[24px] z-20 h-1.5 rounded-full bg-gradient-to-r from-transparent via-sky-300 to-transparent"
                 style={{ animation: "d4-fp-scan 1.35s ease-in-out infinite" }}
               />
             ) : null}
             <Fingerprint
               className={cn(
-                "relative z-10 h-[72px] w-[72px]",
+                "relative z-10 h-[56px] w-[56px]",
                 status === "success"
                   ? "text-emerald-400"
                   : status === "failed"

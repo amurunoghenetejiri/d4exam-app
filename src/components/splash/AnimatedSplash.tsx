@@ -3,9 +3,9 @@ import { cn } from "@/lib/utils";
 import { hideSplashSafely } from "@/native/statusBar";
 
 /** Minimum time the splash stays on screen (ms). */
-const SPLASH_MIN_MS = 350;
+const SPLASH_MIN_MS = 280;
 /** Absolute safety cap so splash never blocks forever. */
-const SPLASH_MAX_MS = 1800;
+const SPLASH_MAX_MS = 1200;
 /** Marks splash already dismissed for this app process / tab session. */
 const SESSION_KEY = "d4exam_splash_shown_v6";
 

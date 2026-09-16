@@ -250,10 +250,10 @@ function scientificRows(angle: AngleMode): KeyDef[][] {
   return [
     [
       { label: angle, action: "angle" },
-      { label: "FSE", action: "noop" },
-      { label: "MTRX", action: "noop" },
-      { label: "⌫", action: "del", className: "bg-amber-500 text-white font-bold" },
-      { label: "AC", action: "ac", className: "bg-amber-500 text-white font-bold" },
+      { label: "◀", action: "left" },
+      { label: "▶", action: "right" },
+      { label: "⌫", action: "del", className: "bg-amber-500 text-white font-bold shadow-amber" },
+      { label: "AC", action: "ac", className: "bg-amber-500 text-white font-bold shadow-amber" },
     ],
     [
       { label: "sin", action: "sin(" },
@@ -311,6 +311,7 @@ function scientificRows(angle: AngleMode): KeyDef[][] {
 
 export function ExamCalculator({ open, mode, onClose }: Props) {
   const [expr, setExpr] = useState("");
+  const [cursor, setCursor] = useState(0);
   const [result, setResult] = useState("0");
   const [finalized, setFinalized] = useState(false);
   const [error, setError] = useState(false);
@@ -319,6 +320,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
   useEffect(() => {
     if (!open) {
       setExpr("");
+      setCursor(0);
       setResult("0");
       setFinalized(false);
       setError(false);
@@ -383,23 +385,40 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
     if (finalized) {
       setFinalized(false);
       if (/^[+\-−×÷*/^%]/.test(chunk) || chunk === "^") {
-        setExpr(result + chunk);
+        const next = result + chunk;
+        setExpr(next);
+        setCursor(next.length);
       } else {
         setExpr(chunk);
+        setCursor(chunk.length);
       }
       return;
     }
-    setExpr((prev) => prev + chunk);
-  }, [finalized, result]);
+    setExpr((prev) => {
+      const i = Math.max(0, Math.min(cursor, prev.length));
+      const next = prev.slice(0, i) + chunk + prev.slice(i);
+      setCursor(i + chunk.length);
+      return next;
+    });
+  }, [finalized, result, cursor]);
 
   const applyAction = useCallback(
     (action: string) => {
       if (action === "noop") return;
       if (action === "ac") {
         setExpr("");
+        setCursor(0);
         setResult("0");
         setFinalized(false);
         setError(false);
+        return;
+      }
+      if (action === "left") {
+        setCursor((c) => Math.max(0, c - 1));
+        return;
+      }
+      if (action === "right") {
+        setCursor((c) => Math.min(expr.length, c + 1));
         return;
       }
       if (action === "del") {
@@ -407,13 +426,23 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         setError(false);
         setExpr((e) => {
           if (!e) return "";
-          // remove function tokens as units
+          const i = Math.max(0, Math.min(cursor, e.length));
+          if (i <= 0) return e;
+          const before = e.slice(0, i);
+          const after = e.slice(i);
           const fns = ["asin(", "acos(", "atan(", "sin(", "cos(", "tan(", "log(", "ln(", "sqrt(", "cbrt(", "exp(", "10^"];
           for (const f of fns) {
-            if (e.endsWith(f)) return e.slice(0, -f.length);
+            if (before.endsWith(f)) {
+              setCursor(i - f.length);
+              return before.slice(0, -f.length) + after;
+            }
           }
-          if (e.endsWith("pi")) return e.slice(0, -2);
-          return e.slice(0, -1);
+          if (before.endsWith("pi")) {
+            setCursor(i - 2);
+            return before.slice(0, -2) + after;
+          }
+          setCursor(i - 1);
+          return before.slice(0, -1) + after;
         });
         return;
       }
@@ -432,6 +461,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         }
         setResult(live);
         setExpr(toEval);
+        setCursor(toEval.length);
         setFinalized(true);
         setError(false);
         return;
@@ -480,7 +510,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       }
       append(action);
     },
-    [append, angle, expr, finalized, result],
+    [append, angle, expr, cursor, finalized, result],
   );
 
   const rows = useMemo(
@@ -490,21 +520,28 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
 
   if (!open) return null;
 
-  const exprShown = finalized ? expr : expr || " ";
   const resultShown = error ? "Error" : result;
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex flex-col bg-[#0b1b3a]"
+      className="fixed z-[200] flex flex-col"
       style={{
-        width: "100%",
-        height: "100%",
-        minHeight: "100dvh",
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: "100vw",
+        height: "100dvh",
+        maxWidth: "100vw",
         maxHeight: "100dvh",
-        paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: "env(safe-area-inset-bottom)",
-        paddingLeft: "env(safe-area-inset-left)",
-        paddingRight: "env(safe-area-inset-right)",
+        margin: 0,
+        backgroundColor: "#0b1b3a",
+        paddingTop: "env(safe-area-inset-top, 0px)",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        paddingLeft: "env(safe-area-inset-left, 0px)",
+        paddingRight: "env(safe-area-inset-right, 0px)",
+        boxSizing: "border-box",
       }}
       role="dialog"
       aria-modal="true"
@@ -529,9 +566,19 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       </div>
 
       {/* Display: expression top, live result bottom */}
-      <div className="mx-3 mt-3 shrink-0 rounded-2xl border border-[#2563eb]/40 bg-[#06101f] px-4 py-5 text-right">
+      <div className="mx-3 mt-3 shrink-0 rounded-2xl border border-[#1e3a5f] bg-[#06101f] px-4 py-4 text-right shadow-inner shadow-black/40">
         <p className="min-h-[1.25rem] break-all font-mono text-sm text-slate-400 sm:text-base">
-          {exprShown}
+          {finalized ? (
+            expr || " "
+          ) : expr ? (
+            <>
+              <span>{expr.slice(0, cursor)}</span>
+              <span className="mx-px inline-block h-[1.05em] w-[2px] animate-pulse bg-sky-400 align-middle" />
+              <span>{expr.slice(cursor)}</span>
+            </>
+          ) : (
+            <span className="inline-block h-[1.05em] w-[2px] animate-pulse bg-sky-400 align-middle" />
+          )}
         </p>
         <p
           className={cn(
@@ -561,7 +608,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
                   type="button"
                   onClick={() => applyAction(k.action)}
                   className={cn(
-                    "min-h-[2.5rem] rounded-xl bg-[#12263f] text-[13px] font-semibold text-slate-100 transition hover:bg-[#1a3354] active:scale-[0.97] sm:text-base",
+                    "min-h-[2.5rem] rounded-xl border border-white/10 bg-gradient-to-b from-[#1a3a66] to-[#0f2340] text-[13px] font-semibold text-slate-100 shadow-[0_3px_0_0_#06101f,0_4px_10px_rgba(0,0,0,0.4)] transition-all duration-75 hover:from-[#1e4475] hover:to-[#132a4d] active:translate-y-[2px] active:shadow-[0_1px_0_0_#06101f,0_2px_4px_rgba(0,0,0,0.35)] sm:text-base",
                     k.className,
                   )}
                   style={k.span ? { gridColumn: `span ${k.span}` } : undefined}

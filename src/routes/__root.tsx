@@ -232,26 +232,30 @@ const BOOT_SPLASH_SCRIPT = `
     if (sessionStorage.getItem('d4exam_splash_shown_v6') === '1') return;
     var el = document.getElementById('d4-boot-splash');
     if (el) el.style.display = 'flex';
-    // Safety: never leave the HTML boot splash up forever if React is slow/offline
+    // Stay up until React signals ready — avoids white gap between boot + app splash / fingerprint
+    var hidden = false;
     function hideBoot(){
+      if (hidden) return;
+      hidden = true;
       try {
+        try { sessionStorage.setItem('d4exam_splash_shown_v6', '1'); } catch(e){}
         var b = document.getElementById('d4-boot-splash');
         if (!b) return;
         b.style.opacity = '0';
         b.style.pointerEvents = 'none';
-        setTimeout(function(){ try { b.remove(); } catch(e){} }, 200);
+        setTimeout(function(){ try { b.remove(); } catch(e){} }, 180);
       } catch(e){}
     }
-    setTimeout(hideBoot, 2000);
-    document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideBoot, 1800); });
-    window.addEventListener('load', function(){ setTimeout(hideBoot, 1200); });
+    window.addEventListener('d4-hide-boot-splash', hideBoot);
+    // Absolute safety only (never leave forever)
+    setTimeout(hideBoot, 4500);
   } catch(e){}
 })();
 `;
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" style={{ backgroundColor: "#0b1b3a" }}>
       <head>
         <HeadContent />
         <style
@@ -269,7 +273,7 @@ function RootShell({ children }: { children: ReactNode }) {
           }}
         />
       </head>
-      <body className="min-h-dvh bg-background text-foreground antialiased">
+      <body className="min-h-dvh text-foreground antialiased" style={{ backgroundColor: "#0b1b3a" }}>
         <div id="d4-boot-splash" aria-hidden="true">
           <div className="boot-main">
             <img src="/logo.png" alt="" width="160" height="160" />
