@@ -1,5 +1,7 @@
 /**
- * In-exam calculator (basic + scientific). Student title is always "Calculator".
+ * Full-screen in-exam calculator (basic + scientific).
+ * Student title is always "Calculator" (never shows Basic/Scientific).
+ * Behaves like a normal phone calculator: auto-evaluates on operators; = shows result.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Calculator as CalcIcon, X } from "lucide-react";
@@ -10,50 +12,6 @@ import { isNativeShell } from "@/native/platform";
 export type CalculatorMode = "basic" | "scientific";
 type AngleMode = "DEG" | "RAD" | "GRAD";
 type Props = { open: boolean; mode: CalculatorMode; onClose: () => void };
-
-function tokenize(expr: string): string[] {
-  const s = expr.replace(/\s+/g, "").replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
-  const tokens: string[] = [];
-  let i = 0;
-  while (i < s.length) {
-    const c = s[i];
-    if (/[0-9.]/.test(c)) {
-      let n = c;
-      i++;
-      while (i < s.length && /[0-9.]/.test(s[i])) n += s[i++];
-      tokens.push(n);
-      continue;
-    }
-    if (c === "π") {
-      tokens.push("π");
-      i++;
-      continue;
-    }
-    if (c === "e" && (i === 0 || !/[0-9.]/.test(s[i - 1]))) {
-      tokens.push("e");
-      i++;
-      continue;
-    }
-    if ("+-*/%^()".includes(c)) {
-      tokens.push(c);
-      i++;
-      continue;
-    }
-    const rest = s.slice(i);
-    const fns = ["asin", "acos", "atan", "sin", "cos", "tan", "log10", "ln", "sqrt", "cbrt", "abs"];
-    let matched = false;
-    for (const f of fns) {
-      if (rest.startsWith(f)) {
-        tokens.push(f);
-        i += f.length;
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) throw new Error("Invalid expression");
-  }
-  return tokens;
-}
 
 function toRad(x: number, angle: AngleMode): number {
   if (angle === "DEG") return (x * Math.PI) / 180;
@@ -66,92 +24,34 @@ function fromRad(x: number, angle: AngleMode): number {
   return x;
 }
 
-function evaluate(tokens: string[], angle: AngleMode): number {
-  let pos = 0;
-  function peek() {
-    return tokens[pos];
-  }
-  function consume() {
-    return tokens[pos++];
-  }
-  function parsePrimary(): number {
-    const t = consume();
-    if (t === undefined) throw new Error("Unexpected end");
-    if (t === "π") return Math.PI;
-    if (t === "e") return Math.E;
-    if (t === "(") {
-      const v = parseExpr();
-      if (consume() !== ")") throw new Error("Expected )");
-      return v;
-    }
-    if (t === "-") return -parsePrimary();
-    if (t === "+") return parsePrimary();
-    const fns: Record<string, (x: number) => number> = {
-      sin: (x) => Math.sin(toRad(x, angle)),
-      cos: (x) => Math.cos(toRad(x, angle)),
-      tan: (x) => Math.tan(toRad(x, angle)),
-      asin: (x) => fromRad(Math.asin(x), angle),
-      acos: (x) => fromRad(Math.acos(x), angle),
-      atan: (x) => fromRad(Math.atan(x), angle),
-      log10: (x) => Math.log10(x),
-      ln: (x) => Math.log(x),
-      sqrt: (x) => Math.sqrt(x),
-      cbrt: (x) => Math.cbrt(x),
-      abs: (x) => Math.abs(x),
-    };
-    if (fns[t]) {
-      if (peek() === "(") {
-        consume();
-        const v = parseExpr();
-        if (consume() !== ")") throw new Error("Expected )");
-        return fns[t](v);
-      }
-      return fns[t](parsePrimary());
-    }
-    const n = Number(t);
-    if (!Number.isFinite(n)) throw new Error("Invalid number");
-    return n;
-  }
-  function parsePower(): number {
-    let left = parsePrimary();
-    while (peek() === "^") {
-      consume();
-      const right = parsePower();
-      left = Math.pow(left, right);
-    }
-    return left;
-  }
-  function parseTerm(): number {
-    let left = parsePower();
-    while (peek() === "*" || peek() === "/" || peek() === "%") {
-      const op = consume();
-      const right = parsePower();
-      if (op === "*") left *= right;
-      else if (op === "/") left /= right;
-      else left %= right;
-    }
-    return left;
-  }
-  function parseExpr(): number {
-    let left = parseTerm();
-    while (peek() === "+" || peek() === "-") {
-      const op = consume();
-      const right = parseTerm();
-      if (op === "+") left += right;
-      else left -= right;
-    }
-    return left;
-  }
-  const result = parseExpr();
-  if (pos < tokens.length) throw new Error("Unexpected token");
-  if (!Number.isFinite(result)) throw new Error("Math error");
-  return result;
+function formatResult(v: number): string {
+  if (!Number.isFinite(v)) return "Error";
+  if (Object.is(v, -0)) return "0";
+  if (Number.isInteger(v) && Math.abs(v) < 1e15) return String(v);
+  const s = Number(v.toPrecision(12)).toString();
+  return s;
 }
 
-function safeEval(expr: string, angle: AngleMode): number {
-  const tokens = tokenize(expr);
-  if (!tokens.length) return 0;
-  return evaluate(tokens, angle);
+function applyBinary(a: number, op: string, b: number): number {
+  switch (op) {
+    case "+":
+      return a + b;
+    case "−":
+    case "-":
+      return a - b;
+    case "×":
+    case "*":
+      return a * b;
+    case "÷":
+    case "/":
+      return b === 0 ? NaN : a / b;
+    case "%":
+      return a % b;
+    case "^":
+      return Math.pow(a, b);
+    default:
+      return b;
+  }
 }
 
 type KeyDef = { label: string; action: string; className?: string; span?: number };
@@ -160,7 +60,7 @@ const BASIC: KeyDef[][] = [
   [
     { label: "AC", action: "clear", className: "bg-amber-500 text-white font-bold" },
     { label: "⌫", action: "back", className: "bg-amber-500 text-white font-bold" },
-    { label: "%", action: "%" },
+    { label: "%", action: "percent", className: "bg-slate-600/60 text-white" },
     { label: "÷", action: "÷", className: "bg-slate-600/60 text-white" },
   ],
   [
@@ -197,25 +97,25 @@ function sci(shift: boolean): KeyDef[][] {
       { label: "AC", action: "clear", className: "bg-amber-500 text-white font-bold" },
     ],
     [
-      { label: shift ? "sin⁻¹" : "sin", action: shift ? "asin(" : "sin(" },
-      { label: shift ? "cos⁻¹" : "cos", action: shift ? "acos(" : "cos(" },
-      { label: shift ? "tan⁻¹" : "tan", action: shift ? "atan(" : "tan(" },
-      { label: "log", action: "log10(" },
-      { label: "ln", action: "ln(" },
-      { label: "√", action: "sqrt(" },
+      { label: shift ? "sin⁻¹" : "sin", action: shift ? "asin" : "sin" },
+      { label: shift ? "cos⁻¹" : "cos", action: shift ? "acos" : "cos" },
+      { label: shift ? "tan⁻¹" : "tan", action: shift ? "atan" : "tan" },
+      { label: "log", action: "log10" },
+      { label: "ln", action: "ln" },
+      { label: "√", action: "sqrt" },
     ],
     [
       { label: "π", action: "π" },
       { label: "e", action: "e" },
-      { label: "x²", action: "^2" },
-      { label: "x³", action: "^3" },
+      { label: "x²", action: "sq" },
+      { label: "x³", action: "cube" },
       { label: "xʸ", action: "^" },
-      { label: "x⁻¹", action: "^-1" },
+      { label: "x⁻¹", action: "inv" },
     ],
     [
       { label: "(", action: "(" },
       { label: ")", action: ")" },
-      { label: "%", action: "%" },
+      { label: "%", action: "percent", className: "bg-slate-600/60 text-white" },
       { label: "÷", action: "÷", className: "bg-slate-600/60 text-white" },
       { label: "×", action: "×", className: "bg-slate-600/60 text-white" },
       { label: "−", action: "−", className: "bg-slate-600/60 text-white" },
@@ -240,17 +140,25 @@ function sci(shift: boolean): KeyDef[][] {
   ];
 }
 
+const OPS = new Set(["+", "−", "-", "×", "*", "÷", "/", "^"]);
+
 export function ExamCalculator({ open, mode, onClose }: Props) {
-  const [expr, setExpr] = useState("");
   const [display, setDisplay] = useState("0");
+  const [acc, setAcc] = useState<number | null>(null);
+  const [pendingOp, setPendingOp] = useState<string | null>(null);
+  const [entering, setEntering] = useState(false);
+  const [history, setHistory] = useState("");
   const [shift, setShift] = useState(false);
   const [angle, setAngle] = useState<AngleMode>("DEG");
   const [justEvaluated, setJustEvaluated] = useState(false);
 
   useEffect(() => {
     if (!open) {
-      setExpr("");
       setDisplay("0");
+      setAcc(null);
+      setPendingOp(null);
+      setEntering(false);
+      setHistory("");
       setShift(false);
       setJustEvaluated(false);
     }
@@ -289,19 +197,52 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
     };
   }, [open, onClose]);
 
+  const currentValue = useCallback((): number => {
+    const n = Number(display);
+    return Number.isFinite(n) ? n : 0;
+  }, [display]);
+
+  const applyUnary = useCallback(
+    (fn: (x: number) => number) => {
+      try {
+        const v = fn(currentValue());
+        const s = formatResult(v);
+        setDisplay(s);
+        setEntering(false);
+        setJustEvaluated(true);
+        setHistory("");
+        setShift(false);
+      } catch {
+        setDisplay("Error");
+        setJustEvaluated(true);
+      }
+    },
+    [currentValue],
+  );
+
   const applyAction = useCallback(
     (action: string) => {
       if (action === "clear") {
-        setExpr("");
         setDisplay("0");
+        setAcc(null);
+        setPendingOp(null);
+        setEntering(false);
+        setHistory("");
         setJustEvaluated(false);
         setShift(false);
         return;
       }
       if (action === "back") {
-        setExpr((e) => e.slice(0, -1));
-        setDisplay((d) => (d.length > 1 ? d.slice(0, -1) : "0"));
-        setJustEvaluated(false);
+        if (!entering || justEvaluated) {
+          setDisplay("0");
+          setEntering(false);
+          setJustEvaluated(false);
+          return;
+        }
+        setDisplay((d) => {
+          if (d.length <= 1 || (d.length === 2 && d.startsWith("-"))) return "0";
+          return d.slice(0, -1);
+        });
         return;
       }
       if (action === "shift") {
@@ -312,39 +253,112 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         setAngle((a) => (a === "DEG" ? "RAD" : a === "RAD" ? "GRAD" : "DEG"));
         return;
       }
+
+      if (/^[0-9]$/.test(action)) {
+        if (!entering || justEvaluated || display === "Error") {
+          setDisplay(action);
+          setEntering(true);
+          setJustEvaluated(false);
+          if (justEvaluated) {
+            setAcc(null);
+            setPendingOp(null);
+            setHistory("");
+          }
+        } else {
+          setDisplay((d) => (d === "0" ? action : d + action));
+        }
+        return;
+      }
+      if (action === ".") {
+        if (!entering || justEvaluated || display === "Error") {
+          setDisplay("0.");
+          setEntering(true);
+          setJustEvaluated(false);
+          if (justEvaluated) {
+            setAcc(null);
+            setPendingOp(null);
+            setHistory("");
+          }
+        } else if (!display.includes(".")) {
+          setDisplay((d) => d + ".");
+        }
+        return;
+      }
+
+      if (action === "π") {
+        setDisplay(formatResult(Math.PI));
+        setEntering(false);
+        setJustEvaluated(true);
+        return;
+      }
+      if (action === "e") {
+        setDisplay(formatResult(Math.E));
+        setEntering(false);
+        setJustEvaluated(true);
+        return;
+      }
+
+      if (action === "sin") return applyUnary((x) => Math.sin(toRad(x, angle)));
+      if (action === "cos") return applyUnary((x) => Math.cos(toRad(x, angle)));
+      if (action === "tan") return applyUnary((x) => Math.tan(toRad(x, angle)));
+      if (action === "asin") return applyUnary((x) => fromRad(Math.asin(x), angle));
+      if (action === "acos") return applyUnary((x) => fromRad(Math.acos(x), angle));
+      if (action === "atan") return applyUnary((x) => fromRad(Math.atan(x), angle));
+      if (action === "log10") return applyUnary((x) => Math.log10(x));
+      if (action === "ln") return applyUnary((x) => Math.log(x));
+      if (action === "sqrt") return applyUnary((x) => Math.sqrt(x));
+      if (action === "sq") return applyUnary((x) => x * x);
+      if (action === "cube") return applyUnary((x) => x * x * x);
+      if (action === "inv") return applyUnary((x) => (x === 0 ? NaN : 1 / x));
+      if (action === "percent") return applyUnary((x) => x / 100);
+
       if (action === "=") {
-        try {
-          const v = safeEval(expr || display, angle);
-          const s = Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(12)));
+        if (pendingOp != null && acc != null) {
+          const result = applyBinary(acc, pendingOp, currentValue());
+          const s = formatResult(result);
           setDisplay(s);
-          setExpr(s);
+          setAcc(null);
+          setPendingOp(null);
+          setHistory("");
+          setEntering(false);
           setJustEvaluated(true);
-        } catch {
-          setDisplay("Error");
+        } else {
           setJustEvaluated(true);
+          setEntering(false);
         }
         setShift(false);
         return;
       }
-      if (justEvaluated && /^[0-9.πe]/.test(action)) {
-        setExpr(action);
-        setDisplay(action === "." ? "0." : action);
+
+      if (OPS.has(action)) {
+        const val = currentValue();
+        if (pendingOp != null && acc != null && entering) {
+          const result = applyBinary(acc, pendingOp, val);
+          const s = formatResult(result);
+          if (s === "Error") {
+            setDisplay("Error");
+            setAcc(null);
+            setPendingOp(null);
+            setHistory("");
+            setEntering(false);
+            setJustEvaluated(true);
+            return;
+          }
+          setDisplay(s);
+          setAcc(result);
+          setHistory(`${s} ${action}`);
+        } else {
+          setAcc(val);
+          setHistory(`${formatResult(val)} ${action}`);
+        }
+        setPendingOp(action);
+        setEntering(false);
         setJustEvaluated(false);
+        setShift(false);
         return;
       }
-      if (justEvaluated && (action === "+" || action === "−" || action === "×" || action === "÷" || action === "^")) {
-        setExpr(display + action);
-        setJustEvaluated(false);
-        return;
-      }
-      setExpr((e) => e + action);
-      if (/^[0-9.]$/.test(action) || action === "π" || action === "e") {
-        setDisplay((d) => (d === "0" && action !== "." ? action : d === "Error" ? action : d + action));
-      }
-      setJustEvaluated(false);
-      if (action.endsWith("(")) setShift(false);
     },
-    [angle, justEvaluated, expr, display],
+    [display, entering, justEvaluated, pendingOp, acc, angle, currentValue, applyUnary],
   );
 
   const rows = useMemo(() => (mode === "scientific" ? sci(shift) : BASIC), [mode, shift]);
@@ -352,26 +366,20 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[220] flex items-end justify-center bg-[#020617]/75 p-0 sm:items-center sm:p-4"
+      className="fixed inset-0 z-[220] flex h-[100dvh] w-full flex-col bg-[#020617]"
       role="dialog"
       aria-modal="true"
       aria-label="Calculator"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <div
-        className={cn(
-          "flex w-full max-h-[min(92dvh,720px)] flex-col overflow-hidden rounded-t-2xl border border-[#1e3a5f] bg-[#0b1b3a] shadow-2xl sm:rounded-2xl",
-          mode === "scientific" ? "sm:max-w-lg" : "sm:max-w-sm",
-        )}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-[#1e3a5f] px-4 py-3">
-          <div className="flex items-center gap-2 text-white">
-            <CalcIcon className="h-5 w-5 text-blue-400" />
+      <div className="flex h-full w-full max-w-lg flex-col self-center sm:max-w-xl">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#1e3a5f] px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-[#2563eb]/20 text-[#60a5fa]">
+              <CalcIcon className="h-4.5 w-4.5" />
+            </div>
             <div>
-              <p className="text-sm font-bold tracking-tight">Calculator</p>
+              <p className="text-sm font-bold tracking-tight text-white">Calculator</p>
               {mode === "scientific" && (
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{angle}</p>
               )}
@@ -380,22 +388,26 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full text-slate-300 hover:bg-white/10"
+            className="grid h-10 w-10 place-items-center rounded-full text-slate-300 hover:bg-white/10"
             aria-label="Close calculator"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="mx-3 mt-3 rounded-xl border border-[#1e3a5f] bg-[#06101f] px-3 py-3 text-right">
-          <p className="min-h-[1.25rem] truncate text-xs text-slate-400">{expr || " "}</p>
-          <p className="mt-1 break-all font-mono text-2xl font-bold tabular-nums text-white sm:text-3xl">{display}</p>
+
+        <div className="mx-3 mt-3 shrink-0 rounded-xl border border-[#1e3a5f] bg-[#06101f] px-4 py-4 text-right">
+          <p className="min-h-[1.25rem] truncate text-xs text-slate-400">{history || " "}</p>
+          <p className="mt-1 break-all font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">
+            {display}
+          </p>
         </div>
-        <div className="mt-3 flex-1 overflow-y-auto px-3 pb-3">
-          <div className="flex flex-col gap-1.5">
+
+        <div className="mt-3 flex min-h-0 flex-1 flex-col px-3 pb-3">
+          <div className="flex flex-1 flex-col gap-1.5">
             {rows.map((row, ri) => (
               <div
                 key={ri}
-                className="grid gap-1.5"
+                className="grid flex-1 gap-1.5"
                 style={{
                   gridTemplateColumns: `repeat(${row.reduce((a, k) => a + (k.span || 1), 0)}, minmax(0, 1fr))`,
                 }}
@@ -406,7 +418,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
                     type="button"
                     onClick={() => applyAction(k.action)}
                     className={cn(
-                      "min-h-[2.75rem] rounded-xl bg-[#12263f] text-sm font-semibold text-slate-100 transition hover:bg-[#1a3354] active:scale-[0.97]",
+                      "min-h-[2.75rem] rounded-xl bg-[#12263f] text-base font-semibold text-slate-100 transition hover:bg-[#1a3354] active:scale-[0.97]",
                       k.className,
                     )}
                     style={k.span ? { gridColumn: `span ${k.span}` } : undefined}
