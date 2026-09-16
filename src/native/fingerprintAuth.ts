@@ -1,8 +1,6 @@
 /**
- * Fingerprint-only biometric auth for the native D4EXAM shell.
- * Uses the OS BiometricPrompt — never stores fingerprint data.
- * Face unlock is intentionally not preferred; we still accept isAvailable
- * when the device reports fingerprint or multiple biometrics.
+ * Fingerprint biometric auth for the native D4EXAM shell.
+ * Uses OS BiometricPrompt — never stores fingerprint data.
  */
 import { isNativeShell } from "@/native/platform";
 
@@ -23,13 +21,12 @@ export type FingerprintAvailability =
 
 export type FingerprintAuthResult =
   | { ok: true }
-  | { ok: false; code: "cancelled" | "failed" | "unavailable" | "error" | "timeout"; message: string };
+  | {
+      ok: false;
+      code: "cancelled" | "failed" | "unavailable" | "error" | "timeout";
+      message: string;
+    };
 
-/**
- * Capgo @capgo/capacitor-native-biometric BiometryType enum (v7/v8):
- * NONE=0, TOUCH_ID=1, FACE_ID=2, FINGERPRINT=3, FACE_AUTHENTICATION=4,
- * IRIS_AUTHENTICATION=5, MULTIPLE=6, DEVICE_CREDENTIAL=7
- */
 const BiometryType = {
   NONE: 0,
   TOUCH_ID: 1,
@@ -41,10 +38,11 @@ const BiometryType = {
   DEVICE_CREDENTIAL: 7,
 } as const;
 
-const CHECK_TIMEOUT_MS = 8_000;
-const AUTH_TIMEOUT_MS = 45_000;
+const LOAD_TIMEOUT_MS = 4_000;
+const CHECK_TIMEOUT_MS = 6_000;
+const AUTH_TIMEOUT_MS = 30_000;
 
-async function loadPlugin(): Promise<null | {
+type NativeBiometricPlugin = {
   isAvailable: (opts?: { useFallback?: boolean }) => Promise<{
     isAvailable: boolean;
     biometryType?: number;
@@ -52,25 +50,11 @@ async function loadPlugin(): Promise<null | {
     authenticationStrength?: number;
   }>;
   verifyIdentity: (opts: Record<string, unknown>) => Promise<void>;
-}> {
-  if (!isNativeShell()) return null;
-  try {
-    const mod = await import("@capgo/capacitor-native-biometric");
-    const plugin = (mod as { NativeBiometric?: unknown }).NativeBiometric;
-    if (!plugin || typeof (plugin as { isAvailable?: unknown }).isAvailable !== "function") {
-      return null;
-    }
-    return plugin as never;
-  } catch {
-    return null;
-  }
-}
+};
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = window.setTimeout(() => {
-      reject(new Error(`${label}_timeout`));
-    }, ms);
+    const t = window.setTimeout(() => reject(new Error(`${label}_timeout`)), ms);
     promise
       .then((v) => {
         window.clearTimeout(t);
@@ -83,17 +67,34 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
-/** Prefer fingerprint / touch; allow MULTIPLE. Reject pure face-only if we can detect it. */
-function acceptsFingerprintBiometry(biometryType: number | undefined): boolean {
+async function loadPlugin(): Promise<NativeBiometricPlugin | null> {
+  if (!isNativeShell()) return null;
+  try {
+    // Capacitor bridge present?
+    const cap = (window as unknown as {
+      Capacitor?: { isPluginAvailable?: (n: string) => boolean };
+    }).Capacitor;
+    if (cap?.isPluginAvailable && !cap.isPluginAvailable("NativeBiometric")) {
+      // Plugin JS may still exist; native side not registered — fail fast
+      // (still try import in case name differs)
+    }
+
+    const mod = await withTimeout(
+      import("@capgo/capacitor-native-biometric"),
+      LOAD_TIMEOUT_MS,
+      "fp_load",
+    );
+    const plugin = (mod as { NativeBiometric?: NativeBiometricPlugin }).NativeBiometric;
+    if (!plugin || typeof plugin.isAvailable !== "function") return null;
+    return plugin;
+  } catch {
+    return null;
+  }
+}
+
+function acceptsBiometry(biometryType: number | undefined): boolean {
   if (biometryType == null || !Number.isFinite(biometryType)) return true;
   const t = Number(biometryType);
-  if (t === BiometryType.FINGERPRINT) return true;
-  if (t === BiometryType.TOUCH_ID) return true;
-  if (t === BiometryType.MULTIPLE) return true;
-  // FACE_ID / FACE_AUTHENTICATION / IRIS — still allow if isAvailable said true
-  // (many Android devices report face hardware but still accept fingerprint via BiometricPrompt).
-  if (t === BiometryType.FACE_ID || t === BiometryType.FACE_AUTHENTICATION) return true;
-  if (t === BiometryType.IRIS_AUTHENTICATION) return true;
   if (t === BiometryType.NONE || t === BiometryType.DEVICE_CREDENTIAL) return false;
   return t > 0;
 }
@@ -112,7 +113,7 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
       ok: false,
       reason: "no_plugin",
       message:
-        "Fingerprint unlock is not available in this app build. Install the latest APK (Capacitor 8 + biometric plugin).",
+        "Fingerprint is not in this app build. Install the latest D4EXAM APK from Settings or the download link, then try again.",
     };
   }
   try {
@@ -123,13 +124,12 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
     );
     if (!info?.isAvailable) {
       const code = info?.errorCode;
-      // Capgo: 3 = BIOMETRICS_NOT_ENROLLED (also seen as 1 in older mappings)
       if (code === 3 || code === 1 || code === -1) {
         return {
           ok: false,
           reason: "not_enrolled",
           message:
-            "No fingerprint is enrolled on this device. Add one in system Settings, then try again.",
+            "No fingerprint is enrolled on this device. Add one in Android Settings → Security, then try again.",
         };
       }
       return {
@@ -138,11 +138,11 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
         message: "Fingerprint unlock is not available on this device.",
       };
     }
-    if (!acceptsFingerprintBiometry(info.biometryType)) {
+    if (!acceptsBiometry(info.biometryType)) {
       return {
         ok: false,
         reason: "no_fingerprint",
-        message: "This device does not support fingerprint unlock for D4EXAM.",
+        message: "This device does not support biometric unlock for D4EXAM.",
       };
     }
     return { ok: true, hasFingerprint: true };
@@ -152,13 +152,13 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
       return {
         ok: false,
         reason: "timeout",
-        message: "Fingerprint check timed out. Try again.",
+        message: "Fingerprint check timed out. Close and reopen the app, then try again.",
       };
     }
     return {
       ok: false,
       reason: "unknown",
-      message: "Could not check fingerprint availability on this device.",
+      message: "Could not check fingerprint on this device.",
     };
   }
 }
@@ -219,11 +219,12 @@ export async function authenticateWithFingerprint(opts?: {
         message: "Too many failed attempts. Use password login or try again later.",
       };
     }
-    if (msg.includes("not available") || msg.includes("no biometrics")) {
+    if (msg.includes("not available") || msg.includes("no biometrics") || msg.includes("unimplemented")) {
       return {
         ok: false,
         code: "unavailable",
-        message: "Fingerprint is temporarily unavailable on this device.",
+        message:
+          "Fingerprint is not available in this app build. Install the latest D4EXAM APK.",
       };
     }
     return {
