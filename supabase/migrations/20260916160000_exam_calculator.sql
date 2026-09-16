@@ -5,7 +5,6 @@ ALTER TABLE public.exam_settings
 ALTER TABLE public.exam_settings
   ADD COLUMN IF NOT EXISTS calculator_type text NOT NULL DEFAULT 'basic';
 
--- Keep values constrained
 DO $$
 BEGIN
   IF NOT EXISTS (

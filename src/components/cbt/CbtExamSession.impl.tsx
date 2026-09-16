@@ -17,6 +17,7 @@ import { loadExamQuestionBank, prepareStudentPaper } from "@/lib/cbt-load-questi
 import { type DeviceCapabilities } from "@/lib/device-capabilities";
 import { toast } from "sonner";
 import { ExamCameraPip, type FaceSecurityEvent } from "@/components/cbt/ExamCameraPip";
+import { ExamCalculator, ExamCalculatorFab } from "@/components/cbt/ExamCalculator";
 import { saveCbtResult } from "@/lib/cbt-save-result";
 import { logSecurityEvent } from "@/lib/cbt-security";
 import { mapFaceSecurityEvent } from "@/lib/live-monitor";
@@ -131,6 +132,8 @@ export function CbtExamPage() {
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [pauseRemainingSec, setPauseRemainingSec] = useState<number | null>(null);
   const [isOfficerPause, setIsOfficerPause] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const calcOpenRef = useRef(false);
   const attemptIdRef = useRef<string | null>(null);
   const tabSwitchCountRef = useRef(0);
   const fullscreenExitCountRef = useRef(0);
@@ -198,7 +201,7 @@ export function CbtExamPage() {
     enabled: Boolean(id),
     queryFn: async () => {
       const { data } = await supabase.from("exam_settings")
-        .select("exam_id, fullscreen, tab_monitoring, max_tab_switches, block_copy_paste, randomize_questions, randomize_options, require_camera, require_microphone, face_detection, max_face_warnings, require_screen_share, screen_share_mode, threshold_action, face_violation_action, pause_duration_seconds, total_marks, instructions, result_visibility, questions_to_answer")
+        .select("exam_id, fullscreen, tab_monitoring, max_tab_switches, block_copy_paste, randomize_questions, randomize_options, require_camera, require_microphone, face_detection, max_face_warnings, require_screen_share, screen_share_mode, threshold_action, face_violation_action, pause_duration_seconds, total_marks, instructions, result_visibility, questions_to_answer, allow_calculator, calculator_type")
         .eq("exam_id", id).maybeSingle();
       return data as ExamSettingsRow | null;
     },
@@ -543,6 +546,26 @@ export function CbtExamPage() {
   }, [started, done, previewMode, student?.studentId, id, liveAttemptId]);
 
   // Integrity: fullscreen exit + app background / tab switch
+
+  useEffect(() => {
+    calcOpenRef.current = calcOpen;
+    try {
+      const w = window as unknown as { __d4CalcOpen?: boolean; __d4CloseCalc?: () => void };
+      w.__d4CalcOpen = calcOpen;
+      w.__d4CloseCalc = () => setCalcOpen(false);
+    } catch { /* ignore */ }
+    const onCloseEvt = () => setCalcOpen(false);
+    window.addEventListener("d4-close-calculator", onCloseEvt);
+    return () => {
+      window.removeEventListener("d4-close-calculator", onCloseEvt);
+      try {
+        const w = window as unknown as { __d4CalcOpen?: boolean; __d4CloseCalc?: () => void };
+        w.__d4CalcOpen = false;
+        w.__d4CloseCalc = undefined;
+      } catch { /* ignore */ }
+    };
+  }, [calcOpen]);
+
   useEffect(() => {
     if (!started || done || previewMode) return;
     const schoolId = String(examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId ?? "");
@@ -588,6 +611,7 @@ export function CbtExamPage() {
 
     const recordTabLeave = () => {
       if (finishingRef.current || doneRef.current) return;
+      if (calcOpenRef.current || (window as unknown as { __d4CalcOpen?: boolean }).__d4CalcOpen) return;
       if (!security.tabMonitoring) {
         leftExamSessionRef.current = true;
         void flushAttemptProgress();
@@ -1394,6 +1418,16 @@ export function CbtExamPage() {
             )}
           </div>
         </div>
+      )}
+      {started && !done && !previewMode && security.allowCalculator && (
+        <>
+          <ExamCalculatorFab onClick={() => setCalcOpen(true)} />
+          <ExamCalculator
+            open={calcOpen}
+            mode={security.calculatorType === "scientific" ? "scientific" : "basic"}
+            onClose={() => setCalcOpen(false)}
+          />
+        </>
       )}
       {fsGate && security.fullscreen && started && !done && !paused && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-sm">
