@@ -277,6 +277,13 @@ export function ExamSecurityGate({
       enabled: shareMode !== "disabled",
       detail: shareMode === "disabled" ? undefined : shareMode,
     },
+    {
+      label: "Calculator",
+      enabled: Boolean(security.allowCalculator),
+      detail: security.allowCalculator
+        ? (security.calculatorType === "scientific" ? "Scientific" : "Basic")
+        : undefined,
+    },
   ];
 
   return (
