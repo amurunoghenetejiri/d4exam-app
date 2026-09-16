@@ -2,31 +2,25 @@
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
-mkdir -p src/components/cbt src/lib src/native src/routes supabase/migrations
+mkdir -p src/components/cbt
 
-python3 - <<'PY'
+if [ -f scripts/calc_feature/ExamCalculator.tsx ] && [ "$(wc -c < scripts/calc_feature/ExamCalculator.tsx)" -gt 5000 ]; then
+  cp -f scripts/calc_feature/ExamCalculator.tsx src/components/cbt/ExamCalculator.tsx
+  echo "copied ExamCalculator.tsx $(wc -c < src/components/cbt/ExamCalculator.tsx)"
+elif ls scripts/calc_feature/calc.b64.* >/dev/null 2>&1; then
+  python3 - <<'PY'
 import base64, pathlib
 root = pathlib.Path("scripts/calc_feature")
-
 parts = sorted(root.glob("calc.b64.[0-9]*"))
-if parts:
-    data = base64.b64decode("".join(p.read_text().strip() for p in parts))
-    pathlib.Path("src/components/cbt/ExamCalculator.tsx").write_bytes(data)
-    print("restored ExamCalculator", len(data))
-elif (root / "ExamCalculator.tsx").exists() and (root / "ExamCalculator.tsx").stat().st_size > 5000:
-    pathlib.Path("src/components/cbt/ExamCalculator.tsx").write_bytes((root / "ExamCalculator.tsx").read_bytes())
-    print("copied ExamCalculator")
-
-parts = sorted(root.glob("gate.b64.[0-9]*"))
-if parts:
-    data = base64.b64decode("".join(p.read_text().strip() for p in parts))
-    pathlib.Path("src/components/cbt/ExamSecurityGate.tsx").write_bytes(data)
-    print("restored ExamSecurityGate", len(data))
+data = base64.b64decode("".join(p.read_text().strip() for p in parts))
+pathlib.Path("src/components/cbt/ExamCalculator.tsx").write_bytes(data)
+print("restored ExamCalculator", len(data))
 PY
+fi
 
 if [ -f scripts/calc_feature/gate.patch ]; then
   patch -p1 --forward --no-backup-if-mismatch < scripts/calc_feature/gate.patch 2>/dev/null || true
-  echo "patched gate"
+  echo "patched ExamSecurityGate"
 fi
 
 echo "Calculator feature applied"
