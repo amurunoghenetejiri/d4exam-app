@@ -33,7 +33,13 @@ export function FingerprintLockCard() {
 
   useEffect(() => {
     if (!native) return;
-    void checkFingerprintAvailable().then(setAvailability);
+    let cancelled = false;
+    void checkFingerprintAvailable().then((a) => {
+      if (!cancelled) setAvailability(a);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [native]);
 
   if (!native) {
@@ -63,12 +69,18 @@ export function FingerprintLockCard() {
         subtitle: "Use your fingerprint to continue",
       });
       if (!auth.ok) {
-        if (auth.code !== "cancelled") toast.error(auth.message);
+        if (auth.code === "cancelled") {
+          toast.message("Fingerprint cancelled.");
+        } else {
+          toast.error(auth.message);
+        }
         return;
       }
       enableFingerprintFor(session.userId);
       setEnabled(true);
       toast.success("Fingerprint unlock enabled on this device.");
+    } catch (e) {
+      toast.error((e as Error)?.message || "Could not enable fingerprint.");
     } finally {
       setBusy(false);
     }
@@ -117,7 +129,7 @@ export function FingerprintLockCard() {
             onClick={() => void onEnable()}
           >
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Enable Fingerprint
+            {busy ? "Waiting for fingerprint…" : "Enable Fingerprint"}
           </Button>
         )}
       </div>
