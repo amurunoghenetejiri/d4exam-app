@@ -108,6 +108,10 @@ export interface ExamSecuritySettings {
   pauseDurationSeconds: number;
   resultVisibility: ResultVisibility;
   questionsToAnswer?: number | null;
+  /** Allow students to use the in-exam calculator */
+  allowCalculator: boolean;
+  /** Calculator mode when allowCalculator is true */
+  calculatorType: "basic" | "scientific";
 }
 
 export interface Question {
