@@ -67,6 +67,16 @@ export async function registerAndroidBackButton(): Promise<() => void> {
       try {
         const path = window.location.pathname || "/";
         if (isActiveExamPath(path)) {
+          // Close in-exam calculator first — do not leave the exam
+          try {
+            const w = window as unknown as { __d4CalcOpen?: boolean; __d4CloseCalc?: () => void };
+            if (w.__d4CalcOpen) {
+              w.__d4CloseCalc?.();
+              // Dispatch event so React state closes even without callback
+              window.dispatchEvent(new CustomEvent("d4-close-calculator"));
+              return;
+            }
+          } catch { /* ignore */ }
           if (canGoBack) window.history.back();
           return;
         }
