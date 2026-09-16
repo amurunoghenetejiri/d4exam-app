@@ -62,7 +62,7 @@ function NativeBootstrap() {
         if (!cancelled && session?.userId) {
           window.setTimeout(() => {
             void initNativePushIfNeeded(session.userId, session.role);
-          }, 400);
+          }, 2500);
         }
       } catch (e) {
         console.warn("[D4EXAM] Native bootstrap error", e);
@@ -242,9 +242,9 @@ const BOOT_SPLASH_SCRIPT = `
         setTimeout(function(){ try { b.remove(); } catch(e){} }, 200);
       } catch(e){}
     }
-    setTimeout(hideBoot, 4000);
-    document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideBoot, 3500); });
-    window.addEventListener('load', function(){ setTimeout(hideBoot, 2500); });
+    setTimeout(hideBoot, 2000);
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(hideBoot, 1800); });
+    window.addEventListener('load', function(){ setTimeout(hideBoot, 1200); });
   } catch(e){}
 })();
 `;

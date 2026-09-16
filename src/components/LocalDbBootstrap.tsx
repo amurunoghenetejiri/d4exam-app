@@ -9,6 +9,7 @@ import { initLocalDb, getLocalDbCapability } from "@/lib/local-db";
 export function LocalDbBootstrap() {
   useEffect(() => {
     let cancelled = false;
+    const timer = window.setTimeout(() => {
     void (async () => {
       try {
         await initLocalDb({ forceMemory: !Capacitor.isNativePlatform() });
@@ -22,8 +23,10 @@ export function LocalDbBootstrap() {
         console.warn("[local-db] bootstrap failed", e);
       }
     })();
+    }, 2000);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, []);
   return null;

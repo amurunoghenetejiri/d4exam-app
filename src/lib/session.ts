@@ -310,7 +310,6 @@ export async function fetchSessionUser(): Promise<SessionUser | null> {
     } catch {}
   }
   if (!user) {
-    await new Promise((r) => setTimeout(r, 250));
     try {
       const { data: sessData } = await supabase.auth.getSession();
       if (sessData.session?.user) user = sessData.session.user;
@@ -327,7 +326,7 @@ export async function fetchSessionUser(): Promise<SessionUser | null> {
     const [rpcData, triple] = await Promise.all([
       withTimeout(
         supabase.rpc("get_my_session_context" as never).then((r) => r.data),
-        2500,
+        1800,
         "get_my_session_context",
       ).catch(() => null),
       withTimeout(
@@ -344,7 +343,7 @@ export async function fetchSessionUser(): Promise<SessionUser | null> {
             .maybeSingle(),
           supabase.from("user_roles").select("role, school_id, user_id").eq("user_id", user.id),
         ]),
-        2500,
+        1800,
         "profiles+roles",
       ).catch(() => null),
     ]);
@@ -653,12 +652,12 @@ export function useSessionUser() {
         last,
         OfflineKeys.sessionUser,
         async () => {
-          const u = await withTimeout(fetchSessionUser(), 6000, "session");
+          const u = await withTimeout(fetchSessionUser(), 3500, "session");
           if (u?.userId) {
             rememberLastUserId(u.userId);
             const complete = u.role === "super_admin" || Boolean(u.schoolId);
             if (complete) {
-              await offlineSet(u.userId, OfflineKeys.sessionUser, u, { schoolId: u.schoolId });
+              void offlineSet(u.userId, OfflineKeys.sessionUser, u, { schoolId: u.schoolId });
               void mirrorSessionUser(u);
             }
           }
@@ -667,12 +666,12 @@ export function useSessionUser() {
         { fallback: null },
       );
     },
-    staleTime: 15_000,
+    staleTime: 60_000,
     gcTime: 30 * 60_000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: "always",
-    retry: 2,
-    retryDelay: 600,
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    retry: 1,
+    retryDelay: 400,
   });
 }
 
