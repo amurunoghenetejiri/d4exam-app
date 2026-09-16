@@ -1,8 +1,16 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchSessionUser, roleHome, seedPendingLoginRole, setPreferredRole, rememberLastPath, readLastPath, type AppRole } from "@/lib/session";
+import {
+  fetchSessionUser,
+  roleHome,
+  seedPendingLoginRole,
+  setPreferredRole,
+  rememberLastPath,
+  readLastPath,
+  type AppRole,
+} from "@/lib/session";
 import { signInWithSchoolCode } from "@/lib/auth.functions";
 import { ensureLoginAccount } from "@/lib/ensure-login.functions";
 import { saveCurrentAccountToVault, consumeAddAccountFlow, listSavedAccounts } from "@/lib/account-switcher";
@@ -35,7 +43,7 @@ export const Route = createFileRoute("/login")({
     try {
       if (typeof window !== "undefined") {
         const q = new URLSearchParams(window.location.search);
-        if (q.get("addAccount") === "1") return;
+        if (q.get("addAccount") === "1" || q.get("switch") === "1") return;
       }
     } catch {
       /* ignore */
@@ -91,13 +99,28 @@ function friendlyLoginError(err: unknown): string {
   return cleaned || msg;
 }
 
+function readQueryPrefill(): { email: string; isSwitch: boolean; isAdd: boolean } {
+  if (typeof window === "undefined") return { email: "", isSwitch: false, isAdd: false };
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const email = (q.get("email") || "").trim();
+    const isSwitch = q.get("switch") === "1";
+    const isAdd = q.get("addAccount") === "1";
+    return { email, isSwitch, isAdd };
+  } catch {
+    return { email: "", isSwitch: false, isAdd: false };
+  }
+}
+
 /** Full page load so Capacitor WebView always applies the new session. */
 async function goToRoleHome(role: string, rememberDevice = true) {
   const home = roleHome[role as AppRole];
   try {
     setPreferredRole(role as AppRole);
     rememberLastPath(home, role);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   if (!home) return false;
   const last = readLastPath();
   const prefix = home;
@@ -126,18 +149,24 @@ async function goToRoleHome(role: string, rememberDevice = true) {
 function LoginPage() {
   const loginFn = useServerFn(signInWithSchoolCode);
   const ensureLoginFn = useServerFn(ensureLoginAccount);
+  const prefill = readQueryPrefill();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [code, setCode] = useState("");
-  const [identifier, setIdentifier] = useState("");
+  const [identifier, setIdentifier] = useState(prefill.email);
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
   const inFlight = useRef(false);
-  const isAddAccount =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).get("addAccount") === "1";
+  const isAddAccount = prefill.isAdd;
+  const isSwitchRefresh = prefill.isSwitch;
   const savedCount = typeof window !== "undefined" ? listSavedAccounts().length : 0;
+
+  useEffect(() => {
+    if (prefill.email && !identifier) {
+      setIdentifier(prefill.email);
+    }
+  }, [prefill.email]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function resolveRoleAndGoHome(): Promise<boolean> {
     try {
@@ -367,6 +396,18 @@ function LoginPage() {
     }
   }
 
+  const heading = isSwitchRefresh
+    ? "Refresh account"
+    : isAddAccount
+      ? "Add account"
+      : "Sign in";
+  const sub =
+    isSwitchRefresh
+      ? "Sign in once to refresh this saved account on this device."
+      : isAddAccount
+        ? "Sign in with another D4EXAM account. Existing accounts stay on this device."
+        : "Enter your credentials to continue.";
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto grid min-h-screen max-w-6xl lg:grid-cols-2">
@@ -399,14 +440,8 @@ function LoginPage() {
             <div className="mb-8 flex items-center gap-2 lg:hidden">
               <Logo className="h-9 w-auto" />
             </div>
-            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">
-              {isAddAccount ? "Add account" : "Sign in"}
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              {isAddAccount
-                ? "Sign in with another D4EXAM account. Existing accounts stay on this device."
-                : "Enter your credentials to continue."}
-            </p>
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">{heading}</h1>
+            <p className="mt-1 text-sm text-slate-500">{sub}</p>
             {savedCount > 0 ? (
               <p className="mt-2 text-xs font-medium text-slate-500">
                 {savedCount} account{savedCount === 1 ? "" : "s"} saved on this device — switch
@@ -497,7 +532,7 @@ function LoginPage() {
                   </>
                 ) : (
                   <>
-                    {isAddAccount ? "Add account" : "Sign in"}{" "}
+                    {isSwitchRefresh ? "Refresh & continue" : isAddAccount ? "Add account" : "Sign in"}{" "}
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </>
                 )}
