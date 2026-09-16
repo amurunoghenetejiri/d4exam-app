@@ -3,9 +3,9 @@ import { cn } from "@/lib/utils";
 import { hideSplashSafely } from "@/native/statusBar";
 
 /** Minimum time the splash stays on screen (ms). */
-const SPLASH_MIN_MS = 2800;
+const SPLASH_MIN_MS = 700;
 /** Absolute safety cap so splash never blocks forever. */
-const SPLASH_MAX_MS = 20000;
+const SPLASH_MAX_MS = 3500;
 /** Marks splash already dismissed for this app process / tab session. */
 const SESSION_KEY = "d4exam_splash_shown_v6";
 
@@ -146,7 +146,7 @@ export function AnimatedSplash({ force = false }: { force?: boolean }) {
     else window.addEventListener("load", onLoad);
     const safety = window.setTimeout(() => {
       if (!cancelled) setAppReady(true);
-    }, 4000);
+    }, 900);
     return () => {
       cancelled = true;
       window.removeEventListener("load", onLoad);
@@ -171,7 +171,7 @@ export function AnimatedSplash({ force = false }: { force?: boolean }) {
           setVisible(false);
           removeBootSplashDom();
           void hideSplashSafely();
-        }, 280);
+        }, 140);
         return;
       }
       if (elapsed >= SPLASH_MAX_MS) {
@@ -182,7 +182,7 @@ export function AnimatedSplash({ force = false }: { force?: boolean }) {
           setVisible(false);
           removeBootSplashDom();
           void hideSplashSafely();
-        }, 200);
+        }, 100);
       }
     };
 

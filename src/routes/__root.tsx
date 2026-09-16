@@ -58,8 +58,11 @@ function NativeBootstrap() {
           return;
         }
         (window as unknown as { __d4UnsubBack?: () => void }).__d4UnsubBack = unsubBack;
-        if (!cancelled) {
-          await initNativePushIfNeeded(session?.userId, session?.role);
+        // Non-blocking: never stall first paint / navigation on push setup
+        if (!cancelled && session?.userId) {
+          window.setTimeout(() => {
+            void initNativePushIfNeeded(session.userId, session.role);
+          }, 400);
         }
       } catch (e) {
         console.warn("[D4EXAM] Native bootstrap error", e);

@@ -90,7 +90,7 @@ export function InstallAndPushPrompt() {
     // Always re-register when already granted (keeps FCM token + SW fresh for background).
     // Only skip the permission *prompt* if we already asked this user.
     pushTried.current = true;
-    const delay = isNativeShell() ? 800 : 1200;
+    const delay = isNativeShell() ? 1500 : 2500;
     const t = window.setTimeout(() => {
       const st0 = getPushPermissionState();
       if (st0 === "granted") {
