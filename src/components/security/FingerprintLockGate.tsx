@@ -1,9 +1,9 @@
 /**
  * Full-screen fingerprint unlock gate for the native D4EXAM shell.
  *
- * Flow: splash fully done → this page mounts (visible) → native biometric prompt.
- * Never shows OS biometric over the splash. Never stores fingerprint data.
- * On success → unlock → role dashboard. Cancel/fail → stay on this page.
+ * Flow: ONE splash → this page (full screen, school logo) → native biometric → dashboard.
+ * No white loading gap between splash and this page.
+ * School users: school logo. Super Admin only: D4EXAM logo.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -17,7 +17,11 @@ import {
 } from "lucide-react";
 import { useRouterState } from "@tanstack/react-router";
 import { App as CapApp } from "@capacitor/app";
-import { useSessionUser, type AppRole } from "@/lib/session";
+import {
+  useSessionUser,
+  readCachedSchoolBrand,
+  type AppRole,
+} from "@/lib/session";
 import { isNativeShell } from "@/native/platform";
 import { authenticateWithFingerprint } from "@/native/fingerprintAuth";
 import {
@@ -27,12 +31,16 @@ import {
   isFingerprintLocked,
   markAppBackgrounded,
   markSessionUnlocked,
+  readFingerprintPref,
   setFingerprintLocked,
   shouldLockAfterBackground,
 } from "@/lib/fingerprint-lock";
+import { readLastUserId } from "@/lib/offline-query";
 import { cn } from "@/lib/utils";
 
 const SPLASH_SESSION_KEY = "d4exam_splash_shown_v6";
+/** App theme navy — matches Capacitor status bar / splash */
+const THEME_NAVY = "#0b1b3a";
 
 function isSplashStillShowing(): boolean {
   try {
@@ -100,9 +108,35 @@ function roleDashboardHint(role: AppRole | string | null | undefined): string {
   }
 }
 
+/** Proper name casing (not ALL CAPS). */
+function displayName(raw: string | null | undefined): string {
+  const s = (raw || "").trim();
+  if (!s) return "D4EXAM User";
+  // If already mixed case with spaces, keep as-is
+  if (/[a-z]/.test(s) && /[A-Z]/.test(s)) return s;
+  return s
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => (w ? w[0]!.toUpperCase() + w.slice(1) : ""))
+    .join(" ");
+}
+
+function lastKnownRole(): AppRole | null {
+  try {
+    const r =
+      window.localStorage.getItem("d4exam_last_role_v1") ||
+      window.localStorage.getItem("d4exam_preferred_role_v1");
+    const known = ["student", "teacher", "school_admin", "examination_officer", "super_admin"];
+    if (r && known.includes(r)) return r as AppRole;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 export function FingerprintLockGate() {
   const native = isNativeShell();
-  const { data: session, isLoading } = useSessionUser();
+  const { data: session } = useSessionUser();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [locked, setLocked] = useState(false);
   const [failedMsg, setFailedMsg] = useState<string | null>(null);
@@ -118,12 +152,13 @@ export function FingerprintLockGate() {
       return false;
     }
   });
+  const [logoBroken, setLogoBroken] = useState(false);
   const promptedRef = useRef(false);
   const runningRef = useRef(false);
 
-  const userId = session?.userId ?? null;
-  const isSuperAdmin = session?.role === "super_admin";
-  const RoleIcon = roleIcon(session?.role);
+  const pref = typeof window !== "undefined" ? readFingerprintPref() : null;
+  const lastUid = typeof window !== "undefined" ? readLastUserId() : null;
+  const userId = session?.userId ?? pref?.userId ?? lastUid ?? null;
 
   const isPublicAuthPath =
     pathname === "/login" ||
@@ -138,7 +173,7 @@ export function FingerprintLockGate() {
     pathname.startsWith("/support") ||
     pathname.startsWith("/privacy");
 
-  // Wait for splash to finish before any fingerprint UI / prompt
+  // Splash must finish before fingerprint page + OS prompt
   useEffect(() => {
     if (!native || splashDone) return;
     if (!isSplashStillShowing()) {
@@ -155,8 +190,8 @@ export function FingerprintLockGate() {
         setSplashDone(true);
         window.clearInterval(id);
       }
-    }, 80);
-    const cap = window.setTimeout(() => setSplashDone(true), 5_000);
+    }, 50);
+    const cap = window.setTimeout(() => setSplashDone(true), 2_200);
     return () => {
       window.clearInterval(id);
       window.clearTimeout(cap);
@@ -168,7 +203,24 @@ export function FingerprintLockGate() {
       setLocked(false);
       return;
     }
-    if (!userId || !isFingerprintEnabledFor(userId)) {
+    // Prefer live session userId; fall back to fingerprint pref / last user (no white gap while session loads)
+    const uid = session?.userId ?? pref?.userId ?? lastUid;
+    if (!uid || !isFingerprintEnabledFor(uid)) {
+      // If pref says enabled for some user, still lock even before session resolves
+      if (pref?.enabled && pref.userId && isFingerprintEnabledFor(pref.userId) && !isPublicAuthPath) {
+        if (isActiveCbtExamPath(pathname)) {
+          setLocked(false);
+          return;
+        }
+        if (isFingerprintLocked() || shouldLockAfterBackground()) {
+          setFingerprintLocked(true);
+          setLocked(true);
+          setFailedMsg(null);
+          setStatus("idle");
+          promptedRef.current = false;
+          return;
+        }
+      }
       setLocked(false);
       return;
     }
@@ -176,7 +228,6 @@ export function FingerprintLockGate() {
       setLocked(false);
       return;
     }
-    // Cold start / background: shouldLockAfterBackground covers both
     if (isFingerprintLocked() || shouldLockAfterBackground()) {
       setFingerprintLocked(true);
       setLocked(true);
@@ -186,19 +237,18 @@ export function FingerprintLockGate() {
       return;
     }
     setLocked(false);
-  }, [native, isPublicAuthPath, userId, pathname]);
+  }, [native, isPublicAuthPath, session?.userId, pathname, pref?.userId, pref?.enabled, lastUid]);
 
   useEffect(() => {
     if (!native) return;
     evaluateLock();
-  }, [native, evaluateLock, session?.userId]);
+  }, [native, evaluateLock, session?.userId, splashDone]);
 
-  // Background / resume lock
+  // Background / resume
   useEffect(() => {
     if (!native) return;
     let handle: { remove: () => Promise<void> } | null = null;
     let cancelled = false;
-
     void (async () => {
       try {
         handle = await CapApp.addListener("appStateChange", ({ isActive }) => {
@@ -211,7 +261,8 @@ export function FingerprintLockGate() {
             clearBackgroundMark();
             return;
           }
-          if (!isFingerprintEnabledFor(userId)) return;
+          const uid = session?.userId ?? pref?.userId ?? lastUid;
+          if (!isFingerprintEnabledFor(uid)) return;
           if (shouldLockAfterBackground()) {
             setFingerprintLocked(true);
             setLocked(true);
@@ -224,31 +275,24 @@ export function FingerprintLockGate() {
           clearBackgroundMark();
         });
       } catch {
-        /* web / missing plugin */
+        /* ignore */
       }
     })();
-
     return () => {
       cancelled = true;
       void handle?.remove();
     };
-  }, [native, userId]);
+  }, [native, session?.userId, pref?.userId, lastUid]);
 
-  // Page mounted + visible → mark ready (for auto biometric)
+  // Page visible → ready for OS prompt (never over splash)
   useEffect(() => {
     if (!locked || !splashDone || !native) {
       setPageReady(false);
       return;
     }
     setPageReady(false);
-    const t1 = window.requestAnimationFrame(() => {
-      const t2 = window.requestAnimationFrame(() => {
-        // small delay so paint is on screen before OS prompt
-        window.setTimeout(() => setPageReady(true), 280);
-      });
-      void t2;
-    });
-    return () => window.cancelAnimationFrame(t1);
+    const t = window.setTimeout(() => setPageReady(true), 200);
+    return () => window.clearTimeout(t);
   }, [locked, splashDone, native]);
 
   function finishUnlock() {
@@ -285,7 +329,7 @@ export function FingerprintLockGate() {
       });
       if (result.ok) {
         setStatus("success");
-        window.setTimeout(() => finishUnlock(), 350);
+        window.setTimeout(() => finishUnlock(), 280);
         return;
       }
       if (result.code === "cancelled") {
@@ -304,17 +348,14 @@ export function FingerprintLockGate() {
     }
   }
 
-  // Auto-open OS fingerprint AFTER splash done AND page ready (never over splash)
   useEffect(() => {
     if (!locked || !splashDone || !pageReady || !native) return;
     if (promptedRef.current || runningRef.current) return;
-    if (isLoading && !session) return;
     promptedRef.current = true;
     void tryUnlock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locked, splashDone, pageReady, native, isLoading, session?.userId]);
+  }, [locked, splashDone, pageReady, native]);
 
-  // Android back must not bypass unlock
   useEffect(() => {
     if (!locked || !native) return;
     let handle: { remove: () => Promise<void> } | null = null;
@@ -322,7 +363,7 @@ export function FingerprintLockGate() {
     void (async () => {
       try {
         handle = await CapApp.addListener("backButton", () => {
-          // Stay on fingerprint page — do not navigate away
+          /* stay on fingerprint page */
         });
         if (cancelled) await handle?.remove();
       } catch {
@@ -346,79 +387,98 @@ export function FingerprintLockGate() {
     }
   }
 
-  // Nothing while not locked, public path, or splash still up
+  // Cover the app as soon as splash is done and we need unlock — no white gap
   if (!native || !locked || isPublicAuthPath || !splashDone) {
     return null;
   }
 
-  const name = session?.fullName || "D4EXAM User";
-  const schoolName = isSuperAdmin ? null : session?.schoolName || null;
-  const logoUrl = isSuperAdmin ? null : session?.schoolLogoUrl || null;
-  const role = session?.role;
+  const role = (session?.role || lastKnownRole()) as AppRole | null;
+  const isSuperAdmin = role === "super_admin";
+  const RoleIcon = roleIcon(role);
   const label = roleLabel(role);
+
+  const cachedBrand = readCachedSchoolBrand(session?.schoolId);
+  const schoolName = isSuperAdmin
+    ? null
+    : session?.schoolName || cachedBrand?.name || null;
+  const schoolLogo =
+    !isSuperAdmin && !logoBroken
+      ? session?.schoolLogoUrl || cachedBrand?.logoUrl || null
+      : null;
+
+  const name = displayName(session?.fullName);
 
   return (
     <div
-      className="fixed inset-0 z-[99999] flex flex-col overflow-hidden"
+      className="fixed z-[99999] flex flex-col overflow-hidden"
       style={{
-        width: "100%",
-        height: "100%",
-        minHeight: "100dvh",
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: "100vw",
+        height: "100dvh",
+        maxWidth: "100vw",
         maxHeight: "100dvh",
-        background: "radial-gradient(ellipse at 50% 0%, #132a4d 0%, #0a1628 45%, #070d1b 100%)",
-        paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: "env(safe-area-inset-bottom)",
-        paddingLeft: "env(safe-area-inset-left)",
-        paddingRight: "env(safe-area-inset-right)",
+        margin: 0,
+        backgroundColor: THEME_NAVY,
+        background: THEME_NAVY,
+        paddingTop: "env(safe-area-inset-top, 0px)",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        paddingLeft: "env(safe-area-inset-left, 0px)",
+        paddingRight: "env(safe-area-inset-right, 0px)",
+        boxSizing: "border-box",
       }}
       role="dialog"
       aria-modal="true"
       aria-label="Unlock with fingerprint"
     >
-      {/* Soft blue glow accents */}
+      {/* Subtle theme glow only — same navy family */}
       <div
-        className="pointer-events-none absolute inset-0 opacity-40"
+        className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(circle at 50% 35%, rgba(37,99,235,0.25) 0%, transparent 55%)",
+            "radial-gradient(ellipse at 50% 28%, rgba(37,99,235,0.18) 0%, transparent 55%)",
         }}
       />
 
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center px-6 pb-6 pt-8">
-        {/* School logo or D4EXAM mark */}
-        <div className="mt-2 flex shrink-0 justify-center">
-          {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt={schoolName || "School"}
-              className="h-[min(28vw,112px)] w-[min(28vw,112px)] rounded-full border-2 border-white/20 bg-white object-contain shadow-lg shadow-blue-900/40"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          ) : (
-            <div className="grid h-[min(28vw,112px)] w-[min(28vw,112px)] place-items-center rounded-full border-2 border-[#2563eb]/50 bg-[#0b1b3a] shadow-lg shadow-blue-900/40">
-              <img src="/logo.png" alt="D4EXAM" className="h-[65%] w-[65%] object-contain" />
-            </div>
-          )}
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-between px-6 py-8">
+        <div className="flex w-full flex-col items-center pt-4">
+          {/* School logo (school users) or D4EXAM mark (super admin / missing logo) */}
+          <div className="flex shrink-0 justify-center">
+            {schoolLogo ? (
+              <img
+                src={schoolLogo}
+                alt={schoolName || "School"}
+                className="h-[min(30vw,120px)] w-[min(30vw,120px)] rounded-full border-2 border-white/20 bg-white object-contain shadow-lg shadow-black/30"
+                onError={() => setLogoBroken(true)}
+              />
+            ) : (
+              <div
+                className="grid h-[min(30vw,120px)] w-[min(30vw,120px)] place-items-center rounded-full border-2 border-[#2563eb]/45 shadow-lg shadow-black/30"
+                style={{ backgroundColor: THEME_NAVY }}
+              >
+                <img src="/logo.png" alt="D4EXAM" className="h-[68%] w-[68%] object-contain" />
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-slate-100">
+            <RoleIcon className="h-3.5 w-3.5 text-blue-300" aria-hidden />
+            {label}
+          </div>
+
+          <h1 className="mt-4 max-w-[22rem] text-center text-[1.35rem] font-bold leading-snug tracking-tight text-white sm:text-2xl">
+            {name}
+          </h1>
+          {!isSuperAdmin && schoolName ? (
+            <p className="mt-1.5 max-w-[20rem] text-center text-sm text-slate-400">{schoolName}</p>
+          ) : null}
         </div>
 
-        {/* Role badge */}
-        <div className="mt-5 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-slate-100 backdrop-blur-sm">
-          <RoleIcon className="h-3.5 w-3.5 text-blue-300" aria-hidden />
-          {label}
-        </div>
-
-        {/* Name + school */}
-        <h1 className="mt-4 max-w-[20rem] text-center text-xl font-bold tracking-tight text-white sm:text-2xl">
-          {isLoading && !session ? "Loading…" : name}
-        </h1>
-        {!isSuperAdmin && schoolName ? (
-          <p className="mt-1.5 max-w-[18rem] text-center text-sm text-slate-400">{schoolName}</p>
-        ) : null}
-
-        {/* Fingerprint control */}
-        <div className="mt-10 flex flex-1 flex-col items-center justify-center">
+        {/* Large fingerprint */}
+        <div className="flex flex-col items-center justify-center py-4">
           <button
             type="button"
             aria-label="Use fingerprint"
@@ -427,43 +487,40 @@ export function FingerprintLockGate() {
               promptedRef.current = false;
               void tryUnlock();
             }}
-            className="relative grid h-[140px] w-[140px] place-items-center focus:outline-none"
+            className="relative grid h-[168px] w-[168px] place-items-center focus:outline-none active:scale-[0.98]"
           >
-            {/* Outer rings */}
             <span
               className={cn(
-                "absolute inset-0 rounded-full border-2 border-[#2563eb]/35",
+                "absolute inset-0 rounded-full border-[2.5px] border-[#2563eb]/40",
                 status === "scanning" && "animate-pulse",
               )}
             />
             <span
               className={cn(
-                "absolute inset-[10px] rounded-full border border-[#3b82f6]/40",
+                "absolute inset-[12px] rounded-full border border-[#3b82f6]/45",
                 status === "scanning" && "animate-pulse",
               )}
             />
-            <span className="absolute inset-[22px] rounded-full bg-[#0b1b3a]/80 shadow-[0_0_40px_rgba(37,99,235,0.45)]" />
-
-            {/* Scan beam */}
+            <span
+              className="absolute inset-[26px] rounded-full shadow-[0_0_48px_rgba(37,99,235,0.5)]"
+              style={{ backgroundColor: "rgba(11,27,58,0.92)" }}
+            />
             {status === "scanning" ? (
               <span
-                className="pointer-events-none absolute left-[22px] right-[22px] z-20 h-1 rounded-full bg-gradient-to-r from-transparent via-sky-300 to-transparent opacity-90"
-                style={{
-                  animation: "d4-fp-scan 1.4s ease-in-out infinite",
-                }}
+                className="pointer-events-none absolute left-[28px] right-[28px] z-20 h-1.5 rounded-full bg-gradient-to-r from-transparent via-sky-300 to-transparent"
+                style={{ animation: "d4-fp-scan 1.35s ease-in-out infinite" }}
               />
             ) : null}
-
             <Fingerprint
               className={cn(
-                "relative z-10 h-14 w-14",
+                "relative z-10 h-[72px] w-[72px]",
                 status === "success"
                   ? "text-emerald-400"
                   : status === "failed"
                     ? "text-amber-300"
                     : "text-[#60a5fa]",
               )}
-              strokeWidth={1.5}
+              strokeWidth={1.35}
             />
           </button>
 
@@ -474,13 +531,12 @@ export function FingerprintLockGate() {
                 ? "Waiting for fingerprint…"
                 : "Use your fingerprint"}
           </p>
-          <p className="mt-2 max-w-[16rem] text-center text-sm text-slate-400">
+          <p className="mt-2 max-w-[17rem] text-center text-sm leading-relaxed text-slate-400">
             {failedMsg || roleDashboardHint(role)}
           </p>
         </div>
 
-        {/* Bottom: Use login only (no Cancel) */}
-        <div className="mt-auto flex w-full shrink-0 justify-center pb-2 pt-4">
+        <div className="flex w-full shrink-0 justify-center pb-1">
           <button
             type="button"
             onClick={usePasswordLogin}
@@ -494,9 +550,9 @@ export function FingerprintLockGate() {
 
       <style>{`
         @keyframes d4-fp-scan {
-          0% { top: 28%; opacity: 0.35; }
-          50% { top: 68%; opacity: 1; }
-          100% { top: 28%; opacity: 0.35; }
+          0% { top: 26%; opacity: 0.3; }
+          50% { top: 70%; opacity: 1; }
+          100% { top: 26%; opacity: 0.3; }
         }
       `}</style>
     </div>
