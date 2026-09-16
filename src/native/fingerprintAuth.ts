@@ -1,21 +1,15 @@
 /**
- * Fingerprint biometric auth for the native D4EXAM shell.
- * Uses OS BiometricPrompt — never stores fingerprint data.
+ * Fingerprint auth for native D4EXAM (Android).
+ * Opens the system BiometricPrompt — never stores fingerprint data.
  */
+import { registerPlugin } from "@capacitor/core";
 import { isNativeShell } from "@/native/platform";
 
 export type FingerprintAvailability =
   | { ok: true; hasFingerprint: true }
   | {
       ok: false;
-      reason:
-        | "web"
-        | "no_plugin"
-        | "no_hardware"
-        | "not_enrolled"
-        | "no_fingerprint"
-        | "timeout"
-        | "unknown";
+      reason: "web" | "no_plugin" | "no_hardware" | "not_enrolled" | "timeout" | "unknown";
       message: string;
     };
 
@@ -27,76 +21,91 @@ export type FingerprintAuthResult =
       message: string;
     };
 
-const BiometryType = {
-  NONE: 0,
-  TOUCH_ID: 1,
-  FACE_ID: 2,
-  FINGERPRINT: 3,
-  FACE_AUTHENTICATION: 4,
-  IRIS_AUTHENTICATION: 5,
-  MULTIPLE: 6,
-  DEVICE_CREDENTIAL: 7,
-} as const;
-
-const LOAD_TIMEOUT_MS = 4_000;
-const CHECK_TIMEOUT_MS = 6_000;
-const AUTH_TIMEOUT_MS = 30_000;
-
 type NativeBiometricPlugin = {
   isAvailable: (opts?: { useFallback?: boolean }) => Promise<{
     isAvailable: boolean;
     biometryType?: number;
     errorCode?: number;
-    authenticationStrength?: number;
   }>;
   verifyIdentity: (opts: Record<string, unknown>) => Promise<void>;
 };
 
+const LOAD_MS = 3_000;
+const CHECK_MS = 5_000;
+const AUTH_MS = 20_000;
+
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = window.setTimeout(() => reject(new Error(`${label}_timeout`)), ms);
-    promise
-      .then((v) => {
+    let done = false;
+    const t = window.setTimeout(() => {
+      if (done) return;
+      done = true;
+      reject(new Error(`${label}_timeout`));
+    }, ms);
+    promise.then(
+      (v) => {
+        if (done) return;
+        done = true;
         window.clearTimeout(t);
         resolve(v);
-      })
-      .catch((e) => {
+      },
+      (e) => {
+        if (done) return;
+        done = true;
         window.clearTimeout(t);
         reject(e);
-      });
+      },
+    );
   });
 }
 
-async function loadPlugin(): Promise<NativeBiometricPlugin | null> {
-  if (!isNativeShell()) return null;
-  try {
-    // Capacitor bridge present?
-    const cap = (window as unknown as {
-      Capacitor?: { isPluginAvailable?: (n: string) => boolean };
-    }).Capacitor;
-    if (cap?.isPluginAvailable && !cap.isPluginAvailable("NativeBiometric")) {
-      // Plugin JS may still exist; native side not registered — fail fast
-      // (still try import in case name differs)
-    }
+let cachedPlugin: NativeBiometricPlugin | null | undefined;
 
+async function getPlugin(): Promise<NativeBiometricPlugin | null> {
+  if (!isNativeShell()) return null;
+  if (cachedPlugin !== undefined) return cachedPlugin;
+
+  try {
+    // 1) Official package export
     const mod = await withTimeout(
       import("@capgo/capacitor-native-biometric"),
-      LOAD_TIMEOUT_MS,
-      "fp_load",
+      LOAD_MS,
+      "fp_import",
     );
-    const plugin = (mod as { NativeBiometric?: NativeBiometricPlugin }).NativeBiometric;
-    if (!plugin || typeof plugin.isAvailable !== "function") return null;
-    return plugin;
+    const fromMod = (mod as { NativeBiometric?: NativeBiometricPlugin }).NativeBiometric;
+    if (fromMod && typeof fromMod.verifyIdentity === "function") {
+      cachedPlugin = fromMod;
+      return cachedPlugin;
+    }
   } catch {
-    return null;
+    /* try registerPlugin */
   }
-}
 
-function acceptsBiometry(biometryType: number | undefined): boolean {
-  if (biometryType == null || !Number.isFinite(biometryType)) return true;
-  const t = Number(biometryType);
-  if (t === BiometryType.NONE || t === BiometryType.DEVICE_CREDENTIAL) return false;
-  return t > 0;
+  try {
+    // 2) Capacitor bridge by plugin name (works after cap sync)
+    const registered = registerPlugin<NativeBiometricPlugin>("NativeBiometric");
+    if (registered && typeof registered.verifyIdentity === "function") {
+      cachedPlugin = registered;
+      return cachedPlugin;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const cap = (window as unknown as { Capacitor?: { Plugins?: Record<string, NativeBiometricPlugin> } })
+      .Capacitor;
+    const p = cap?.Plugins?.NativeBiometric;
+    if (p && typeof p.verifyIdentity === "function") {
+      cachedPlugin = p;
+      return cachedPlugin;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  cachedPlugin = null;
+  return null;
 }
 
 export async function checkFingerprintAvailable(): Promise<FingerprintAvailability> {
@@ -107,21 +116,17 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
       message: "Fingerprint unlock is only available in the D4EXAM Android app.",
     };
   }
-  const plugin = await loadPlugin();
+  const plugin = await getPlugin();
   if (!plugin) {
     return {
       ok: false,
       reason: "no_plugin",
       message:
-        "Fingerprint is not in this app build. Install the latest D4EXAM APK from Settings or the download link, then try again.",
+        "Fingerprint is not in this app build. Install the latest D4EXAM APK, then try again.",
     };
   }
   try {
-    const info = await withTimeout(
-      plugin.isAvailable({ useFallback: false }),
-      CHECK_TIMEOUT_MS,
-      "fp_check",
-    );
+    const info = await withTimeout(plugin.isAvailable({ useFallback: false }), CHECK_MS, "fp_check");
     if (!info?.isAvailable) {
       const code = info?.errorCode;
       if (code === 3 || code === 1 || code === -1) {
@@ -129,31 +134,21 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
           ok: false,
           reason: "not_enrolled",
           message:
-            "No fingerprint is enrolled on this device. Add one in Android Settings → Security, then try again.",
+            "No fingerprint enrolled. Add one in Android Settings → Security, then try again.",
         };
       }
       return {
         ok: false,
         reason: "no_hardware",
-        message: "Fingerprint unlock is not available on this device.",
-      };
-    }
-    if (!acceptsBiometry(info.biometryType)) {
-      return {
-        ok: false,
-        reason: "no_fingerprint",
-        message: "This device does not support biometric unlock for D4EXAM.",
+        message: "Fingerprint is not available on this device.",
       };
     }
     return { ok: true, hasFingerprint: true };
   } catch (e) {
     const msg = String((e as Error)?.message || e || "").toLowerCase();
     if (msg.includes("timeout")) {
-      return {
-        ok: false,
-        reason: "timeout",
-        message: "Fingerprint check timed out. Close and reopen the app, then try again.",
-      };
+      // Don't block Enable — still allow verifyIdentity attempt
+      return { ok: true, hasFingerprint: true };
     }
     return {
       ok: false,
@@ -163,35 +158,44 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
   }
 }
 
+/**
+ * Shows the system fingerprint dialog immediately.
+ * Call this on a user tap (Enable / Unlock).
+ */
 export async function authenticateWithFingerprint(opts?: {
   reason?: string;
   title?: string;
   subtitle?: string;
 }): Promise<FingerprintAuthResult> {
-  const availability = await checkFingerprintAvailable();
-  if (!availability.ok) {
-    return { ok: false, code: "unavailable", message: availability.message };
+  if (!isNativeShell()) {
+    return {
+      ok: false,
+      code: "unavailable",
+      message: "Fingerprint unlock is only available in the D4EXAM Android app.",
+    };
   }
-  const plugin = await loadPlugin();
+  const plugin = await getPlugin();
   if (!plugin) {
     return {
       ok: false,
       code: "unavailable",
-      message: "Fingerprint unlock is not available in this app build.",
+      message:
+        "Fingerprint is not in this app build. Install the latest D4EXAM APK from the download link.",
     };
   }
+
   try {
     await withTimeout(
       plugin.verifyIdentity({
         reason: opts?.reason || "Unlock D4EXAM with your fingerprint",
         title: opts?.title || "D4EXAM",
-        subtitle: opts?.subtitle || "Use your fingerprint to continue",
-        description: "Place your finger on the sensor",
+        subtitle: opts?.subtitle || "Confirm it is you",
+        description: "Touch the fingerprint sensor",
         negativeButtonText: "Cancel",
         maxAttempts: 5,
         useFallback: false,
       }),
-      AUTH_TIMEOUT_MS,
+      AUTH_MS,
       "fp_auth",
     );
     return { ok: true };
@@ -208,7 +212,8 @@ export async function authenticateWithFingerprint(opts?: {
       msg.includes("cancel") ||
       msg.includes("user cancel") ||
       msg.includes("canceled") ||
-      msg.includes("dismiss")
+      msg.includes("dismiss") ||
+      msg.includes("user_cancel")
     ) {
       return { ok: false, code: "cancelled", message: "Fingerprint cancelled." };
     }
@@ -216,21 +221,25 @@ export async function authenticateWithFingerprint(opts?: {
       return {
         ok: false,
         code: "failed",
-        message: "Too many failed attempts. Use password login or try again later.",
+        message: "Too many failed attempts. Try again later.",
       };
     }
-    if (msg.includes("not available") || msg.includes("no biometrics") || msg.includes("unimplemented")) {
+    if (
+      msg.includes("not available") ||
+      msg.includes("no biometrics") ||
+      msg.includes("unimplemented") ||
+      msg.includes("not implemented")
+    ) {
       return {
         ok: false,
         code: "unavailable",
-        message:
-          "Fingerprint is not available in this app build. Install the latest D4EXAM APK.",
+        message: "Fingerprint is not available in this app build. Install the latest APK.",
       };
     }
     return {
       ok: false,
       code: "failed",
-      message: "Fingerprint not recognised. Try again or use password login.",
+      message: "Fingerprint not recognised. Try again.",
     };
   }
 }
