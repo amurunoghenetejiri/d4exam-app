@@ -1,20 +1,22 @@
 --- a/src/components/cbt/CbtExamSession.impl.tsx
 +++ b/src/components/cbt/CbtExamSession.impl.tsx
 @@ -17,6 +17,7 @@
+ import { type DeviceCapabilities } from "@/lib/device-capabilities";
  import { toast } from "sonner";
  import { ExamCameraPip, type FaceSecurityEvent } from "@/components/cbt/ExamCameraPip";
 +import { ExamCalculator, ExamCalculatorFab } from "@/components/cbt/ExamCalculator";
  import { saveCbtResult } from "@/lib/cbt-save-result";
  import { logSecurityEvent } from "@/lib/cbt-security";
  import { mapFaceSecurityEvent } from "@/lib/live-monitor";
-@@ -128,6 +129,8 @@
-   const [paused, setPaused] = useState(false);
-   const [warnBanner, setWarnBanner] = useState<string | null>(null);
-+  const [calcOpen, setCalcOpen] = useState(false);
-+  const calcOpenRef = useRef(false);
-   const [fsGate, setFsGate] = useState(false);
+@@ -131,6 +132,8 @@
+   const [tabSwitchCount, setTabSwitchCount] = useState(0);
    const [pauseRemainingSec, setPauseRemainingSec] = useState<number | null>(null);
    const [isOfficerPause, setIsOfficerPause] = useState(false);
++  const [calcOpen, setCalcOpen] = useState(false);
++  const calcOpenRef = useRef(false);
+   const attemptIdRef = useRef<string | null>(null);
+   const tabSwitchCountRef = useRef(0);
+   const fullscreenExitCountRef = useRef(0);
 @@ -198,7 +201,7 @@
      enabled: Boolean(id),
      queryFn: async () => {
@@ -24,38 +26,48 @@
          .eq("exam_id", id).maybeSingle();
        return data as ExamSettingsRow | null;
      },
-@@ -542,6 +545,13 @@
-     // eslint-disable-next-line react-hooks/exhaustive-deps
+@@ -543,6 +546,26 @@
    }, [started, done, previewMode, student?.studentId, id, liveAttemptId]);
  
+   // Integrity: fullscreen exit + app background / tab switch
++
 +  useEffect(() => {
 +    calcOpenRef.current = calcOpen;
 +    try {
-+      (window as unknown as { __d4CalcOpen?: boolean }).__d4CalcOpen = calcOpen;
++      const w = window as unknown as { __d4CalcOpen?: boolean; __d4CloseCalc?: () => void };
++      w.__d4CalcOpen = calcOpen;
++      w.__d4CloseCalc = () => setCalcOpen(false);
 +    } catch { /* ignore */ }
++    const onCloseEvt = () => setCalcOpen(false);
++    window.addEventListener("d4-close-calculator", onCloseEvt);
++    return () => {
++      window.removeEventListener("d4-close-calculator", onCloseEvt);
++      try {
++        const w = window as unknown as { __d4CalcOpen?: boolean; __d4CloseCalc?: () => void };
++        w.__d4CalcOpen = false;
++        w.__d4CloseCalc = undefined;
++      } catch { /* ignore */ }
++    };
 +  }, [calcOpen]);
 +
-   // Integrity: fullscreen exit + app background / tab switch
    useEffect(() => {
      if (!started || done || previewMode) return;
-@@ -588,6 +598,10 @@
+     const schoolId = String(examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId ?? "");
+@@ -588,6 +611,7 @@
  
      const recordTabLeave = () => {
        if (finishingRef.current || doneRef.current) return;
-+      // In-exam calculator is authorized — never count as tab leave
-+      try {
-+        if (calcOpenRef.current || (window as unknown as { __d4CalcOpen?: boolean }).__d4CalcOpen) return;
-+      } catch { /* ignore */ }
++      if (calcOpenRef.current || (window as unknown as { __d4CalcOpen?: boolean }).__d4CalcOpen) return;
        if (!security.tabMonitoring) {
          leftExamSessionRef.current = true;
          void flushAttemptProgress();
-@@ -1407,6 +1421,16 @@
+@@ -1395,6 +1419,16 @@
            </div>
          </div>
        )}
-+      {started && !done && !previewMode && Boolean(security.allowCalculator) && (
++      {started && !done && !previewMode && security.allowCalculator && (
 +        <>
-+          {!calcOpen && <ExamCalculatorFab onClick={() => setCalcOpen(true)} />}
++          <ExamCalculatorFab onClick={() => setCalcOpen(true)} />
 +          <ExamCalculator
 +            open={calcOpen}
 +            mode={security.calculatorType === "scientific" ? "scientific" : "basic"}
@@ -63,6 +75,6 @@
 +          />
 +        </>
 +      )}
-     </div>
-   );
- }
+       {fsGate && security.fullscreen && started && !done && !paused && (
+         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-sm">
+           <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-white p-6 text-center shadow-2xl">
