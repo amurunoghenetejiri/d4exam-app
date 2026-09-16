@@ -1,10 +1,9 @@
 --- a/src/routes/teacher.examinations.tsx
 +++ b/src/routes/teacher.examinations.tsx
-@@ -98,6 +98,15 @@
+@@ -98,6 +98,14 @@
      const row = toExamSettingsRow(examId, security, 0, questionsToAnswer);
      const { error } = await supabase.from("exam_settings").upsert(row as never, { onConflict: "exam_id" });
      if (error) {
-+      // Older DBs may lack calculator columns — retry without them (JSON in description still holds settings)
 +      const msg = String(error.message || "");
 +      if (msg.includes("allow_calculator") || msg.includes("calculator_type") || msg.includes("schema cache")) {
 +        const { allow_calculator: _a, calculator_type: _b, ...rest } = row as Record<string, unknown>;
@@ -16,21 +15,19 @@
        console.warn("exam_settings upsert skipped:", error.message);
        return { savedToTable: false as const, error: error.message };
      }
-@@ -685,6 +694,41 @@
+@@ -685,6 +693,39 @@
                    </SelectContent>
                  </Select>
                </div>
-+              <p className="pt-2 text-xs font-bold uppercase tracking-wide text-slate-500">Calculator</p>
 +              <SecToggle
 +                label="Allow calculator during examination"
-+                hint="Students can open an in-exam calculator. Does not count as leaving the exam."
++                hint="Students get a floating calculator button in the CBT session"
 +                checked={Boolean(security.allowCalculator)}
 +                onChange={(v) => toggleSec("allowCalculator", v)}
 +              />
 +              {security.allowCalculator && (
-+                <div className="space-y-2 rounded-xl border border-slate-200 px-4 py-3">
++                <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
 +                  <Label className="font-semibold">Calculator type</Label>
-+                  <p className="text-xs text-slate-500">Only the selected type is available to students.</p>
 +                  <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
 +                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-800">
 +                      <input
@@ -57,3 +54,4 @@
 +              )}
              </div>
            )}
+           {step === 4 && (
