@@ -7,7 +7,6 @@ import {
   CalendarDays,
   Loader2,
   CheckCircle2,
-  FileText,
   ArrowLeft,
 } from "lucide-react";
 import { PageHeader, SectionCard, StatusBadge, EmptyState } from "@/components/dashboard/kit";
@@ -257,10 +256,7 @@ function Page() {
                     ) : null}
                   </p>
                 </div>
-                <Button
-                  className="shrink-0 font-semibold"
-                  onClick={() => setSelected(item)}
-                >
+                <Button className="shrink-0 font-semibold" onClick={() => setSelected(item)}>
                   <Send className="mr-1.5 h-4 w-4" />
                   Post to students
                 </Button>

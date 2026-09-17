@@ -228,25 +228,25 @@ function Page() {
           color="bg-violet-50 text-violet-600"
         />
         <Stat
-          to="/officer/post-to-students"
-          label="Post to students"
-          value={postQueueValue}
-          icon={Send}
-          color="bg-emerald-50 text-emerald-600"
-        />
-        <Stat
           to="/officer/live-monitor"
-          label="Live examinations"
+          label="Live monitoring"
           value={liveValue}
           icon={Radio}
           color="bg-blue-50 text-blue-600"
         />
         <Stat
-          to="/officer/integrity"
-          label="Ongoing (integrity)"
+          to="/officer/live-monitor"
+          label="Active writers"
           value={integrityValue}
-          icon={ShieldAlert}
-          color="bg-red-50 text-red-600"
+          icon={Radio}
+          color="bg-sky-50 text-sky-600"
+        />
+        <Stat
+          to="/officer/post-to-students"
+          label="Post to students"
+          value={postQueueValue}
+          icon={Send}
+          color="bg-emerald-50 text-emerald-600"
         />
       </div>
 

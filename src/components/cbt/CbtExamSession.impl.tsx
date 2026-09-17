@@ -147,8 +147,6 @@ export function CbtExamPage() {
   const endsAtRef = useRef<number | null>(null);
   /** True when pause is officer-driven (indefinite). */
   const officerPauseRef = useRef(false);
-  const officerPauseStartedAtRef = useRef<number | null>(null);
-  const [officerPauseElapsedSec, setOfficerPauseElapsedSec] = useState(0);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const [liveAttemptId, setLiveAttemptId] = useState<string | null>(null);
@@ -404,21 +402,6 @@ export function CbtExamPage() {
 
 
   
-  useEffect(() => {
-    if (!paused || !isOfficerPause) {
-      officerPauseStartedAtRef.current = null;
-      setOfficerPauseElapsedSec(0);
-      return;
-    }
-    if (!officerPauseStartedAtRef.current) officerPauseStartedAtRef.current = Date.now();
-    const tick = () => {
-      const start = officerPauseStartedAtRef.current || Date.now();
-      setOfficerPauseElapsedSec(Math.max(0, Math.floor((Date.now() - start) / 1000)));
-    };
-    tick();
-    const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
-  }, [paused, isOfficerPause]);
 
   useExamAttemptHeartbeat({
     enabled: started && !done && !previewMode,
@@ -476,7 +459,9 @@ export function CbtExamPage() {
         setPauseReason("");
         setWarnBanner("Your examination has been resumed by the officer");
         window.setTimeout(() => setWarnBanner(null), 6000);
+        // Immediate resume — reconnect media without delay
         void reconnectCamera();
+        try { void requestExamFullscreen(); } catch { /* ignore */ }
       } else if (cmd === "terminate") {
         doneTerminatedRef.current = true;
         setDoneTerminated(true);
@@ -557,7 +542,7 @@ export function CbtExamPage() {
         /* ignore */
       }
     };
-    const t = window.setInterval(() => void poll(), 1500);
+    const t = window.setInterval(() => void poll(), 800);
     void poll();
     return () => {
       cancelled = true;
@@ -1395,13 +1380,6 @@ export function CbtExamPage() {
                 <p className="mt-2 text-sm text-slate-600">
                   This examination has been paused by the examination officer.
                 </p>
-                <p className="mt-4 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                  Paused for
-                </p>
-                <p className="mt-1 font-mono text-3xl font-extrabold tabular-nums text-primary">
-                  {String(Math.floor(officerPauseElapsedSec / 60)).padStart(2, "0")}:
-                  {String(officerPauseElapsedSec % 60).padStart(2, "0")}
-                </p>
                 {pauseReason ? (
                   <p className="mt-3 text-xs font-semibold text-slate-800">Reason: {pauseReason}</p>
                 ) : null}
@@ -1409,7 +1387,7 @@ export function CbtExamPage() {
                   Waiting for the examination officer to resume your examination.
                 </p>
                 <p className="mt-2 text-[11px] text-slate-500">
-                  Camera and screen share are paused. The exam clock continues.
+                  You cannot answer questions while paused. The exam clock continues.
                 </p>
               </>
             ) : pauseRemainingSec != null && pauseRemainingSec > 0 ? (

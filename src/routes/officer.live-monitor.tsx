@@ -1076,6 +1076,8 @@ function Page() {
         if (error) throw error;
         await logSecurityEvent({ schoolId, examId, attemptId, studentId, eventType: "OFFICER_RELEASE", severity: "low", description: "Examination released by officer", extra: { source: "officer_live_monitor", officer_user_id: user?.userId ?? null } });
         await broadcastOfficerCommand("release", attemptId, studentId, examId);
+        window.setTimeout(() => { void broadcastOfficerCommand("resume", attemptId, studentId, examId); }, 300);
+        window.setTimeout(() => { void broadcastOfficerCommand("release", attemptId, studentId, examId); }, 900);
         qc.setQueryData(["officer-live-attempts", schoolId], (prev: unknown) => {
           if (!Array.isArray(prev)) return prev;
           return prev.map((row: { id?: string; metadata?: Record<string, unknown> }) => {
@@ -1643,6 +1645,34 @@ function Page() {
                 Number((selected.presence as { tabSwitchCount?: number }).tabSwitchCount ?? 0),
               ))} />
             </div>
+            {(() => {
+              const st = String(selected.a.status || "").toLowerCase();
+              const meta = (selected.a.metadata || {}) as Record<string, unknown>;
+              const isP =
+                Boolean(forcePausedIds[String(selected.a.id)]) ||
+                st === "paused" ||
+                st === "held" ||
+                meta.officer_hold === true ||
+                meta.officer_pause === true;
+              if (!isP || selected.isDone) return null;
+              const elapsed = formatPauseElapsed(
+                String(meta.officer_hold_at || ""),
+                Date.now(),
+              );
+              return (
+                <div className="mx-3 mt-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 sm:mx-4">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wide text-amber-800">
+                    Student exam paused
+                  </p>
+                  <p className="mt-0.5 text-xs font-semibold text-amber-900">
+                    Not actively writing · live pause time
+                  </p>
+                  <p className="mt-1 font-mono text-2xl font-extrabold tabular-nums text-amber-950">
+                    {elapsed}
+                  </p>
+                </div>
+              );
+            })()}
             {!selected.isDone && (
               <div className="flex flex-wrap gap-2 border-b border-slate-100 px-3 py-2.5 sm:px-4 sm:py-3">
                 <Button
