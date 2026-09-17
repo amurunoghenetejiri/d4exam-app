@@ -1,5 +1,5 @@
 /**
- * Full-screen role-aware D4EXAM search.
+ * Full-screen / panel role-aware D4EXAM search (white UI).
  * Queries scoped by role + school_id. Never throws to parent error boundary.
  */
 import { useEffect, useMemo, useState } from "react";
@@ -15,31 +15,64 @@ import {
   GraduationCap,
   Building2,
   Shield,
+  Bell,
+  Settings,
+  Sparkles,
+  Monitor,
+  LayoutGrid,
+  ChevronRight,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionUser, type AppRole } from "@/lib/session";
 
 type SearchHit = {
   id: string;
-  kind: "course" | "exam" | "student" | "teacher" | "material" | "feature" | "school";
+  kind: "course" | "exam" | "student" | "teacher" | "material" | "feature" | "school" | "action";
   title: string;
   subtitle?: string;
   meta?: string;
   href?: string;
 };
 
-const FEATURES: { q: string[]; title: string; href: string; roles?: AppRole[] }[] = [
-  { q: ["settings", "security", "password"], title: "Settings", href: "/settings" },
-  { q: ["notification", "alerts"], title: "Notifications", href: "/notifications" },
-  { q: ["material", "notes", "pdf"], title: "Materials", href: "/student/materials", roles: ["student"] },
-  { q: ["result", "score", "grade"], title: "Results", href: "/student/results", roles: ["student"] },
-  { q: ["exam", "cbt", "test"], title: "Examinations", href: "/student/examinations", roles: ["student"] },
-  { q: ["monitor", "live", "integrity"], title: "Live monitoring", href: "/officer/live-monitor", roles: ["examination_officer", "school_admin"] },
-  { q: ["approval", "approve"], title: "Approvals", href: "/officer/approvals", roles: ["examination_officer"] },
-  { q: ["study", "orb"], title: "Study Orb", href: "/student/study", roles: ["student"] },
+const FEATURES: {
+  q: string[];
+  title: string;
+  href: string;
+  roles?: AppRole[];
+  icon?: "settings" | "bell" | "materials" | "results" | "exams" | "monitor" | "study" | "support" | "courses";
+}[] = [
+  { q: ["settings", "security", "password"], title: "Settings", href: "/settings", icon: "settings" },
+  { q: ["notification", "alerts"], title: "Notifications", href: "/notifications", icon: "bell" },
+  { q: ["material", "notes", "pdf"], title: "Materials", href: "/student/materials", roles: ["student"], icon: "materials" },
+  { q: ["result", "score", "grade"], title: "Results", href: "/student/results", roles: ["student"], icon: "results" },
+  { q: ["exam", "cbt", "test"], title: "Examinations", href: "/student/examinations", roles: ["student"], icon: "exams" },
+  {
+    q: ["monitor", "live", "integrity"],
+    title: "Live monitoring",
+    href: "/officer/live-monitor",
+    roles: ["examination_officer", "school_admin"],
+    icon: "monitor",
+  },
+  { q: ["approval", "approve"], title: "Approvals", href: "/officer/approvals", roles: ["examination_officer"], icon: "exams" },
+  { q: ["study", "orb"], title: "Study Orb", href: "/student/study", roles: ["student"], icon: "study" },
+  { q: ["contact", "support", "help"], title: "Contact & Support", href: "/support", icon: "support" },
+  { q: ["course", "courses"], title: "Courses", href: "/student", roles: ["student"], icon: "courses" },
+];
+
+const SUGGESTED_CHIPS: { label: string; roles?: AppRole[] }[] = [
+  { label: "Students", roles: ["school_admin", "examination_officer", "super_admin", "teacher"] },
+  { label: "Teachers", roles: ["school_admin", "examination_officer", "super_admin"] },
+  { label: "Examinations" },
+  { label: "Courses" },
+  { label: "Materials", roles: ["student", "teacher", "school_admin"] },
+  { label: "Live exams", roles: ["examination_officer", "school_admin", "super_admin"] },
+  { label: "Results", roles: ["student", "teacher", "school_admin", "examination_officer"] },
+  { label: "Reports", roles: ["school_admin", "examination_officer", "super_admin"] },
 ];
 
 const RECENT_KEY = "d4_search_recent_v1";
+
+const KIND_ORDER = ["course", "exam", "student", "teacher", "material", "school", "feature", "action"] as const;
 
 function loadRecent(): string[] {
   try {
@@ -62,6 +95,14 @@ function saveRecent(q: string) {
   }
 }
 
+function clearRecent() {
+  try {
+    localStorage.removeItem(RECENT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 function safeGo(href: string | undefined) {
   if (!href) return;
   try {
@@ -73,6 +114,20 @@ function safeGo(href: string | undefined) {
       /* ignore */
     }
   }
+}
+
+function FeatureIcon({ name }: { name?: string }) {
+  const cls = "h-4 w-4 shrink-0 text-blue-600";
+  if (name === "settings") return <Settings className={cls} />;
+  if (name === "bell") return <Bell className={cls} />;
+  if (name === "materials") return <FileText className={cls} />;
+  if (name === "results") return <ClipboardList className={cls} />;
+  if (name === "exams") return <ClipboardList className={cls} />;
+  if (name === "monitor") return <Monitor className={cls} />;
+  if (name === "study") return <Sparkles className={cls} />;
+  if (name === "support") return <Shield className={cls} />;
+  if (name === "courses") return <BookOpen className={cls} />;
+  return <LayoutGrid className={cls} />;
 }
 
 export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -142,7 +197,6 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
     safeGo(hit.href);
   }
 
-  // Hooks must run unconditionally (before any return)
   const grouped = useMemo(() => {
     const g: Record<string, SearchHit[]> = {};
     for (const h of hits) {
@@ -151,6 +205,15 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
     return g;
   }, [hits]);
 
+  const orderedKinds = useMemo(() => {
+    const keys = Object.keys(grouped);
+    return keys.sort((a, b) => {
+      const ia = KIND_ORDER.indexOf(a as (typeof KIND_ORDER)[number]);
+      const ib = KIND_ORDER.indexOf(b as (typeof KIND_ORDER)[number]);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+  }, [grouped]);
+
   const kindLabel: Record<string, string> = {
     course: "Courses",
     exam: "Examinations",
@@ -158,8 +221,19 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
     teacher: "Teachers",
     material: "Materials",
     feature: "Features",
+    action: "Actions",
     school: "Schools",
   };
+
+  const suggested = useMemo(
+    () => SUGGESTED_CHIPS.filter((s) => !s.roles || s.roles.includes(role)),
+    [role],
+  );
+
+  const roleFeatures = useMemo(
+    () => FEATURES.filter((f) => !f.roles || f.roles.includes(role)),
+    [role],
+  );
 
   if (!open) return null;
   if (typeof document === "undefined") return null;
@@ -167,17 +241,7 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
   try {
     return createPortal(
       <div
-        className="fixed inset-0 z-[2147483000] flex flex-col bg-[#0b1b3a] text-white"
-        style={{
-          width: "100%",
-          height: "100%",
-          minHeight: "100vh",
-          minWidth: "100vw",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-        }}
+        className="fixed inset-0 z-[2147483000] flex justify-end sm:items-stretch"
         role="dialog"
         aria-modal="true"
         aria-label="Search D4EXAM"
@@ -185,108 +249,222 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
           if (e.key === "Escape") onClose();
         }}
       >
-        <div
-          className="flex items-center gap-2 border-b border-white/10 px-3 py-3"
-          style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
-        >
-          <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
-          <input
-            autoFocus
-            type="search"
-            enterKeyHint="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search students, courses, examinations…"
-            className="min-w-0 flex-1 bg-transparent text-base font-medium outline-none placeholder:text-slate-500"
-            autoComplete="off"
-            autoCorrect="off"
-          />
-          {busy ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : null}
-          <button
-            type="button"
-            onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10"
-            aria-label="Close search"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        {/* Backdrop — desktop keeps app visible but dimmed */}
+        <button
+          type="button"
+          className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+          aria-label="Close search"
+          onClick={onClose}
+        />
 
+        {/* Panel: full-screen on mobile, large white panel on desktop */}
         <div
-          className="flex-1 overflow-y-auto px-3 py-4"
-          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
+          className="relative flex h-full w-full flex-col bg-white text-slate-900 shadow-2xl sm:ml-auto sm:max-w-[440px] sm:border-l sm:border-slate-200 md:max-w-[520px]"
+          style={{
+            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          }}
         >
-          {err ? <p className="mb-3 text-center text-sm text-amber-300">{err}</p> : null}
+          {/* Header */}
+          <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-3">
+            <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <input
+              autoFocus
+              type="search"
+              enterKeyHint="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search D4EXAM…"
+              className="min-w-0 flex-1 bg-transparent text-base font-medium text-slate-900 outline-none placeholder:text-slate-400"
+              autoComplete="off"
+              autoCorrect="off"
+            />
+            {busy ? <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> : null}
+            {q ? (
+              <button
+                type="button"
+                onClick={() => setQ("")}
+                className="grid h-8 w-8 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                aria-label="Clear"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100"
+              aria-label="Close search"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
 
-          {q.trim().length < 2 ? (
-            <div className="space-y-6">
-              {recent.length ? (
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto px-4 py-4">
+            {err ? (
+              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-sm text-amber-800">
+                {err}
+              </p>
+            ) : null}
+
+            {q.trim().length < 2 ? (
+              <div className="space-y-6">
+                {recent.length ? (
+                  <section>
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        Recent searches
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearRecent();
+                          setRecent([]);
+                        }}
+                        className="text-xs font-medium text-blue-600 hover:underline"
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {recent.map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setQ(r)}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-700 hover:border-blue-200 hover:bg-blue-50"
+                        >
+                          <Search className="h-3 w-3 text-slate-400" />
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
                 <section>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Recent</p>
-                  <div className="flex flex-wrap gap-2">
-                    {recent.map((r) => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => setQ(r)}
-                        className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-slate-200"
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-              <section>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Suggested</p>
-                <div className="grid gap-2">
-                  {FEATURES.filter((f) => !f.roles || f.roles.includes(role)).map((f) => (
-                    <button
-                      key={f.title}
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        safeGo(f.href);
-                      }}
-                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left hover:bg-white/10"
-                    >
-                      <ClipboardList className="h-4 w-4 text-blue-300" />
-                      <span className="font-semibold">{f.title}</span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </div>
-          ) : hits.length === 0 && !busy ? (
-            <p className="py-12 text-center text-sm text-slate-400">No results for “{q.trim()}”</p>
-          ) : (
-            <div className="space-y-6">
-              {Object.entries(grouped).map(([kind, list]) => (
-                <section key={kind}>
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    {kindLabel[kind] || kind}
+                    Suggested searches
                   </p>
-                  <div className="grid gap-2">
-                    {list.map((h) => (
+                  <div className="grid grid-cols-2 gap-2">
+                    {suggested.map((s) => (
                       <button
-                        key={`${h.kind}-${h.id}`}
+                        key={s.label}
                         type="button"
-                        onClick={() => go(h)}
-                        className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left hover:bg-white/10"
+                        onClick={() => setQ(s.label)}
+                        className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-slate-800 shadow-sm hover:border-blue-200 hover:bg-blue-50/60"
                       >
-                        <HitIcon kind={h.kind} />
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-white">{h.title}</p>
-                          {h.subtitle ? <p className="mt-0.5 text-sm text-slate-300">{h.subtitle}</p> : null}
-                          {h.meta ? <p className="mt-1 text-xs text-slate-400">{h.meta}</p> : null}
-                        </div>
+                        <span className="grid h-7 w-7 place-items-center rounded-lg bg-blue-50 text-blue-600">
+                          <Search className="h-3.5 w-3.5" />
+                        </span>
+                        {s.label}
                       </button>
                     ))}
                   </div>
                 </section>
-              ))}
-            </div>
-          )}
+
+                <section>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    Quick links
+                  </p>
+                  <div className="grid gap-1.5">
+                    {roleFeatures.map((f) => (
+                      <button
+                        key={f.title}
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          safeGo(f.href);
+                        }}
+                        className="flex items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left hover:border-slate-200 hover:bg-slate-50"
+                      >
+                        <span className="grid h-9 w-9 place-items-center rounded-xl bg-blue-50">
+                          <FeatureIcon name={f.icon} />
+                        </span>
+                        <span className="min-w-0 flex-1 font-semibold text-slate-800">{f.title}</span>
+                        <ChevronRight className="h-4 w-4 text-slate-300" />
+                      </button>
+                    ))}
+                  </div>
+                </section>
+
+                <p className="pt-2 text-center text-[11px] text-slate-400">
+                  Press <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px]">Esc</kbd> to close
+                </p>
+              </div>
+            ) : busy && hits.length === 0 ? (
+              <div className="space-y-3 py-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Searching…</p>
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="flex animate-pulse items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3"
+                  >
+                    <div className="h-9 w-9 rounded-xl bg-slate-200" />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="h-3.5 w-2/3 rounded bg-slate-200" />
+                      <div className="h-3 w-1/2 rounded bg-slate-100" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : hits.length === 0 && !busy ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-slate-100">
+                  <Search className="h-6 w-6 text-slate-400" />
+                </div>
+                <p className="text-base font-semibold text-slate-800">No results for “{q.trim()}”</p>
+                <p className="mt-1 max-w-xs text-sm text-slate-500">
+                  Try a course code, exam name, matric number, or a feature like Materials.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {busy ? (
+                  <p className="flex items-center gap-2 text-xs font-medium text-slate-400">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-600" /> Updating results…
+                  </p>
+                ) : null}
+                {orderedKinds.map((kind) => {
+                  const list = grouped[kind] || [];
+                  if (!list.length) return null;
+                  return (
+                    <section key={kind}>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                        {kindLabel[kind] || kind}{" "}
+                        <span className="font-normal text-slate-300">({list.length})</span>
+                      </p>
+                      <div className="grid gap-2">
+                        {list.map((h) => (
+                          <button
+                            key={`${h.kind}-${h.id}`}
+                            type="button"
+                            onClick={() => go(h)}
+                            className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50/40"
+                          >
+                            <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50">
+                              <HitIcon kind={h.kind} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-slate-900">{h.title}</p>
+                              {h.subtitle ? (
+                                <p className="mt-0.5 text-sm text-slate-500">{h.subtitle}</p>
+                              ) : null}
+                              {h.meta ? (
+                                <p className="mt-1 text-xs text-slate-400">{h.meta}</p>
+                              ) : null}
+                            </div>
+                            <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-slate-300" />
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>,
       document.body,
@@ -298,13 +476,14 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
 }
 
 function HitIcon({ kind }: { kind: SearchHit["kind"] }) {
-  const cls = "h-5 w-5 shrink-0 text-blue-300 mt-0.5";
+  const cls = "h-4 w-4 text-blue-600";
   if (kind === "course") return <BookOpen className={cls} />;
   if (kind === "exam") return <ClipboardList className={cls} />;
   if (kind === "student") return <GraduationCap className={cls} />;
   if (kind === "teacher") return <Users className={cls} />;
   if (kind === "material") return <FileText className={cls} />;
   if (kind === "school") return <Building2 className={cls} />;
+  if (kind === "action") return <LayoutGrid className={cls} />;
   return <Shield className={cls} />;
 }
 
