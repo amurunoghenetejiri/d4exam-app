@@ -142,9 +142,7 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
     safeGo(hit.href);
   }
 
-  if (!open) return null;
-  if (typeof document === "undefined") return null;
-
+  // Hooks must run unconditionally (before any return)
   const grouped = useMemo(() => {
     const g: Record<string, SearchHit[]> = {};
     for (const h of hits) {
@@ -162,6 +160,9 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
     feature: "Features",
     school: "Schools",
   };
+
+  if (!open) return null;
+  if (typeof document === "undefined") return null;
 
   try {
     return createPortal(
