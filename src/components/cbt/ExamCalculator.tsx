@@ -248,6 +248,10 @@ function prettifyExpr(raw: string): string {
   for (const [a, b] of pairs) {
     s = s.split(a).join(b);
   }
+  // x² from trailing ^2 after a number/paren when entered via sq helper stays as is
+  s = s.replace(/\^2\b/g, "²");
+  s = s.replace(/\^3\b/g, "³");
+  s = s.replace(/\^/g, "^");
   return s;
 }
 
@@ -333,7 +337,8 @@ function scientificRows(angle: AngleMode, hyp: boolean): KeyDef[][] {
     ],
     [
       { label: "x²", action: "sq" },
-      { label: "∛x", action: "cbrt(" },
+      { label: "√", action: "sqrt(" },
+      { label: "∛", action: "cbrt(" },
       { label: "√x", action: "sqrt(" },
       { label: "eˣ", action: "exp(" },
       { label: "x⁻¹", action: "inv" },
@@ -596,10 +601,13 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         left: 0,
         right: 0,
         bottom: 0,
-        width: "100vw",
-        height: "100dvh",
+        width: "100%",
+        height: "100%",
+        minWidth: "100vw",
+        minHeight: "100vh",
         maxWidth: "100vw",
-        maxHeight: "100dvh",
+        maxHeight: "100vh",
+        inset: 0,
         margin: 0,
         zIndex: 2147483000,
         backgroundColor: "#0b1b3a",

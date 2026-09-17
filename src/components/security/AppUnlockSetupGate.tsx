@@ -57,6 +57,19 @@ export function AppUnlockSetupGate() {
     };
   }, [session?.userId, isPublic, pathname]);
 
+  useEffect(() => {
+    if (!needed) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    document.body.classList.add("d4-setup-lock-active");
+    return () => {
+      document.body.style.overflow = prev;
+      document.documentElement.style.overflow = "";
+      document.body.classList.remove("d4-setup-lock-active");
+    };
+  }, [needed]);
+
   if (!needed || !session?.userId || isPublic || typeof document === "undefined") {
     return null;
   }
@@ -119,19 +132,37 @@ export function AppUnlockSetupGate() {
     <div
       style={{
         position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: "100%",
+        height: "100%",
+        minWidth: "100vw",
+        minHeight: "100vh",
+        maxWidth: "100vw",
+        maxHeight: "100vh",
         inset: 0,
-        zIndex: 2147482900,
+        margin: 0,
+        zIndex: 2147483645,
+        backgroundColor: THEME_NAVY,
         background: THEME_NAVY,
         display: "flex",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        padding: "1rem",
+        paddingTop: "max(1rem, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))",
+        paddingLeft: "max(1rem, env(safe-area-inset-left, 0px))",
+        paddingRight: "max(1rem, env(safe-area-inset-right, 0px))",
+        boxSizing: "border-box",
+        overflow: "hidden",
       }}
       role="dialog"
       aria-modal="true"
       aria-label="Set app unlock password"
     >
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f1f3d] p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f1f3d]/95 p-6 shadow-2xl">
         {step === "password" ? (
           <>
             <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-blue-600/20 text-blue-300">

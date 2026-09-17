@@ -26,7 +26,6 @@ import { isNativeShell } from "@/native/platform";
 import { authenticateWithFingerprint } from "@/native/fingerprintAuth";
 import {
   clearBackgroundMark,
-  isActiveCbtExamPath,
   isFingerprintEnabledFor,
   isFingerprintLocked,
   isSessionUnlocked,
@@ -288,10 +287,7 @@ export function FingerprintLockGate() {
       setLocked(false);
       return;
     }
-    if (isActiveCbtExamPath(pathname)) {
-      setLocked(false);
-      return;
-    }
+    // Always require unlock after leaving the app — including during exams (user policy).
     if (isFingerprintLocked() || shouldLockAfterBackground() || hasAppPw) {
       // Cold start / background: require unlock when app password or fingerprint is configured
       if (isSessionUnlocked() && !isFingerprintLocked() && !shouldLockAfterBackground()) {
@@ -333,10 +329,7 @@ export function FingerprintLockGate() {
             markAppBackgrounded();
             return;
           }
-          if (isActiveCbtExamPath()) {
-            clearBackgroundMark();
-            return;
-          }
+          // Always lock on return from background (including during exam)
           const uid = session?.userId ?? pref?.userId ?? lastUid;
           const canLock = isFingerprintEnabledFor(uid) || hasAppPw;
           if (!canLock) return;
@@ -522,6 +515,7 @@ export function FingerprintLockGate() {
         zIndex: 2147483000,
         backgroundColor: THEME_NAVY,
         background: THEME_NAVY,
+        WebkitBackfaceVisibility: "hidden",
         boxSizing: "border-box",
         overflow: "hidden",
         display: "flex",
@@ -636,40 +630,45 @@ export function FingerprintLockGate() {
               promptedRef.current = false;
               void tryUnlock();
             }}
-            className="relative grid h-[min(128px,28vw)] w-[min(128px,28vw)] place-items-center focus:outline-none active:scale-[0.98]"
+            className="d4-fp-btn-3d relative grid h-[min(132px,30vw)] w-[min(132px,30vw)] place-items-center rounded-full focus:outline-none"
+            style={{
+              background: "radial-gradient(circle at 50% 40%, #1e3a8a 0%, #0b1b3a 70%)",
+              border: "2px solid rgba(59,130,246,0.55)",
+            }}
           >
+            {/* Always-on expanding rings (show clickable) */}
+            <span className="d4-fp-ring-anim pointer-events-none absolute inset-[-6px] rounded-full border-2 border-[#3b82f6]/50" />
+            <span className="d4-fp-ring-anim-delay pointer-events-none absolute inset-[-14px] rounded-full border border-[#60a5fa]/35" />
             <span
               className={cn(
-                "absolute inset-0 rounded-full border-[2.5px] border-[#2563eb]/40",
-                status === "scanning" && "animate-pulse",
+                "absolute inset-0 rounded-full border-[2.5px] border-[#2563eb]/50",
               )}
             />
+            <span className="absolute inset-[12px] rounded-full border border-[#3b82f6]/40" />
             <span
-              className={cn(
-                "absolute inset-[10px] rounded-full border border-[#3b82f6]/45",
-                status === "scanning" && "animate-pulse",
-              )}
+              className="absolute inset-[22px] rounded-full"
+              style={{
+                backgroundColor: "rgba(11,27,58,0.92)",
+                boxShadow: "inset 0 2px 8px rgba(0,0,0,0.45), 0 0 36px rgba(37,99,235,0.4)",
+              }}
             />
-            <span
-              className="absolute inset-[22px] rounded-full shadow-[0_0_40px_rgba(37,99,235,0.45)]"
-              style={{ backgroundColor: "rgba(11,27,58,0.85)" }}
-            />
+            {/* Scan beam only while OS prompt is active */}
             {status === "scanning" ? (
               <span
-                className="pointer-events-none absolute left-[24px] right-[24px] z-20 h-1.5 rounded-full bg-gradient-to-r from-transparent via-sky-300 to-transparent"
+                className="pointer-events-none absolute left-[26px] right-[26px] z-20 h-1.5 rounded-full bg-gradient-to-r from-transparent via-sky-300 to-transparent"
                 style={{ animation: "d4-fp-scan 1.35s ease-in-out infinite" }}
               />
             ) : null}
             <Fingerprint
               className={cn(
-                "relative z-10 h-[min(52px,12vw)] w-[min(52px,12vw)]",
+                "relative z-10 h-[min(56px,14vw)] w-[min(56px,14vw)]",
                 status === "success"
                   ? "text-emerald-400"
                   : status === "failed"
                     ? "text-amber-300"
                     : "text-[#60a5fa]",
               )}
-              strokeWidth={1.35}
+              strokeWidth={1.4}
             />
           </button>
 
@@ -738,7 +737,28 @@ export function FingerprintLockGate() {
           50% { top: 70%; opacity: 1; }
           100% { top: 26%; opacity: 0.3; }
         }
-      `}</style>
+      `}
+        @keyframes d4-fp-ring {
+          0% { transform: scale(1); opacity: 0.55; }
+          70% { transform: scale(1.2); opacity: 0; }
+          100% { transform: scale(1.2); opacity: 0; }
+        }
+        @keyframes d4-fp-pulse3d {
+          0% { transform: scale(1); box-shadow: 0 10px 0 #1e3a8a, 0 14px 32px rgba(37,99,235,0.4); }
+          50% { transform: scale(0.96); box-shadow: 0 4px 0 #1e3a8a, 0 8px 18px rgba(37,99,235,0.5); }
+          100% { transform: scale(1); box-shadow: 0 10px 0 #1e3a8a, 0 14px 32px rgba(37,99,235,0.4); }
+        }
+        .d4-fp-ring-anim { animation: d4-fp-ring 2.2s ease-out infinite; }
+        .d4-fp-ring-anim-delay { animation: d4-fp-ring 2.2s ease-out 0.75s infinite; }
+        .d4-fp-btn-3d {
+          animation: d4-fp-pulse3d 1.85s ease-in-out infinite;
+        }
+        .d4-fp-btn-3d:active {
+          animation: none !important;
+          transform: scale(0.92) translateY(5px) !important;
+          box-shadow: 0 2px 0 #1e3a8a, 0 4px 12px rgba(37,99,235,0.35) !important;
+        }
+      </style>
     </div>,
     document.body,
   );

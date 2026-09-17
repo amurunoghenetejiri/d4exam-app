@@ -1,17 +1,13 @@
 /**
  * App unlock password — separate from Supabase account password.
- * Per-account, device-local. Stores only salt + SHA-256 hash (never plaintext).
+ * Stored as salt+SHA-256 hash in localStorage AND auth user_metadata so the
+ * same password works on any device where the account is signed in.
+ * Never stores plaintext. Does NOT change the Supabase account password.
  */
 import { isNativeShell } from "@/native/platform";
 
-/** Native Preferences omitted intentionally — hard import breaks Vercel build. localStorage is durable in WebView. */
-async function prefsGet(_key: string): Promise<string | null> {
-  return null;
-}
-async function prefsSet(_key: string, _value: string): Promise<void> {}
-async function prefsRemove(_key: string): Promise<void> {}
-
 const STORAGE_KEY = "d4_app_unlock_v1";
+const META_KEY = "d4_app_unlock";
 
 export type AppUnlockRecord = {
   userId: string;
@@ -37,16 +33,8 @@ export async function hashAppPassword(password: string, salt: string): Promise<s
     .join("");
 }
 
-async function readRaw(): Promise<string | null> {
+async function readLocal(): Promise<string | null> {
   if (typeof window === "undefined") return null;
-  try {
-    if (isNativeShell()) {
-      const value = await prefsGet(STORAGE_KEY);
-      if (value) return value;
-    }
-  } catch {
-    /* fall through */
-  }
   try {
     return window.localStorage.getItem(STORAGE_KEY);
   } catch {
@@ -54,39 +42,32 @@ async function readRaw(): Promise<string | null> {
   }
 }
 
-async function writeRaw(json: string): Promise<void> {
+async function writeLocal(json: string): Promise<void> {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, json);
   } catch {
     /* ignore */
   }
-  try {
-    if (isNativeShell()) await prefsSet(STORAGE_KEY, json);
-  } catch {
-    /* ignore */
-  }
 }
 
-async function clearRaw(): Promise<void> {
+async function clearLocal(): Promise<void> {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
   } catch {
     /* ignore */
   }
-  try {
-    if (isNativeShell()) await prefsRemove(STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
 }
 
-export async function readAppUnlockRecord(): Promise<AppUnlockRecord | null> {
-  const raw = await readRaw();
-  if (!raw) return null;
+async function readCloud(): Promise<AppUnlockRecord | null> {
   try {
-    const v = JSON.parse(raw) as AppUnlockRecord;
+    const { supabase } = await import("@/integrations/supabase/client");
+    const { data } = await supabase.auth.getUser();
+    const meta = data.user?.user_metadata as Record<string, unknown> | undefined;
+    const raw = meta?.[META_KEY];
+    if (!raw || typeof raw !== "object") return null;
+    const v = raw as AppUnlockRecord;
     if (!v?.userId || !v?.salt || !v?.hash) return null;
     return v;
   } catch {
@@ -94,10 +75,59 @@ export async function readAppUnlockRecord(): Promise<AppUnlockRecord | null> {
   }
 }
 
+async function writeCloud(rec: AppUnlockRecord): Promise<void> {
+  try {
+    const { supabase } = await import("@/integrations/supabase/client");
+    await supabase.auth.updateUser({ data: { [META_KEY]: rec } });
+  } catch (e) {
+    console.warn("[app-unlock] cloud save failed", e);
+  }
+}
+
+async function clearCloud(): Promise<void> {
+  try {
+    const { supabase } = await import("@/integrations/supabase/client");
+    await supabase.auth.updateUser({ data: { [META_KEY]: null } });
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function readAppUnlockRecord(): Promise<AppUnlockRecord | null> {
+  // Prefer local for speed; fall back / merge with cloud
+  try {
+    const local = await readLocal();
+    if (local) {
+      const v = JSON.parse(local) as AppUnlockRecord;
+      if (v?.userId && v?.salt && v?.hash) return v;
+    }
+  } catch {
+    /* ignore */
+  }
+  const cloud = await readCloud();
+  if (cloud) {
+    // cache locally for offline unlock
+    try {
+      await writeLocal(JSON.stringify(cloud));
+    } catch {
+      /* ignore */
+    }
+    return cloud;
+  }
+  return null;
+}
+
 export async function hasAppUnlockFor(userId: string | null | undefined): Promise<boolean> {
   if (!userId) return false;
   const r = await readAppUnlockRecord();
-  return Boolean(r && r.userId === userId && r.hash);
+  if (r && r.userId === userId && r.hash) return true;
+  // Try cloud if local miss (other device set the password)
+  const cloud = await readCloud();
+  if (cloud && cloud.userId === userId && cloud.hash) {
+    await writeLocal(JSON.stringify(cloud));
+    return true;
+  }
+  return false;
 }
 
 export async function setAppUnlockPassword(userId: string, password: string): Promise<{ ok: boolean; error?: string }> {
@@ -115,7 +145,8 @@ export async function setAppUnlockPassword(userId: string, password: string): Pr
     createdAt: prev?.userId === userId ? prev.createdAt : now,
     updatedAt: now,
   };
-  await writeRaw(JSON.stringify(rec));
+  await writeLocal(JSON.stringify(rec));
+  await writeCloud(rec);
   return { ok: true };
 }
 
@@ -124,7 +155,11 @@ export async function verifyAppUnlockPassword(
   password: string,
 ): Promise<boolean> {
   if (!userId) return false;
-  const r = await readAppUnlockRecord();
+  let r = await readAppUnlockRecord();
+  if (!r || r.userId !== userId) {
+    r = await readCloud();
+    if (r && r.userId === userId) await writeLocal(JSON.stringify(r));
+  }
   if (!r || r.userId !== userId) return false;
   const h = await hashAppPassword(String(password || ""), r.salt);
   return h === r.hash;
@@ -144,12 +179,16 @@ export async function changeAppUnlockPassword(
 export async function clearAppUnlockFor(userId: string | null | undefined): Promise<void> {
   if (!userId) return;
   const r = await readAppUnlockRecord();
-  if (r && r.userId === userId) await clearRaw();
+  if (r && r.userId === userId) {
+    await clearLocal();
+    await clearCloud();
+  }
 }
 
-/** True if this account should show the app-unlock screen on return. */
 export async function needsAppUnlockScreen(userId: string | null | undefined): Promise<boolean> {
   if (!userId) return false;
-  const hasPw = await hasAppUnlockFor(userId);
-  return hasPw;
+  return hasAppUnlockFor(userId);
 }
+
+// silence unused in tree-shaking
+void isNativeShell;

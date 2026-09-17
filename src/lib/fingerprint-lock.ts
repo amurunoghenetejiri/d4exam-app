@@ -19,7 +19,7 @@ const BG_AT_KEY = "d4_fp_bg_at_v1";
 const SESSION_UNLOCKED_KEY = "d4_fp_session_unlocked_v1";
 
 /** Grace period (ms) after background before requiring fingerprint again */
-export const FP_LOCK_GRACE_MS = 30_000;
+export const FP_LOCK_GRACE_MS = 0_000;
 
 export type FingerprintLockPref = {
   enabled: boolean;
