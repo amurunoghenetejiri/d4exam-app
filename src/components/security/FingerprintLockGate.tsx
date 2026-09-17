@@ -467,6 +467,19 @@ export function FingerprintLockGate() {
   }, [native, locked, splashDone]);
 
   // Cover the app as soon as splash is done and we need unlock — no white gap
+  useEffect(() => {
+    if (!locked) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    document.body.classList.add("d4-fp-lock-active");
+    return () => {
+      document.body.style.overflow = prev;
+      document.documentElement.style.overflow = "";
+      document.body.classList.remove("d4-fp-lock-active");
+    };
+  }, [locked]);
+
   if (!native || !locked || isPublicAuthPath || !splashDone) {
     return null;
   }
@@ -487,19 +500,6 @@ export function FingerprintLockGate() {
 
   const name = displayName(session?.fullName);
 
-
-  useEffect(() => {
-    if (!locked) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
-    document.body.classList.add("d4-fp-lock-active");
-    return () => {
-      document.body.style.overflow = prev;
-      document.documentElement.style.overflow = "";
-      document.body.classList.remove("d4-fp-lock-active");
-    };
-  }, [locked]);
 
   return createPortal(
     <div
