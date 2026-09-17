@@ -1,10 +1,22 @@
 /**
  * Lightweight exam_attempts activity heartbeat for officer live discovery.
- * Updates updated_at + metadata.lastSeenAt only — never answers/status.
+ * Updates updated_at + metadata (lastSeenAt + live progress stats).
  */
 import { supabase } from "@/integrations/supabase/client";
 
-export async function pulseExamAttempt(attemptId: string | null | undefined): Promise<void> {
+export type AttemptPulseStats = {
+  answeredCount?: number;
+  totalQuestions?: number;
+  timeRemainingSec?: number | null;
+  tabSwitchCount?: number;
+  faceStatus?: string;
+  cameraActive?: boolean;
+};
+
+export async function pulseExamAttempt(
+  attemptId: string | null | undefined,
+  stats?: AttemptPulseStats | null,
+): Promise<void> {
   const id = String(attemptId || "");
   if (!id) return;
   try {
@@ -18,11 +30,24 @@ export async function pulseExamAttempt(attemptId: string | null | undefined): Pr
       row?.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
         ? (row.metadata as Record<string, unknown>)
         : {};
+    const nextMeta: Record<string, unknown> = {
+      ...prevMeta,
+      lastSeenAt: nowIso,
+    };
+    if (stats) {
+      if (typeof stats.answeredCount === "number") nextMeta.answeredCount = stats.answeredCount;
+      if (typeof stats.totalQuestions === "number") nextMeta.totalQuestions = stats.totalQuestions;
+      if (typeof stats.timeRemainingSec === "number") nextMeta.timeRemainingSec = stats.timeRemainingSec;
+      else if (stats.timeRemainingSec === null) nextMeta.timeRemainingSec = null;
+      if (typeof stats.tabSwitchCount === "number") nextMeta.tabSwitchCount = stats.tabSwitchCount;
+      if (stats.faceStatus) nextMeta.faceStatus = stats.faceStatus;
+      if (typeof stats.cameraActive === "boolean") nextMeta.cameraActive = stats.cameraActive;
+    }
     const { error } = await supabase
       .from("exam_attempts")
       .update({
         updated_at: nowIso,
-        metadata: { ...prevMeta, lastSeenAt: nowIso },
+        metadata: nextMeta,
       } as never)
       .eq("id", id)
       .in("status", ["in_progress", "paused", "held", "active"]);

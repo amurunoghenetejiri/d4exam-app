@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader, SectionCard, StatusBadge, EmptyState, NavCard } from "@/components/dashboard/kit";
 import { Button } from "@/components/ui/button";
-import { CheckSquare, Radio, FileText, ShieldAlert } from "lucide-react";
+import { CheckSquare, Radio, FileText, ShieldAlert, Send } from "lucide-react";
 import { useCount, useRows } from "@/lib/queries";
 import { useSessionUser } from "@/lib/session";
 import { supabase } from "@/integrations/supabase/client";
@@ -149,6 +149,33 @@ function Page() {
     },
   });
 
+
+  const readyToPost = useCount(
+    "examinations",
+    schoolId
+      ? [
+          { column: "school_id", value: schoolId },
+          { column: "status", value: "approved" },
+        ]
+      : [],
+    enabled,
+  );
+  // scheduled also ready — combine via lightweight query
+  const readyScheduled = useCount(
+    "examinations",
+    schoolId
+      ? [
+          { column: "school_id", value: schoolId },
+          { column: "status", value: "scheduled" },
+        ]
+      : [],
+    enabled,
+  );
+  const postQueueValue =
+    readyToPost.isLoading || readyScheduled.isLoading
+      ? "…"
+      : String((readyToPost.data ?? 0) + (readyScheduled.data ?? 0));
+
   const totalExams = useCount(
     "examinations",
     schoolId ? [{ column: "school_id", value: schoolId }] : [],
@@ -160,7 +187,7 @@ function Page() {
     select: "id, title, status, scheduled_start, courses(code)",
     filters: schoolId ? [{ column: "school_id", value: schoolId }] : [],
     order: { column: "created_at", ascending: false },
-    limit: 8,
+    limit: 5,
     enabled,
   });
 
@@ -201,18 +228,18 @@ function Page() {
           color="bg-violet-50 text-violet-600"
         />
         <Stat
+          to="/officer/post-to-students"
+          label="Post to students"
+          value={postQueueValue}
+          icon={Send}
+          color="bg-emerald-50 text-emerald-600"
+        />
+        <Stat
           to="/officer/live-monitor"
           label="Live examinations"
           value={liveValue}
           icon={Radio}
           color="bg-blue-50 text-blue-600"
-        />
-        <Stat
-          to="/officer/approvals"
-          label="Total exams"
-          value={fmt(totalExams)}
-          icon={FileText}
-          color="bg-slate-100 text-slate-700"
         />
         <Stat
           to="/officer/integrity"

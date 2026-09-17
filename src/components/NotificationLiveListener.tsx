@@ -1,12 +1,14 @@
 /**
  * Keep notification inbox counts fresh when a row is inserted.
- * Delivery is push-only (FCM / system tray) — no in-app toast banners here.
- * CBT integrity alerts and success toasts stay in their own flows.
+ * On native APK: also show a system LocalNotification when the app is open/backgrounded
+ * (FCM requires google-services.json — LocalNotifications work without it).
+ * CBT integrity alerts stay in their own flows.
  */
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionUser } from "@/lib/session";
+import { isNativeShell } from "@/native/platform";
 
 function isCountdownSpam(row: {
   title?: string;
@@ -20,6 +22,34 @@ function isCountdownSpam(row: {
   if (title.includes("starts in") || msg.includes("starts in")) return true;
   if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(msg.trim())) return true;
   return false;
+}
+
+async function showNativeLocalTray(title: string, body: string, link?: string | null) {
+  if (!isNativeShell()) return;
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    const perm = await LocalNotifications.checkPermissions();
+    if (perm.display !== "granted") {
+      const req = await LocalNotifications.requestPermissions();
+      if (req.display !== "granted") return;
+    }
+    const id = Math.floor(Date.now() % 2_000_000_000) + 1;
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id,
+          title: title || "D4EXAM",
+          body: body || "",
+          schedule: { at: new Date(Date.now() + 250) },
+          extra: { link: link || "/" },
+          smallIcon: "ic_stat_icon_config_sample",
+          iconColor: "#2563eb",
+        },
+      ],
+    });
+  } catch (e) {
+    console.warn("[notif] local tray failed", e);
+  }
 }
 
 export function NotificationLiveListener() {
@@ -65,7 +95,6 @@ export function NotificationLiveListener() {
               return;
             }
 
-            // Push (FCM / system notification) is the only delivery channel.
             void queryClient.invalidateQueries({ queryKey: ["count", "notifications"] });
             void queryClient.invalidateQueries({
               queryKey: ["count", "notifications", "unread", userId],
@@ -74,6 +103,13 @@ export function NotificationLiveListener() {
               queryKey: ["own-notifications", userId],
             });
             void queryClient.invalidateQueries({ queryKey: ["rows", "notifications"] });
+
+            // Native APK: system tray via LocalNotifications (works without FCM when app process alive)
+            void showNativeLocalTray(
+              String(row.title || "D4EXAM"),
+              String(row.message || ""),
+              row.link,
+            );
           } catch {
             /* ignore */
           }

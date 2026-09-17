@@ -147,6 +147,8 @@ export function CbtExamPage() {
   const endsAtRef = useRef<number | null>(null);
   /** True when pause is officer-driven (indefinite). */
   const officerPauseRef = useRef(false);
+  const officerPauseStartedAtRef = useRef<number | null>(null);
+  const [officerPauseElapsedSec, setOfficerPauseElapsedSec] = useState(0);
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const [liveAttemptId, setLiveAttemptId] = useState<string | null>(null);
@@ -359,7 +361,7 @@ export function CbtExamPage() {
   }, []);
 
   useLiveCamPublish({
-    enabled: started && !done && !previewMode && Boolean(security.requireCamera),
+    enabled: started && !done && !previewMode && !paused && Boolean(security.requireCamera),
     schoolId: examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId,
     studentId: student?.studentId,
     examId: id,
@@ -381,7 +383,9 @@ export function CbtExamPage() {
     getTabSwitchCount: () => tabSwitchCountRef.current,
   });
   useLiveScreenPublish({
-    enabled: started && !done && !previewMode && Boolean(screenStream),
+    // Keep enabled for whole exam (hook gates on native share / stream / hold).
+    // Do not require MediaStream — Android MediaProjection uses native JPEG path.
+    enabled: started && !done && !previewMode && !paused,
     schoolId: examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId,
     studentId: student?.studentId,
     examId: id,
@@ -390,7 +394,7 @@ export function CbtExamPage() {
     getStream: () => screenStreamRef.current || screenStream,
   });
   useLiveMicPublish({
-    enabled: started && !done && !previewMode,
+    enabled: started && !done && !previewMode && !paused,
     schoolId: examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId,
     studentId: student?.studentId,
     examId: id,
@@ -398,6 +402,23 @@ export function CbtExamPage() {
     getStream: () => mediaStreamRef.current || liveStream,
   });
 
+
+  
+  useEffect(() => {
+    if (!paused || !isOfficerPause) {
+      officerPauseStartedAtRef.current = null;
+      setOfficerPauseElapsedSec(0);
+      return;
+    }
+    if (!officerPauseStartedAtRef.current) officerPauseStartedAtRef.current = Date.now();
+    const tick = () => {
+      const start = officerPauseStartedAtRef.current || Date.now();
+      setOfficerPauseElapsedSec(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [paused, isOfficerPause]);
 
   useExamAttemptHeartbeat({
     enabled: started && !done && !previewMode,
@@ -1350,7 +1371,7 @@ export function CbtExamPage() {
       )}
       {started && !done && security.requireCamera && (
         <ExamCameraPip
-          enabled={started && !done}
+          enabled={started && !done && !paused}
           faceDetection={Boolean(security.faceDetection || security.requireCamera)}
           maxFaceWarnings={security.maxFaceWarnings ?? 3}
           stream={liveStream}
@@ -1374,6 +1395,13 @@ export function CbtExamPage() {
                 <p className="mt-2 text-sm text-slate-600">
                   This examination has been paused by the examination officer.
                 </p>
+                <p className="mt-4 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  Paused for
+                </p>
+                <p className="mt-1 font-mono text-3xl font-extrabold tabular-nums text-primary">
+                  {String(Math.floor(officerPauseElapsedSec / 60)).padStart(2, "0")}:
+                  {String(officerPauseElapsedSec % 60).padStart(2, "0")}
+                </p>
                 {pauseReason ? (
                   <p className="mt-3 text-xs font-semibold text-slate-800">Reason: {pauseReason}</p>
                 ) : null}
@@ -1381,7 +1409,7 @@ export function CbtExamPage() {
                   Waiting for the examination officer to resume your examination.
                 </p>
                 <p className="mt-2 text-[11px] text-slate-500">
-                  You cannot answer questions while paused. The exam clock continues.
+                  Camera and screen share are paused. The exam clock continues.
                 </p>
               </>
             ) : pauseRemainingSec != null && pauseRemainingSec > 0 ? (

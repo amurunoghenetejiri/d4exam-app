@@ -85,10 +85,19 @@ export function useLiveCamPublish(opts: {
     });
 
     // Heartbeat so officer dashboard / monitor keep this attempt as LIVE
-    void pulseExamAttempt(attemptId);
-    const hb = window.setInterval(() => {
-      void pulseExamAttempt(optsRef.current.attemptId || attemptId);
-    }, 20_000);
+    const pulse = () => {
+      const o = optsRef.current;
+      void pulseExamAttempt(o.attemptId || attemptId, {
+        answeredCount: o.getAnsweredCount?.(),
+        totalQuestions: o.getTotalQuestions?.(),
+        timeRemainingSec: o.getTimeRemainingSec?.() ?? null,
+        tabSwitchCount: o.getTabSwitchCount?.(),
+        faceStatus: String(o.getFaceStatus?.() || "ok"),
+        cameraActive: Boolean(o.getStream?.() || o.stream),
+      });
+    };
+    pulse();
+    const hb = window.setInterval(pulse, 8_000);
 
     return () => {
       window.clearInterval(hb);

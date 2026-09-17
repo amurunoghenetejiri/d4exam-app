@@ -21,6 +21,7 @@ import {
   PenSquare,
   Home,
   Network,
+  Send,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/types";
@@ -182,6 +183,7 @@ export const officerNav: RoleConfig = {
       items: [
         { label: "Dashboard", to: "/officer", icon: LayoutDashboard },
         { label: "Exam Approvals", to: "/officer/approvals", icon: CheckSquare },
+        { label: "Post to Students", to: "/officer/post-to-students", icon: Send },
         { label: "Live Monitor", to: "/officer/live-monitor", icon: Radio },
         { label: "Integrity Review", to: "/officer/integrity", icon: ShieldCheck },
       ],

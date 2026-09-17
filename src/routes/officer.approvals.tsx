@@ -111,12 +111,15 @@ function Page() {
   const [scheduleEnd, setScheduleEnd] = useState("");
   const [busy, setBusy] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  /** After approve: ask whether to post to students now */
+  const [postPromptExam, setPostPromptExam] = useState<ExamRow | null>(null);
+  const [postBusy, setPostBusy] = useState(false);
 
   const listQ = useQuery({
     queryKey: ["officer-approvals", schoolId],
     enabled: Boolean(schoolId),
-    staleTime: 3_000,
-    refetchInterval: 8_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
     queryFn: async () => {
       if (!schoolId) return [] as ExamRow[];
       const full =
@@ -457,8 +460,19 @@ function Page() {
 
       
 
+      const wasApprove = action === "approve";
+      const approvedSnapshot: ExamRow = {
+        ...selected,
+        status: nextStatus,
+        scheduled_start: scheduleStart
+          ? new Date(scheduleStart).toISOString()
+          : selected.scheduled_start,
+        scheduled_end: endLocal
+          ? new Date(endLocal).toISOString()
+          : selected.scheduled_end,
+      };
       toast.success(
-        action === "approve"
+        wasApprove
           ? scheduleStart
             ? `Approved — starts ${new Date(scheduleStart).toLocaleString()}`
             : "Examination approved"
@@ -469,10 +483,39 @@ function Page() {
       closeDialog();
       await qc.invalidateQueries({ queryKey: ["officer-approvals"] });
       await listQ.refetch();
+      if (wasApprove) {
+        setPostPromptExam(approvedSnapshot);
+      }
     } catch (err) {
       toast.error((err as Error).message || "Could not update examination");
     } finally {
       setBusy(false);
+    }
+  }
+
+
+  async function confirmPostToStudents(postNow: boolean) {
+    const item = postPromptExam;
+    if (!item || !schoolId || !user) {
+      setPostPromptExam(null);
+      return;
+    }
+    if (!postNow) {
+      setPostPromptExam(null);
+      toast.message("Saved for later — open Post to Students when you are ready.");
+      return;
+    }
+    setPostBusy(true);
+    try {
+      await setExamVisibility(item, "post");
+      setPostPromptExam(null);
+      await qc.invalidateQueries({ queryKey: ["officer-approvals"] });
+      await qc.invalidateQueries({ queryKey: ["officer-post-students"] });
+      await listQ.refetch();
+    } catch (e) {
+      toast.error((e as Error).message || "Could not post examination");
+    } finally {
+      setPostBusy(false);
     }
   }
 
@@ -712,6 +755,40 @@ function Page() {
               {action === "approve" && "Confirm approval"}
               {action === "reject" && "Confirm rejection"}
               {action === "changes" && "Send to teacher"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(postPromptExam)} onOpenChange={(o) => { if (!o && !postBusy) setPostPromptExam(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-extrabold">Post to students?</DialogTitle>
+            <DialogDescription className="text-sm text-slate-600">
+              <span className="font-semibold text-slate-900">{postPromptExam?.title}</span> is approved.
+              Posting makes it visible on the student examinations page and sends a notification.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-600">
+            Choose <span className="font-semibold text-slate-800">Post now</span> to go live, or{" "}
+            <span className="font-semibold text-slate-800">Later</span> to keep it on the Post to Students queue.
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              disabled={postBusy}
+              onClick={() => void confirmPostToStudents(false)}
+            >
+              Later
+            </Button>
+            <Button
+              className="font-semibold"
+              disabled={postBusy}
+              onClick={() => void confirmPostToStudents(true)}
+            >
+              {postBusy && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              <Send className="mr-1.5 h-4 w-4" />
+              Post now
             </Button>
           </DialogFooter>
         </DialogContent>

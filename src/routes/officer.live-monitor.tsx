@@ -66,6 +66,17 @@ export const Route = createFileRoute("/officer/live-monitor")({
 });
 
 const OFFLINE_HIDE_MS = 3 * 60 * 1000;
+
+function formatPauseElapsed(holdAt: string | null | undefined, nowMs: number): string {
+  if (!holdAt) return "00:00";
+  const t = new Date(holdAt).getTime();
+  if (!Number.isFinite(t)) return "00:00";
+  const sec = Math.max(0, Math.floor((nowMs - t) / 1000));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 const RECENT_SUBMIT_MS = 10 * 60 * 1000;
 
 type AttemptRow = {
@@ -243,6 +254,12 @@ function Page() {
   const [warningBusy, setWarningBusy] = useState(false);
   const [forcePausedIds, setForcePausedIds] = useState<Record<string, boolean>>({});
   const [actionBusy, setActionBusy] = useState(false);
+  const [pauseTick, setPauseTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setPauseTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const [, setTick] = useState(0);
   const seenAlertIdsRef = useRef<Set<string>>(new Set());
   const alertsBootstrappedRef = useRef(false);
@@ -898,8 +915,9 @@ function Page() {
       if (!q) return true;
       return c.name.toLowerCase().includes(q) || c.matric.toLowerCase().includes(q) || c.course.toLowerCase().includes(q);
     });
-  }, [cards, filter, search]);
+  }, [cards, filter, search, pauseTick]);
 
+  void pauseTick;
   const selected = cards.find((c) => c.a.id === selectedId) ?? null;
   const studentNameById = useMemo(() => {
     const m = new Map<string, { name: string; matric: string }>();
@@ -991,10 +1009,10 @@ function Page() {
   })();
 
   async function broadcastOfficerCommand(cmd: "submit" | "hold" | "pause" | "release" | "terminate", attemptId: string, studentId: string, examId: string) {
-    try {
-      const ch = supabase.channel(`student-exam-cmd:${studentId}`);
+    const sendOnce = async () => {
+      const ch = supabase.channel(`student-exam-cmd:${studentId}:${Date.now()}`);
       await new Promise<void>((resolve) => {
-        const t = window.setTimeout(() => resolve(), 2000);
+        const t = window.setTimeout(() => resolve(), 2500);
         ch.subscribe((status) => {
           if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
             window.clearTimeout(t);
@@ -1007,7 +1025,13 @@ function Page() {
         event: "officer_command",
         payload: { command: cmd, attemptId, studentId, examId, ts: Date.now() },
       });
-      window.setTimeout(() => { void supabase.removeChannel(ch); }, 1200);
+      window.setTimeout(() => { void supabase.removeChannel(ch); }, 1500);
+    };
+    try {
+      await sendOnce();
+      // Retry so student receives even if first channel races
+      window.setTimeout(() => { void sendOnce().catch(() => {}); }, 400);
+      window.setTimeout(() => { void sendOnce().catch(() => {}); }, 1200);
     } catch (e) {
       console.warn("[live-monitor] officer_command broadcast", e);
     }
@@ -1318,6 +1342,8 @@ function Page() {
                   bars={c.bars}
                   isDone={c.isDone}
                   statusLabel={c.isDone ? doneStatusLabel(c.a.status) : undefined}
+                  isPaused={Boolean(forcePausedIds[c.a.id] || String(c.a.status).toLowerCase() === "paused" || (c.a.metadata as any)?.officer_hold || (c.a.metadata as any)?.officer_pause)}
+                  pauseElapsed={formatPauseElapsed(String((c.a.metadata as any)?.officer_hold_at || ""), Date.now())}
                   onClick={() => setSelectedId(c.a.id)}
                 />
               ))}
@@ -1784,6 +1810,8 @@ function StudentCard({
   bars,
   isDone,
   statusLabel,
+  isPaused,
+  pauseElapsed,
   onClick,
 }: {
   name: string;
@@ -1799,6 +1827,8 @@ function StudentCard({
   bars: number;
   isDone?: boolean;
   statusLabel?: string;
+  isPaused?: boolean;
+  pauseElapsed?: string;
   onClick: () => void;
 }) {
   return (
@@ -1825,6 +1855,16 @@ function StudentCard({
               {statusLabel || "Submitted"}
             </p>
             <p className="text-[9px] font-semibold text-sky-100/90">Result pending release</p>
+          </div>
+        ) : isPaused ? (
+          <div className="flex h-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-amber-800/95 via-slate-900 to-slate-950 px-2 text-center">
+            <p className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white shadow">
+              Paused
+            </p>
+            <p className="font-mono text-2xl font-extrabold tabular-nums text-white drop-shadow sm:text-3xl">
+              {pauseElapsed || "00:00"}
+            </p>
+            <p className="text-[9px] font-semibold text-amber-100/90">Live pause timer · camera off</p>
           </div>
         ) : feedMode === "both" && (camSrc || scrSrc) ? (
           <div className="flex h-full w-full">
@@ -1876,7 +1916,7 @@ function StudentCard({
                     : "bg-slate-400",
             )}
           />
-          {isDone ? "Submitted" : streamLive ? "Live" : isOnline(presence.lastSeenAt) ? "Live" : "Off"}
+          {isDone ? (statusLabel || "Submitted") : isPaused ? "Paused" : streamLive ? "Live" : isOnline(presence.lastSeenAt) ? "Live" : "Off"}
         </span>
         {!isDone && (
           <div className="absolute right-1 top-1 rounded bg-black/55 px-1 py-0.5 sm:right-1.5 sm:top-1.5 sm:px-1.5 sm:py-1">
