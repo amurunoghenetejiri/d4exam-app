@@ -3,11 +3,19 @@
  * Same substance as public /about /support /privacy /pricing,
  * but without PublicLayout header/footer.
  */
-import { Check, Mail, Phone, Clock } from "lucide-react";
+import { useState } from "react";
+import { Check, Mail, Phone, Clock, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Accordion,
   AccordionContent,
@@ -15,8 +23,22 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { toast } from "sonner";
+import { useSessionUser } from "@/lib/session";
+import { submitSupportMessage } from "@/lib/support.server";
 
 export type HelpLegalDoc = "about" | "support" | "privacy" | "pricing";
+
+const SUPPORT_EMAIL = "amurundestiny@gmail.com";
+const SUPPORT_PHONE = "08165906606";
+
+const CATEGORIES = [
+  "Technical Problem",
+  "Examination Problem",
+  "Account Problem",
+  "Result Problem",
+  "Payment/School Problem",
+  "Other",
+] as const;
 
 const values = [
   {
@@ -83,7 +105,7 @@ const privacySections = [
   },
   {
     title: "8. Contact",
-    body: "For any privacy question, contact the D4EXAM data protection team at privacy@d4exam.com or through the Support page.",
+    body: `For any privacy question, contact the D4EXAM data protection team at ${SUPPORT_EMAIL} or through Contact & Support.`,
   },
 ];
 
@@ -204,49 +226,187 @@ function AboutBody() {
 }
 
 function SupportBody() {
+  const { data: session } = useSessionUser();
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [category, setCategory] = useState<string>("Technical Problem");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  // Prefill from session once available
+  const displayName = session?.fullName || name;
+  const displayEmail = session?.email || email;
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy || sent) return;
+    const sub = subject.trim();
+    const msg = message.trim();
+    if (!sub) {
+      toast.error("Subject is required.");
+      return;
+    }
+    if (msg.length < 5) {
+      toast.error("Please write a short message describing the issue.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const route =
+        typeof window !== "undefined"
+          ? window.location.pathname + (window.location.search || "")
+          : "/settings";
+      const result = await submitSupportMessage({
+        data: {
+          subject: sub,
+          message: msg,
+          category,
+          name: displayName || undefined,
+          email: displayEmail || undefined,
+          role: session?.role || undefined,
+          school: session?.schoolName || session?.schoolCode || undefined,
+          route,
+        },
+      });
+      if (!result?.ok) {
+        toast.error(result?.error || "Could not send. Try again or email us directly.");
+        return;
+      }
+      setSent(true);
+      toast.success("Support message sent. We will get back to you soon.");
+      setSubject("");
+      setMessage("");
+    } catch (err) {
+      console.error("[support]", err);
+      toast.error("Could not send support message. Please try again or use the email below.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-xl font-extrabold text-slate-900">Support</h2>
+        <h2 className="text-xl font-extrabold text-slate-900">Contact & Support</h2>
         <p className="mt-2 text-sm leading-relaxed text-slate-600">
-          Candidates should contact their school administrator first. Institutional staff can reach
-          the D4EXAM team using the form below.
+          Get help, report a problem, or ask a question. Candidates should also inform their school
+          administrator when the issue is school-specific.
         </p>
       </div>
 
       <form
         className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
-        onSubmit={(e) => {
-          e.preventDefault();
-          toast.success("Support request submitted. Reference #SR-40912");
-        }}
+        onSubmit={(e) => void onSubmit(e)}
       >
+        {!session?.userId ? (
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor="inapp-support-name">Full name</Label>
+              <Input
+                id="inapp-support-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                disabled={busy || sent}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="inapp-support-email">Email</Label>
+              <Input
+                id="inapp-support-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@school.edu"
+                disabled={busy || sent}
+              />
+            </div>
+          </>
+        ) : (
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            Sending as <strong>{session.fullName || session.email}</strong>
+            {session.role ? ` · ${session.role.replace(/_/g, " ")}` : ""}
+            {session.schoolName ? ` · ${session.schoolName}` : ""}
+          </p>
+        )}
+
         <div className="space-y-1.5">
-          <Label htmlFor="inapp-support-name">Full name</Label>
-          <Input id="inapp-support-name" required placeholder="Your name" />
+          <Label htmlFor="inapp-support-category">Category</Label>
+          <Select value={category} onValueChange={setCategory} disabled={busy || sent}>
+            <SelectTrigger id="inapp-support-category">
+              <SelectValue placeholder="Select category" />
+            </SelectTrigger>
+            <SelectContent>
+              {CATEGORIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+
         <div className="space-y-1.5">
-          <Label htmlFor="inapp-support-email">Email</Label>
-          <Input id="inapp-support-email" type="email" required placeholder="you@school.edu" />
+          <Label htmlFor="inapp-support-subject">Subject</Label>
+          <Input
+            id="inapp-support-subject"
+            required
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            placeholder="Brief summary of the issue"
+            disabled={busy || sent}
+          />
         </div>
+
         <div className="space-y-1.5">
-          <Label htmlFor="inapp-support-msg">How can we help?</Label>
-          <Textarea id="inapp-support-msg" required rows={4} placeholder="Describe the issue…" />
+          <Label htmlFor="inapp-support-msg">Message</Label>
+          <Textarea
+            id="inapp-support-msg"
+            required
+            rows={5}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Describe the issue, including exam names, matric numbers, or error messages if relevant…"
+            disabled={busy || sent}
+          />
         </div>
-        <Button type="submit" className="w-full rounded-full font-semibold">
-          Submit request
+
+        <Button type="submit" className="w-full rounded-full font-semibold" disabled={busy || sent}>
+          {busy ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending…
+            </>
+          ) : sent ? (
+            "Message sent"
+          ) : (
+            "Submit request"
+          )}
         </Button>
+        {sent ? (
+          <p className="text-center text-xs text-emerald-700">
+            Your message was delivered to support. You can stay on this page or go back to settings.
+          </p>
+        ) : null}
       </form>
 
       <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm">
+        <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Contact channels</p>
+        <a
+          href={`mailto:${SUPPORT_EMAIL}`}
+          className="flex items-center gap-2 text-slate-700 hover:text-primary"
+        >
+          <Mail className="h-4 w-4 text-primary" /> {SUPPORT_EMAIL}
+        </a>
+        <a
+          href={`tel:${SUPPORT_PHONE}`}
+          className="flex items-center gap-2 text-slate-700 hover:text-primary"
+        >
+          <Phone className="h-4 w-4 text-primary" /> {SUPPORT_PHONE}
+        </a>
         <div className="flex items-center gap-2 text-slate-700">
-          <Mail className="h-4 w-4 text-primary" /> support@d4exam.com
-        </div>
-        <div className="flex items-center gap-2 text-slate-700">
-          <Phone className="h-4 w-4 text-primary" /> +234 (0) 800 D4EXAM
-        </div>
-        <div className="flex items-center gap-2 text-slate-700">
-          <Clock className="h-4 w-4 text-primary" /> Mon–Fri, 8:00–18:00 WAT
+          <Clock className="h-4 w-4 text-primary" /> 24/7 during examination periods
         </div>
       </div>
 
@@ -338,7 +498,7 @@ export function InAppHelpLegal({ doc }: { doc: HelpLegalDoc }) {
 
 export function helpLegalTitle(doc: HelpLegalDoc): string {
   if (doc === "about") return "About Us";
-  if (doc === "support") return "Support";
+  if (doc === "support") return "Contact & Support";
   if (doc === "privacy") return "Privacy Policy";
   return "Pricing";
 }
