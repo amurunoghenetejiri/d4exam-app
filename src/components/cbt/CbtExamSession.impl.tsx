@@ -1304,7 +1304,19 @@ export function CbtExamPage() {
             <p className="hidden truncate text-sm font-bold sm:block">{(exam as { courses?: { code?: string } }).courses?.code ?? "EXAM"} — {exam.title}</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="rounded-lg bg-white/10 px-3 py-1.5 font-mono text-sm font-bold tabular-nums">{mm}:{ss}</div>
+            <div
+              className={
+                (seconds != null && seconds <= 300
+                  ? "rounded-lg bg-red-600 px-3 py-1.5 font-mono text-sm font-bold tabular-nums text-white shadow-lg shadow-red-900/40 animate-pulse ring-2 ring-red-300/80"
+                  : "rounded-lg bg-white/10 px-3 py-1.5 font-mono text-sm font-bold tabular-nums")
+              }
+              title={seconds != null && seconds <= 300 ? "Less than 5 minutes remaining" : "Time remaining"}
+            >
+              {mm}:{ss}
+              {seconds != null && seconds <= 300 && seconds > 0 ? (
+                <span className="ml-1.5 hidden text-[10px] font-semibold uppercase tracking-wide sm:inline">left</span>
+              ) : null}
+            </div>
             <Button size="sm" variant="secondary" className="font-semibold" onClick={() => void requestSubmit()}>Submit</Button>
           </div>
         </div>

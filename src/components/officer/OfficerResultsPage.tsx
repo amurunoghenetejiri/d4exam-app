@@ -37,6 +37,24 @@ type ResultRow = {
 };
 type IntegrityEvent = { id: string; event_type: string; severity: string | null; description: string | null; created_at: string };
 
+function resultReasonLabel(status: string, security: string | null, releasedAt: string | null): { label: string; className: string } {
+  const s = (status || "").toLowerCase();
+  const sec = (security || "").toLowerCase();
+  if (s === "terminated" || sec.includes("flag") || sec.includes("contamin")) {
+    return { label: "Contaminated — integrity / rules issue", className: "bg-red-100 text-red-800 border-red-200" };
+  }
+  if (s === "published" || releasedAt) {
+    return { label: "Released", className: "bg-emerald-100 text-emerald-800 border-emerald-200" };
+  }
+  if (s === "held" || sec.includes("hold") || sec.includes("held")) {
+    return { label: "Held by departmental officer", className: "bg-amber-100 text-amber-900 border-amber-200" };
+  }
+  if (s === "pending" || s === "under_review" || !releasedAt) {
+    return { label: "Waiting for official release", className: "bg-orange-100 text-orange-900 border-orange-200" };
+  }
+  return { label: status || "—", className: "bg-slate-100 text-slate-700 border-slate-200" };
+}
+
 function isHeld(status: string, releasedAt: string | null) {
   const s = (status || "").toLowerCase();
   if (s === "published" || releasedAt) return false;
@@ -435,6 +453,14 @@ export function OfficerResultsPage() {
             <Meta label="Security" value={(selectedResult.security_review_status || "pending").replaceAll("_", " ")} />
             <Meta label="Released" value={selectedResult.released_at ? fmt(selectedResult.released_at) : "Not yet"} />
           </div>
+          {(() => {
+            const rr = resultReasonLabel(selectedResult.status, selectedResult.security_review_status, selectedResult.released_at);
+            return (
+              <div className={cn("mt-2 rounded-lg border px-3 py-2 text-xs font-semibold", rr.className)}>
+                Result status: {rr.label}
+              </div>
+            );
+          })()}
         </div>
         <div className="flex flex-wrap gap-1.5">
           <Button size="sm" className="h-7 bg-primary px-2 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90" disabled={busy || !held} onClick={() => void releaseOneResult(selectedResult)}>Release</Button>

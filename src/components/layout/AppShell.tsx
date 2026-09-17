@@ -36,6 +36,7 @@ import { useUnreadNotificationCount } from "@/lib/queries";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import type { RoleConfig } from "@/components/navigation/navConfig";
 import { useBottomNavSwipe } from "@/hooks/useBottomNavSwipe";
+import { GlobalSearchPage } from "@/components/search/GlobalSearchPage";
 
 export interface AppUser {
   name: string;
@@ -226,6 +227,7 @@ export function AppShell({
   user: AppUser;
   children: ReactNode;
 }) {
+  const [searchOpen, setSearchOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: session } = useSessionUser();
@@ -400,6 +402,9 @@ export function AppShell({
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
                 placeholder="Search…"
+                readOnly
+                onFocus={() => setSearchOpen(true)}
+                onClick={() => setSearchOpen(true)}
                 className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-9"
                 aria-label="Search"
               />
@@ -515,6 +520,7 @@ export function AppShell({
       )}
 
       <InstallAndPushPrompt />
+      <GlobalSearchPage open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }

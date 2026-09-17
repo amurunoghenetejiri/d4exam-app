@@ -92,7 +92,7 @@ export function ExamCameraPip({
   const lastAlertRef = useRef(0);
   const lastStateRef = useRef<FaceState>("unavailable");
   const pendingRef = useRef<{ state: FaceState; since: number } | null>(null);
-  const STABILITY_MS = 50;
+  const STABILITY_MS = 450;
   const ownStreamRef = useRef<MediaStream | null>(null);
   const acquiringRef = useRef(false);
   const dragState = useRef<{
@@ -425,9 +425,10 @@ export function ExamCameraPip({
           return;
         }
         if (!engine) {
-          setFaceStatus("ok");
-          lastStateRef.current = "ok";
-          onSecRef.current?.({ kind: "ok", faceCount: null, at: new Date().toISOString() });
+          // Do not fake "ok" — detection failed to start
+          setFaceStatus("unclear");
+          lastStateRef.current = "unclear";
+          onSecRef.current?.({ kind: "unclear", faceCount: null, at: new Date().toISOString() });
           return;
         }
         faceEngineRef.current = engine;
@@ -435,8 +436,8 @@ export function ExamCameraPip({
         setFaceStatus((s) => (s === "unavailable" || s === "unclear" ? "unclear" : s));
         void tick();
       } catch {
-        setFaceStatus("ok");
-        lastStateRef.current = "ok";
+        setFaceStatus("unclear");
+        lastStateRef.current = "unclear";
       }
     };
 
