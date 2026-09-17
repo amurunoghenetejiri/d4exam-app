@@ -406,6 +406,16 @@ export function CbtExamPage() {
   useExamAttemptHeartbeat({
     enabled: started && !done && !previewMode,
     attemptId: liveAttemptId || attemptIdRef.current,
+    getStats: () => ({
+      answeredCount: Object.keys(answersRef.current || answers || {}).length,
+      totalQuestions: questions.length || undefined,
+      timeRemainingSec: endsAtRef.current
+        ? Math.max(0, Math.floor((endsAtRef.current - Date.now()) / 1000))
+        : (typeof seconds === "number" ? seconds : null),
+      tabSwitchCount: tabSwitchCountRef.current,
+      faceStatus: faceStatusForLiveRef.current,
+      cameraActive: Boolean(mediaStreamRef.current || liveStream),
+    }),
   });
 
   useEffect(() => {
@@ -528,7 +538,7 @@ export function CbtExamPage() {
             setPaused(true);
           }
         } else if (st === "in_progress" || st === "active" || st === "started") {
-          if (pausedRef.current && officerPauseRef.current) {
+          if (pausedRef.current) {
             officerPauseRef.current = false;
             setIsOfficerPause(false);
             pauseUntilRef.current = null;
@@ -542,7 +552,7 @@ export function CbtExamPage() {
         /* ignore */
       }
     };
-    const t = window.setInterval(() => void poll(), 800);
+    const t = window.setInterval(() => void poll(), 600);
     void poll();
     return () => {
       cancelled = true;
@@ -781,6 +791,25 @@ export function CbtExamPage() {
   const q = questions[index];
   const answeredCount = Object.keys(answers).length;
 
+
+  // Push live answered count to officer quickly when answers change
+  useEffect(() => {
+    if (!started || done || previewMode || !attemptIdRef.current) return;
+    const aid = attemptIdRef.current;
+    const tId = window.setTimeout(() => {
+      void import("@/lib/cbt-attempt-heartbeat").then(({ pulseExamAttempt }) => {
+        void pulseExamAttempt(aid, {
+          answeredCount: Object.keys(answersRef.current).length,
+          totalQuestions: questions.length || undefined,
+          timeRemainingSec: endsAtRef.current
+            ? Math.max(0, Math.floor((endsAtRef.current - Date.now()) / 1000))
+            : null,
+          tabSwitchCount: tabSwitchCountRef.current,
+        });
+      });
+    }, 350);
+    return () => window.clearTimeout(tId);
+  }, [answers, started, done, previewMode, questions.length]);
 
   // Persist answers + ends_at while in progress (resume safety)
   useEffect(() => {

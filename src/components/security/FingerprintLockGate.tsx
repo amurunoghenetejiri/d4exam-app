@@ -10,7 +10,6 @@ import { createPortal } from "react-dom";
 import {
   Fingerprint,
   GraduationCap,
-  LogIn,
   Shield,
   ShieldCheck,
   UserRound,
@@ -30,6 +29,7 @@ import {
   isActiveCbtExamPath,
   isFingerprintEnabledFor,
   isFingerprintLocked,
+  isSessionUnlocked,
   markAppBackgrounded,
   markSessionUnlocked,
   readFingerprintPref,
@@ -186,29 +186,105 @@ export function FingerprintLockGate() {
     };
   }, [native, splashDone]);
 
+  const [mode, setMode] = useState<"fingerprint" | "password">("fingerprint");
+  const [appPw, setAppPw] = useState("");
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwBusy, setPwBusy] = useState(false);
+  const [hasAppPw, setHasAppPw] = useState(false);
+  const [logoutConfirm, setLogoutConfirm] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { hasAppUnlockFor } = await import("@/lib/app-unlock");
+        const ok = await hasAppUnlockFor(userId);
+        if (!cancelled) setHasAppPw(ok);
+      } catch {
+        if (!cancelled) setHasAppPw(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  function showPasswordMode() {
+    setMode("password");
+    setAppPw("");
+    setPwError(null);
+    setStatus("idle");
+    setFailedMsg(null);
+  }
+
+  function showFingerprintMode() {
+    setMode("fingerprint");
+    setAppPw("");
+    setPwError(null);
+    setFailedMsg(null);
+    promptedRef.current = false;
+  }
+
+  async function unlockWithAppPassword() {
+    if (!userId || pwBusy) return;
+    setPwBusy(true);
+    setPwError(null);
+    try {
+      const { verifyAppUnlockPassword } = await import("@/lib/app-unlock");
+      const ok = await verifyAppUnlockPassword(userId, appPw);
+      if (!ok) {
+        setPwError("Incorrect app password. Try again.");
+        return;
+      }
+      finishUnlock();
+    } catch {
+      setPwError("Could not verify password. Try again.");
+    } finally {
+      setPwBusy(false);
+    }
+  }
+
+  async function confirmLogout() {
+    try {
+      const { clearAppUnlockFor } = await import("@/lib/app-unlock");
+      await clearAppUnlockFor(userId);
+    } catch {
+      /* ignore */
+    }
+    try {
+      const { clearFingerprintIfUser, setFingerprintLocked, clearSessionUnlocked } = await import(
+        "@/lib/fingerprint-lock"
+      );
+      clearFingerprintIfUser(userId);
+      setFingerprintLocked(false);
+      clearSessionUnlocked();
+    } catch {
+      /* ignore */
+    }
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      await supabase.auth.signOut();
+    } catch {
+      /* ignore */
+    }
+    setLocked(false);
+    setLogoutConfirm(false);
+    try {
+      window.location.href = "/login";
+    } catch {
+      window.location.assign("/login");
+    }
+  }
+
   const evaluateLock = useCallback(() => {
     if (!native || isPublicAuthPath) {
       setLocked(false);
       return;
     }
-    // Prefer live session userId; fall back to fingerprint pref / last user (no white gap while session loads)
     const uid = session?.userId ?? pref?.userId ?? lastUid;
-    if (!uid || !isFingerprintEnabledFor(uid)) {
-      // If pref says enabled for some user, still lock even before session resolves
-      if (pref?.enabled && pref.userId && isFingerprintEnabledFor(pref.userId) && !isPublicAuthPath) {
-        if (isActiveCbtExamPath(pathname)) {
-          setLocked(false);
-          return;
-        }
-        if (isFingerprintLocked() || shouldLockAfterBackground()) {
-          setFingerprintLocked(true);
-          setLocked(true);
-          setFailedMsg(null);
-          setStatus("idle");
-          promptedRef.current = false;
-          return;
-        }
-      }
+    const fpOn = Boolean(uid && isFingerprintEnabledFor(uid)) || Boolean(pref?.enabled && pref.userId);
+    const unlockConfigured = fpOn || hasAppPw;
+    if (!uid || !unlockConfigured) {
       setLocked(false);
       return;
     }
@@ -216,7 +292,12 @@ export function FingerprintLockGate() {
       setLocked(false);
       return;
     }
-    if (isFingerprintLocked() || shouldLockAfterBackground()) {
+    if (isFingerprintLocked() || shouldLockAfterBackground() || hasAppPw) {
+      // Cold start / background: require unlock when app password or fingerprint is configured
+      if (isSessionUnlocked() && !isFingerprintLocked() && !shouldLockAfterBackground()) {
+        setLocked(false);
+        return;
+      }
       setFingerprintLocked(true);
       setLocked(true);
       setFailedMsg(null);
@@ -225,12 +306,19 @@ export function FingerprintLockGate() {
       return;
     }
     setLocked(false);
-  }, [native, isPublicAuthPath, session?.userId, pathname, pref?.userId, pref?.enabled, lastUid]);
+  }, [native, isPublicAuthPath, session?.userId, pathname, pref?.userId, pref?.enabled, lastUid, hasAppPw]);
 
   useEffect(() => {
     if (!native) return;
     evaluateLock();
   }, [native, evaluateLock, session?.userId, splashDone]);
+  useEffect(() => {
+    if (!locked) return;
+    if (!isFingerprintEnabledFor(userId) && !pref?.enabled) {
+      setMode("password");
+    }
+  }, [locked, userId, pref?.enabled]);
+
 
   // Background / resume
   useEffect(() => {
@@ -250,8 +338,9 @@ export function FingerprintLockGate() {
             return;
           }
           const uid = session?.userId ?? pref?.userId ?? lastUid;
-          if (!isFingerprintEnabledFor(uid)) return;
-          if (shouldLockAfterBackground()) {
+          const canLock = isFingerprintEnabledFor(uid) || hasAppPw;
+          if (!canLock) return;
+          if (shouldLockAfterBackground() || hasAppPw) {
             setFingerprintLocked(true);
             setLocked(true);
             setFailedMsg(null);
@@ -338,11 +427,13 @@ export function FingerprintLockGate() {
 
   useEffect(() => {
     if (!locked || !splashDone || !pageReady || !native) return;
+    if (mode !== "fingerprint") return;
+    if (!isFingerprintEnabledFor(userId) && !pref?.enabled) return;
     if (promptedRef.current || runningRef.current) return;
     promptedRef.current = true;
     void tryUnlock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locked, splashDone, pageReady, native]);
+  }, [locked, splashDone, pageReady, native, mode, userId]);
 
   useEffect(() => {
     if (!locked || !native) return;
@@ -364,16 +455,6 @@ export function FingerprintLockGate() {
     };
   }, [locked, native]);
 
-  function usePasswordLogin() {
-    setFingerprintLocked(false);
-    setLocked(false);
-    setStatus("idle");
-    try {
-      window.location.href = "/login";
-    } catch {
-      window.location.assign("/login");
-    }
-  }
 
   // Hide boot splash when fingerprint page is about to show (seamless navy)
   useEffect(() => {
@@ -406,6 +487,20 @@ export function FingerprintLockGate() {
 
   const name = displayName(session?.fullName);
 
+
+  useEffect(() => {
+    if (!locked) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    document.body.classList.add("d4-fp-lock-active");
+    return () => {
+      document.body.style.overflow = prev;
+      document.documentElement.style.overflow = "";
+      document.body.classList.remove("d4-fp-lock-active");
+    };
+  }, [locked]);
+
   return createPortal(
     <div
       className="d4-fp-lock-overlay"
@@ -415,10 +510,13 @@ export function FingerprintLockGate() {
         left: 0,
         right: 0,
         bottom: 0,
-        width: "100vw",
-        height: "100dvh",
+        width: "100%",
+        height: "100%",
+        minWidth: "100vw",
+        minHeight: "100vh",
         maxWidth: "100vw",
-        maxHeight: "100dvh",
+        maxHeight: "100vh",
+        inset: 0,
         margin: 0,
         padding: 0,
         zIndex: 2147483000,
@@ -491,12 +589,45 @@ export function FingerprintLockGate() {
           </div>
 
           {/* User name */}
-          <h1 className="mt-3 max-w-[22rem] text-center text-[1.3rem] font-bold leading-snug tracking-tight text-white sm:text-2xl">
+          <h1 className="mt-2 max-w-[90vw] text-center text-[clamp(1rem,4.2vw,1.5rem)] font-bold leading-snug tracking-tight text-white">
             {name}
           </h1>
         </div>
 
-        <div className="flex flex-col items-center justify-center py-6">
+        {mode === "password" ? (
+          <div className="flex w-full max-w-sm flex-col items-center px-2 py-4">
+            <h2 className="text-lg font-bold text-white sm:text-xl">Unlock D4EXAM</h2>
+            <p className="mt-1 text-center text-sm text-slate-400">Enter your app password</p>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={appPw}
+              onChange={(e) => setAppPw(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void unlockWithAppPassword();
+              }}
+              className="mt-5 w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none focus:border-blue-400"
+              placeholder="App password"
+            />
+            {pwError ? <p className="mt-2 text-center text-xs font-semibold text-amber-300">{pwError}</p> : null}
+            <button
+              type="button"
+              disabled={pwBusy || !appPw}
+              onClick={() => void unlockWithAppPassword()}
+              className="mt-4 w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {pwBusy ? "Unlocking…" : "Unlock"}
+            </button>
+            <button
+              type="button"
+              onClick={showFingerprintMode}
+              className="mt-3 text-sm font-medium text-slate-400 hover:text-white"
+            >
+              Use fingerprint
+            </button>
+          </div>
+        ) : (
+        <div className="flex flex-col items-center justify-center py-4 sm:py-6">
           <button
             type="button"
             aria-label="Use fingerprint"
@@ -505,7 +636,7 @@ export function FingerprintLockGate() {
               promptedRef.current = false;
               void tryUnlock();
             }}
-            className="relative grid h-[128px] w-[128px] place-items-center focus:outline-none active:scale-[0.98]"
+            className="relative grid h-[min(128px,28vw)] w-[min(128px,28vw)] place-items-center focus:outline-none active:scale-[0.98]"
           >
             <span
               className={cn(
@@ -531,7 +662,7 @@ export function FingerprintLockGate() {
             ) : null}
             <Fingerprint
               className={cn(
-                "relative z-10 h-[52px] w-[52px]",
+                "relative z-10 h-[min(52px,12vw)] w-[min(52px,12vw)]",
                 status === "success"
                   ? "text-emerald-400"
                   : status === "failed"
@@ -554,16 +685,51 @@ export function FingerprintLockGate() {
           </p>
         </div>
 
-        <div className="flex w-full shrink-0 justify-center pb-2">
+        )}
+
+        <div className="flex w-full shrink-0 items-center justify-between gap-2 px-1 pb-2">
           <button
             type="button"
-            onClick={usePasswordLogin}
-            className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-sm font-medium text-slate-400 transition hover:bg-white/5 hover:text-slate-200"
+            onClick={() => setLogoutConfirm(true)}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-slate-400 transition hover:bg-white/5 hover:text-slate-200 sm:text-sm"
           >
-            <LogIn className="h-4 w-4" aria-hidden />
-            Use login
+            Log out
+          </button>
+          <button
+            type="button"
+            onClick={showPasswordMode}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-slate-300 transition hover:bg-white/5 hover:text-white sm:text-sm"
+          >
+            Use password
           </button>
         </div>
+
+        {logoutConfirm ? (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0f1f3d] p-5 text-center shadow-2xl">
+              <p className="text-base font-bold text-white">Log out of D4EXAM?</p>
+              <p className="mt-2 text-sm text-slate-400">
+                You will need your school credentials to sign in again.
+              </p>
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  className="flex-1 rounded-xl border border-white/15 py-2.5 text-sm font-semibold text-slate-200"
+                  onClick={() => setLogoutConfirm(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white"
+                  onClick={() => void confirmLogout()}
+                >
+                  Log out
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <style>{`

@@ -39,6 +39,7 @@ import { Loader2, Upload, Building2, Info, LifeBuoy, Shield, ChevronRight, Credi
 import { InAppHelpLegal, helpLegalTitle, type HelpLegalDoc } from "@/components/pages/InAppHelpLegal";
 import { PushSettingsCard } from "@/components/settings/PushSettingsCard";
 import { FingerprintLockCard } from "@/components/settings/FingerprintLockCard";
+import { ChangeAppPasswordCard } from "@/components/settings/ChangeAppPasswordCard";
 import { SwitchAccountCard } from "@/components/settings/SwitchAccountCard";
 import { RoleSwitchCard } from "@/components/settings/RoleSwitchCard";
 import { signOutThisAccount, signOutAllAccounts, listSavedAccounts } from "@/lib/account-switcher";
@@ -145,6 +146,7 @@ export function SettingsPage({ scope }: { scope: string }) {
           </div>
         </SectionCard>
         <PushSettingsCard scope={scope} />
+        <ChangeAppPasswordCard />
         <FingerprintLockCard />
         <RoleSwitchCard />
         <SwitchAccountCard />

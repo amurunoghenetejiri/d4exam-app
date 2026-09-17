@@ -768,6 +768,15 @@ function Page() {
             presence.faceStatus = "ok";
           }
           if (typeof statsFrame?.answeredCount === "number") presence.answeredCount = statsFrame.answeredCount;
+          if (presence.answeredCount == null && typeof (a.metadata as Record<string, unknown> | null)?.answeredCount === "number") {
+            presence.answeredCount = Number((a.metadata as Record<string, unknown>).answeredCount);
+          }
+          if (presence.totalQuestions == null && typeof (a.metadata as Record<string, unknown> | null)?.totalQuestions === "number") {
+            presence.totalQuestions = Number((a.metadata as Record<string, unknown>).totalQuestions);
+          }
+          if (presence.timeRemainingSec == null && typeof (a.metadata as Record<string, unknown> | null)?.timeRemainingSec === "number") {
+            presence.timeRemainingSec = Number((a.metadata as Record<string, unknown>).timeRemainingSec);
+          }
           if (typeof statsFrame?.totalQuestions === "number") presence.totalQuestions = statsFrame.totalQuestions;
           if (typeof statsFrame?.timeRemainingSec === "number") presence.timeRemainingSec = statsFrame.timeRemainingSec;
           if (typeof statsFrame?.tabSwitchCount === "number") {
@@ -925,9 +934,29 @@ function Page() {
     return m;
   }, [cards]);
 
+  const liveAttemptIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of attemptsQ.data ?? []) s.add(String(a.id));
+    for (const a of recentDoneQ.data ?? []) s.add(String(a.id));
+    return s;
+  }, [attemptsQ.data, recentDoneQ.data]);
+  const liveExamIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of attemptsQ.data ?? []) if (a.exam_id) s.add(String(a.exam_id));
+    for (const a of recentDoneQ.data ?? []) if (a.exam_id) s.add(String(a.exam_id));
+    for (const e of examsQ.data ?? []) if (String(e.status).toLowerCase() === "ongoing") s.add(String(e.id));
+    return s;
+  }, [attemptsQ.data, recentDoneQ.data, examsQ.data]);
+
   const alerts = useMemo(() => {
     return events
       .filter((e) => {
+        // Only current live / recent session integrity — not unrelated past exams
+        const aid = e.attempt_id ? String(e.attempt_id) : "";
+        const eid = e.exam_id ? String(e.exam_id) : "";
+        if (aid && liveAttemptIds.size > 0 && !liveAttemptIds.has(aid)) return false;
+        if (!aid && eid && liveExamIds.size > 0 && !liveExamIds.has(eid)) return false;
+        if (!aid && !eid) return false;
         const t = String(e.event_type || "").toUpperCase();
         return (
           t.includes("FACE") ||
@@ -939,12 +968,13 @@ function Page() {
           t.includes("WARNING") ||
           t.includes("RESULT") ||
           t.includes("TERMINAT") ||
+          t.includes("OFFICER") ||
           e.severity === "high" ||
           e.severity === "medium"
         );
       })
       .slice(0, 40);
-  }, [events]);
+  }, [events, liveAttemptIds, liveExamIds]);
 
   useEffect(() => {
     if (!events.length) return;
@@ -1009,10 +1039,12 @@ function Page() {
   })();
 
   async function broadcastOfficerCommand(cmd: "submit" | "hold" | "pause" | "release" | "terminate", attemptId: string, studentId: string, examId: string) {
+    // Channel name MUST match student listener: student-exam-cmd:${studentId}
     const sendOnce = async () => {
-      const ch = supabase.channel(`student-exam-cmd:${studentId}:${Date.now()}`);
+      const chName = `student-exam-cmd:${studentId}`;
+      const ch = supabase.channel(chName);
       await new Promise<void>((resolve) => {
-        const t = window.setTimeout(() => resolve(), 2500);
+        const t = window.setTimeout(() => resolve(), 2000);
         ch.subscribe((status) => {
           if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
             window.clearTimeout(t);
@@ -1020,25 +1052,41 @@ function Page() {
           }
         });
       });
-      await ch.send({
+      const status = await ch.send({
         type: "broadcast",
         event: "officer_command",
         payload: { command: cmd, attemptId, studentId, examId, ts: Date.now() },
       });
-      window.setTimeout(() => { void supabase.removeChannel(ch); }, 1500);
+      if (status !== "ok") console.warn("[live-monitor] broadcast status", status, cmd);
+      // Keep channel briefly so delivery can complete; do not remove immediately
+      window.setTimeout(() => { void supabase.removeChannel(ch); }, 2500);
     };
     try {
       await sendOnce();
-      // Retry so student receives even if first channel races
-      window.setTimeout(() => { void sendOnce().catch(() => {}); }, 400);
-      window.setTimeout(() => { void sendOnce().catch(() => {}); }, 1200);
+      window.setTimeout(() => { void sendOnce().catch(() => {}); }, 500);
+      window.setTimeout(() => { void sendOnce().catch(() => {}); }, 1500);
     } catch (e) {
       console.warn("[live-monitor] officer_command broadcast", e);
     }
   }
 
   async function officerControl(cmd: "submit" | "hold" | "pause" | "release" | "terminate") {
-    if (!selected || !schoolId || actionBusy || selected.isDone) return;
+    if (!selected || !schoolId || actionBusy) return;
+    // Allow pause/resume even if card briefly looks "done" due to stale UI; block only true finished statuses
+    const st0 = String(selected.a.status || "").toLowerCase();
+    const trulyDone = ["submitted", "terminated", "flagged", "completed"].includes(st0);
+    if (trulyDone && (cmd === "pause" || cmd === "hold" || cmd === "release")) {
+      toast.message("This attempt is already closed");
+      return;
+    }
+    if (selected.isDone && (cmd === "pause" || cmd === "hold" || cmd === "release")) {
+      // still try if forcePaused or status paused
+      const meta0 = (selected.a.metadata || {}) as Record<string, unknown>;
+      if (!(st0 === "paused" || meta0.officer_hold || forcePausedIds[String(selected.a.id)])) {
+        toast.message("This attempt is already closed");
+        return;
+      }
+    }
     const labels: Record<string, string> = {
       submit: "force-submit",
       hold: "hold/pause",
@@ -1046,19 +1094,41 @@ function Page() {
       release: "release",
       terminate: "terminate",
     };
-    if (!window.confirm(`Are you sure you want to ${labels[cmd] || cmd} this student's examination?`)) return;
+    // Confirm only for destructive actions; pause/resume must be instant
+    if (cmd === "terminate" || cmd === "submit") {
+      if (!window.confirm(`Are you sure you want to ${labels[cmd] || cmd} this student's examination?`)) return;
+    }
     setActionBusy(true);
     try {
       const attemptId = selected.a.id;
       const studentId = selected.a.student_id;
       const examId = selected.a.exam_id;
       const nowIso = new Date().toISOString();
+      const updateAttempt = async (payload: Record<string, unknown>) => {
+        let res = await supabase.from("exam_attempts").update(payload as never).eq("id", attemptId).eq("school_id", schoolId);
+        if (res.error) {
+          // Retry without school_id filter (RLS still applies)
+          res = await supabase.from("exam_attempts").update(payload as never).eq("id", attemptId);
+        }
+        return res;
+      };
       if (cmd === "hold" || cmd === "pause") {
         const meta = { ...(selected.a.metadata || {}), officer_hold: true, officer_pause: true, officer_hold_at: nowIso };
-        const { error } = await supabase.from("exam_attempts").update({ metadata: meta, status: "paused", updated_at: nowIso } as never).eq("id", attemptId).eq("school_id", schoolId);
-        if (error) throw error;
-        await logSecurityEvent({ schoolId, examId, attemptId, studentId, eventType: "OFFICER_PAUSE", severity: "medium", description: "Examination paused by officer", extra: { source: "officer_live_monitor", officer_user_id: user?.userId ?? null } });
-        await broadcastOfficerCommand("pause", attemptId, studentId, examId);
+        // Broadcast first so student pauses immediately
+        void broadcastOfficerCommand("pause", attemptId, studentId, examId);
+        const { error } = await updateAttempt({ metadata: meta, status: "paused", updated_at: nowIso });
+        if (error) {
+          console.warn("[officer] pause DB", error);
+          setForcePausedIds((prev) => ({ ...prev, [String(attemptId)]: true }));
+          toast.success(`Paused — ${selected.name}`);
+          void attemptsQ.refetch();
+          return;
+        }
+        try {
+          await logSecurityEvent({ schoolId, examId, attemptId, studentId, eventType: "OFFICER_PAUSE", severity: "medium", description: "Examination paused by officer", extra: { source: "officer_live_monitor", officer_user_id: user?.userId ?? null } });
+        } catch { /* non-fatal */ }
+        // Second broadcast for reliability
+        void broadcastOfficerCommand("pause", attemptId, studentId, examId);
         qc.setQueryData(["officer-live-attempts", schoolId], (prev: unknown) => {
           if (!Array.isArray(prev)) return prev;
           return prev.map((row: { id?: string; metadata?: Record<string, unknown> }) =>
@@ -1072,12 +1142,22 @@ function Page() {
       } else if (cmd === "release") {
         const prev = { ...(selected.a.metadata || {}) } as Record<string, unknown>;
         delete prev.officer_hold; delete prev.officer_pause; delete prev.officer_hold_at;
-        const { error } = await supabase.from("exam_attempts").update({ metadata: prev, status: "in_progress", updated_at: nowIso } as never).eq("id", attemptId).eq("school_id", schoolId);
-        if (error) throw error;
-        await logSecurityEvent({ schoolId, examId, attemptId, studentId, eventType: "OFFICER_RELEASE", severity: "low", description: "Examination released by officer", extra: { source: "officer_live_monitor", officer_user_id: user?.userId ?? null } });
-        await broadcastOfficerCommand("release", attemptId, studentId, examId);
-        window.setTimeout(() => { void broadcastOfficerCommand("resume", attemptId, studentId, examId); }, 300);
-        window.setTimeout(() => { void broadcastOfficerCommand("release", attemptId, studentId, examId); }, 900);
+        // Broadcast first so student resumes immediately
+        void broadcastOfficerCommand("release", attemptId, studentId, examId);
+        void broadcastOfficerCommand("resume", attemptId, studentId, examId);
+        const { error } = await updateAttempt({ metadata: prev, status: "in_progress", updated_at: nowIso });
+        if (error) {
+          console.warn("[officer] resume DB", error);
+          setForcePausedIds((prev) => { const n = { ...prev }; delete n[String(attemptId)]; return n; });
+          toast.success(`Resumed — ${selected.name}`);
+          void attemptsQ.refetch();
+          return;
+        }
+        try {
+          await logSecurityEvent({ schoolId, examId, attemptId, studentId, eventType: "OFFICER_RELEASE", severity: "low", description: "Examination released by officer", extra: { source: "officer_live_monitor", officer_user_id: user?.userId ?? null } });
+        } catch { /* non-fatal */ }
+        window.setTimeout(() => { void broadcastOfficerCommand("release", attemptId, studentId, examId); }, 400);
+        window.setTimeout(() => { void broadcastOfficerCommand("resume", attemptId, studentId, examId); }, 900);
         qc.setQueryData(["officer-live-attempts", schoolId], (prev: unknown) => {
           if (!Array.isArray(prev)) return prev;
           return prev.map((row: { id?: string; metadata?: Record<string, unknown> }) => {
@@ -1130,8 +1210,9 @@ function Page() {
       void recentDoneQ.refetch();
       void eventsQ.refetch();
     } catch (e) {
-      toast.error("Could not apply officer action");
-      console.warn(e);
+      const msg = e && typeof e === "object" && "message" in e ? String((e as { message?: string }).message) : "";
+      toast.error(msg && msg.length < 120 ? msg : "Could not apply officer action — try again");
+      console.warn("[officerControl]", e);
     } finally {
       setActionBusy(false);
     }
@@ -1615,7 +1696,18 @@ function Page() {
             <div className="grid grid-cols-2 gap-2 border-b border-slate-100 p-3 text-sm sm:p-4">
               <Info label="Course" value={selected.course} />
               <Info label="Exam" value={selected.title} />
-              <Info label="Status" value={selected.isDone ? doneStatusLabel(selected.a.status) : humanLiveStatus(selected.sev)} />
+              <Info
+                label="Status"
+                value={
+                  selected.isDone
+                    ? doneStatusLabel(selected.a.status)
+                    : (Boolean(forcePausedIds[String(selected.a.id)]) || String(selected.a.status).toLowerCase() === "paused")
+                      ? "Paused"
+                      : selected.sev === "offline"
+                        ? "Offline (writing / weak signal)"
+                        : humanLiveStatus(selected.sev)
+                }
+              />
               <Info
                 label="Time left"
                 value={selected.isDone ? "—" : formatDuration(selected.presence.timeRemainingSec)}

@@ -21,6 +21,7 @@ import { NotificationLiveListener } from "@/components/NotificationLiveListener"
 import { NotificationPermissionPrompt } from "@/components/NotificationPermissionPrompt";
 import { AppUpdateGate } from "@/components/AppUpdateGate";
 import { FingerprintLockGate } from "@/components/security/FingerprintLockGate";
+import { AppUnlockSetupGate } from "@/components/security/AppUnlockSetupGate";
 import { AndroidApkInstallBanner } from "@/components/AndroidApkInstallBanner";
 import { useSessionUser, rememberLastPath, readLastRole, readPreferredRole, roleHome, roleFromPath, type AppRole } from "@/lib/session";
 import { initNativePushIfNeeded, initWebPushIfNeeded } from "@/lib/push";
@@ -324,6 +325,7 @@ function RootComponent() {
       <NotificationLiveListener />
       <NotificationPermissionPrompt />
       <AppUpdateGate />
+      <AppUnlockSetupGate />
       <FingerprintLockGate />
       <AndroidApkInstallBanner />
       <Outlet />
