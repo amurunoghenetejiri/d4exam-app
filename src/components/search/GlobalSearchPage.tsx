@@ -1,10 +1,9 @@
 /**
  * Full-screen role-aware D4EXAM search.
- * Queries are scoped by role + school_id; never bypasses RLS.
+ * Queries scoped by role + school_id. Never throws to parent error boundary.
  */
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "@tanstack/react-router";
 import {
   BookOpen,
   ClipboardList,
@@ -19,7 +18,6 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionUser, type AppRole } from "@/lib/session";
-import { cn } from "@/lib/utils";
 
 type SearchHit = {
   id: string;
@@ -52,29 +50,47 @@ function loadRecent(): string[] {
     return [];
   }
 }
+
 function saveRecent(q: string) {
-  const t = q.trim();
-  if (t.length < 2) return;
-  const prev = loadRecent().filter((x) => x.toLowerCase() !== t.toLowerCase());
-  localStorage.setItem(RECENT_KEY, JSON.stringify([t, ...prev].slice(0, 8)));
+  try {
+    const t = q.trim();
+    if (t.length < 2) return;
+    const prev = loadRecent().filter((x) => x.toLowerCase() !== t.toLowerCase());
+    localStorage.setItem(RECENT_KEY, JSON.stringify([t, ...prev].slice(0, 8)));
+  } catch {
+    /* ignore */
+  }
+}
+
+function safeGo(href: string | undefined) {
+  if (!href) return;
+  try {
+    window.location.assign(href);
+  } catch {
+    try {
+      window.location.href = href;
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data: session } = useSessionUser();
   const role = (session?.role || "student") as AppRole;
   const schoolId = session?.schoolId ?? null;
-  const nav = useNavigate();
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [recent, setRecent] = useState<string[]>([]);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) {
-      setRecent(loadRecent());
-      setQ("");
-      setHits([]);
-    }
+    if (!open) return;
+    setRecent(loadRecent());
+    setQ("");
+    setHits([]);
+    setErr(null);
   }, [open]);
 
   useEffect(() => {
@@ -92,41 +108,42 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
     if (term.length < 2) {
       setHits([]);
       setBusy(false);
+      setErr(null);
       return;
     }
     let cancelled = false;
     setBusy(true);
+    setErr(null);
     const t = window.setTimeout(() => {
       void (async () => {
         try {
-          const out = await runSearch(term, role, schoolId, session?.userId ?? null);
+          const out = await runSearch(term, role, schoolId);
           if (!cancelled) setHits(out);
-        } catch {
-          if (!cancelled) setHits([]);
+        } catch (e) {
+          console.warn("[search]", e);
+          if (!cancelled) {
+            setHits([]);
+            setErr("Search failed. Try a different term.");
+          }
         } finally {
           if (!cancelled) setBusy(false);
         }
       })();
-    }, 220);
+    }, 250);
     return () => {
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [q, open, role, schoolId, session?.userId]);
+  }, [q, open, role, schoolId]);
 
   function go(hit: SearchHit) {
     saveRecent(q);
     onClose();
-    if (hit.href) {
-      try {
-        void nav({ to: hit.href as never });
-      } catch {
-        window.location.href = hit.href;
-      }
-    }
+    safeGo(hit.href);
   }
 
-  if (!open || typeof document === "undefined") return null;
+  if (!open) return null;
+  if (typeof document === "undefined") return null;
 
   const grouped = useMemo(() => {
     const g: Record<string, SearchHit[]> = {};
@@ -146,105 +163,137 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
     school: "Schools",
   };
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[2147483000] flex flex-col bg-[#0b1b3a] text-white"
-      style={{ width: "100%", height: "100%", minHeight: "100vh" }}
-      role="dialog"
-      aria-modal
-      aria-label="Search D4EXAM"
-    >
-      <div className="flex items-center gap-2 border-b border-white/10 px-3 py-3" style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top))" }}>
-        <Search className="h-5 w-5 shrink-0 text-slate-400" />
-        <input
-          autoFocus
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search students, courses, examinations, materials…"
-          className="min-w-0 flex-1 bg-transparent text-base font-medium outline-none placeholder:text-slate-500"
-        />
-        {busy ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : null}
-        <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10" aria-label="Close search">
-          <X className="h-5 w-5" />
-        </button>
-      </div>
+  try {
+    return createPortal(
+      <div
+        className="fixed inset-0 z-[2147483000] flex flex-col bg-[#0b1b3a] text-white"
+        style={{
+          width: "100%",
+          height: "100%",
+          minHeight: "100vh",
+          minWidth: "100vw",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search D4EXAM"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
+      >
+        <div
+          className="flex items-center gap-2 border-b border-white/10 px-3 py-3"
+          style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
+        >
+          <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+          <input
+            autoFocus
+            type="search"
+            enterKeyHint="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search students, courses, examinations…"
+            className="min-w-0 flex-1 bg-transparent text-base font-medium outline-none placeholder:text-slate-500"
+            autoComplete="off"
+            autoCorrect="off"
+          />
+          {busy ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : null}
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10"
+            aria-label="Close search"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
-        {q.trim().length < 2 ? (
-          <div className="space-y-6">
-            {recent.length ? (
+        <div
+          className="flex-1 overflow-y-auto px-3 py-4"
+          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}
+        >
+          {err ? <p className="mb-3 text-center text-sm text-amber-300">{err}</p> : null}
+
+          {q.trim().length < 2 ? (
+            <div className="space-y-6">
+              {recent.length ? (
+                <section>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Recent</p>
+                  <div className="flex flex-wrap gap-2">
+                    {recent.map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setQ(r)}
+                        className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-slate-200"
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
               <section>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Recent</p>
-                <div className="flex flex-wrap gap-2">
-                  {recent.map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setQ(r)}
-                      className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-slate-200"
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-            <section>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Suggested</p>
-              <div className="grid gap-2">
-                {FEATURES.filter((f) => !f.roles || f.roles.includes(role)).map((f) => (
-                  <button
-                    key={f.title}
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      try {
-                        void nav({ to: f.href as never });
-                      } catch {
-                        window.location.href = f.href;
-                      }
-                    }}
-                    className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left hover:bg-white/10"
-                  >
-                    <ClipboardList className="h-4 w-4 text-blue-300" />
-                    <span className="font-semibold">{f.title}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          </div>
-        ) : hits.length === 0 && !busy ? (
-          <p className="py-12 text-center text-sm text-slate-400">No results for “{q.trim()}”</p>
-        ) : (
-          <div className="space-y-6">
-            {Object.entries(grouped).map(([kind, list]) => (
-              <section key={kind}>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">{kindLabel[kind] || kind}</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Suggested</p>
                 <div className="grid gap-2">
-                  {list.map((h) => (
+                  {FEATURES.filter((f) => !f.roles || f.roles.includes(role)).map((f) => (
                     <button
-                      key={`${h.kind}-${h.id}`}
+                      key={f.title}
                       type="button"
-                      onClick={() => go(h)}
-                      className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left hover:bg-white/10"
+                      onClick={() => {
+                        onClose();
+                        safeGo(f.href);
+                      }}
+                      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left hover:bg-white/10"
                     >
-                      <HitIcon kind={h.kind} />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-white">{h.title}</p>
-                        {h.subtitle ? <p className="mt-0.5 text-sm text-slate-300">{h.subtitle}</p> : null}
-                        {h.meta ? <p className="mt-1 text-xs text-slate-400">{h.meta}</p> : null}
-                      </div>
+                      <ClipboardList className="h-4 w-4 text-blue-300" />
+                      <span className="font-semibold">{f.title}</span>
                     </button>
                   ))}
                 </div>
               </section>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body,
-  );
+            </div>
+          ) : hits.length === 0 && !busy ? (
+            <p className="py-12 text-center text-sm text-slate-400">No results for “{q.trim()}”</p>
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(grouped).map(([kind, list]) => (
+                <section key={kind}>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    {kindLabel[kind] || kind}
+                  </p>
+                  <div className="grid gap-2">
+                    {list.map((h) => (
+                      <button
+                        key={`${h.kind}-${h.id}`}
+                        type="button"
+                        onClick={() => go(h)}
+                        className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left hover:bg-white/10"
+                      >
+                        <HitIcon kind={h.kind} />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-white">{h.title}</p>
+                          {h.subtitle ? <p className="mt-0.5 text-sm text-slate-300">{h.subtitle}</p> : null}
+                          {h.meta ? <p className="mt-1 text-xs text-slate-400">{h.meta}</p> : null}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>,
+      document.body,
+    );
+  } catch (e) {
+    console.error("[GlobalSearchPage]", e);
+    return null;
+  }
 }
 
 function HitIcon({ kind }: { kind: SearchHit["kind"] }) {
@@ -258,75 +307,92 @@ function HitIcon({ kind }: { kind: SearchHit["kind"] }) {
   return <Shield className={cls} />;
 }
 
-async function runSearch(
-  term: string,
-  role: AppRole,
-  schoolId: string | null,
-  userId: string | null,
-): Promise<SearchHit[]> {
+async function runSearch(term: string, role: AppRole, schoolId: string | null): Promise<SearchHit[]> {
   const hits: SearchHit[] = [];
-  const like = `%${term.replace(/%/g, "")}%`;
+  const safe = term.replace(/[%_,.()]/g, " ").trim();
+  if (safe.length < 2) return hits;
+  const like = `%${safe}%`;
 
-  // Features
   for (const f of FEATURES) {
     if (f.roles && !f.roles.includes(role)) continue;
-    if (f.q.some((k) => term.toLowerCase().includes(k) || k.includes(term.toLowerCase()))) {
+    if (f.q.some((k) => safe.toLowerCase().includes(k) || k.includes(safe.toLowerCase()))) {
       hits.push({ id: f.href, kind: "feature", title: f.title, href: f.href });
     }
   }
 
-  if (role === "super_admin") {
-    const { data: schools } = await supabase
-      .from("schools")
-      .select("id, name")
-      .ilike("name", like)
-      .limit(8);
-    for (const s of schools ?? []) {
-      hits.push({
-        id: s.id,
-        kind: "school",
-        title: String(s.name || "School"),
-        subtitle: undefined,
-        href: `/super-admin/schools`,
-      });
+  try {
+    if (role === "super_admin") {
+      const { data: schools } = await supabase.from("schools").select("id, name").ilike("name", like).limit(8);
+      for (const s of schools ?? []) {
+        hits.push({
+          id: String(s.id),
+          kind: "school",
+          title: String(s.name || "School"),
+          href: "/super-admin",
+        });
+      }
     }
+  } catch (e) {
+    console.warn("[search] schools", e);
   }
 
-  if (schoolId && role !== "student") {
-    const { data: courses } = await supabase
-      .from("courses")
-      .select("id, code, name, department_id")
-      .eq("school_id", schoolId)
-      .or(`code.ilike.${like},name.ilike.${like}`)
-      .limit(10);
-    for (const c of courses ?? []) {
-      hits.push({
-        id: c.id,
-        kind: "course",
-        title: `${c.code || ""} — ${c.name || "Course"}`.trim(),
-        subtitle: "Course",
-        href: role === "teacher" ? `/teacher/courses` : role === "examination_officer" ? `/officer/live-monitor` : `/school-admin/courses`,
-      });
-    }
+  if (!schoolId) return hits.slice(0, 40);
 
+  try {
+    if (role !== "student") {
+      const { data: courses } = await supabase
+        .from("courses")
+        .select("id, code, name")
+        .eq("school_id", schoolId)
+        .or(`code.ilike.${like},name.ilike.${like}`)
+        .limit(10);
+      for (const c of courses ?? []) {
+        hits.push({
+          id: String(c.id),
+          kind: "course",
+          title: `${c.code || ""} — ${c.name || "Course"}`.trim(),
+          subtitle: "Course",
+          href:
+            role === "teacher"
+              ? "/teacher"
+              : role === "examination_officer"
+                ? "/officer/live-monitor"
+                : "/admin",
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("[search] courses", e);
+  }
+
+  try {
     const { data: exams } = await supabase
       .from("examinations")
-      .select("id, title, status, duration_minutes, courses(code, name)")
+      .select("id, title, status, duration_minutes")
       .eq("school_id", schoolId)
-      .or(`title.ilike.${like}`)
+      .ilike("title", like)
       .limit(10);
     for (const e of exams ?? []) {
-      const course = Array.isArray(e.courses) ? e.courses[0] : e.courses;
       hits.push({
-        id: e.id,
+        id: String(e.id),
         kind: "exam",
         title: String(e.title || "Examination"),
-        subtitle: course ? `${(course as { code?: string }).code || ""} ${(course as { name?: string }).name || ""}`.trim() : undefined,
         meta: `Status: ${e.status || "—"} · ${e.duration_minutes ?? "—"} min`,
-        href: role === "examination_officer" ? `/officer/live-monitor` : `/teacher/examinations`,
+        href:
+          role === "student"
+            ? "/student/examinations"
+            : role === "examination_officer"
+              ? "/officer/live-monitor"
+              : role === "teacher"
+                ? "/teacher"
+                : "/admin",
       });
     }
+  } catch (e) {
+    console.warn("[search] exams", e);
+  }
 
+  try {
     if (role === "school_admin" || role === "examination_officer" || role === "super_admin") {
       const { data: students } = await supabase
         .from("students")
@@ -336,49 +402,17 @@ async function runSearch(
         .limit(10);
       for (const s of students ?? []) {
         hits.push({
-          id: s.id,
+          id: String(s.id),
           kind: "student",
           title: String(s.full_name || s.matric_number || "Student"),
           subtitle: s.matric_number ? `Matric: ${s.matric_number}` : s.student_id || undefined,
-          href: `/officer/live-monitor`,
+          href: "/officer/live-monitor",
         });
       }
     }
+  } catch (e) {
+    console.warn("[search] students", e);
   }
 
-  if (schoolId && role === "student") {
-    const { data: courses } = await supabase
-      .from("courses")
-      .select("id, code, name")
-      .eq("school_id", schoolId)
-      .or(`code.ilike.${like},name.ilike.${like}`)
-      .limit(8);
-    for (const c of courses ?? []) {
-      hits.push({
-        id: c.id,
-        kind: "course",
-        title: `${c.code || ""} — ${c.name || ""}`.trim(),
-        subtitle: "Your course search",
-        href: `/student/materials`,
-      });
-    }
-    const { data: exams } = await supabase
-      .from("examinations")
-      .select("id, title, status")
-      .eq("school_id", schoolId)
-      .or(`title.ilike.${like}`)
-      .limit(8);
-    for (const e of exams ?? []) {
-      hits.push({
-        id: e.id,
-        kind: "exam",
-        title: String(e.title || "Examination"),
-        meta: `Status: ${e.status || "—"}`,
-        href: `/student/examinations`,
-      });
-    }
-  }
-
-  void userId;
   return hits.slice(0, 40);
 }

@@ -401,17 +401,33 @@ export function AppShell({
             <div className="relative max-w-md">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
+                type="search"
                 placeholder="Search…"
                 readOnly
-                onFocus={() => setSearchOpen(true)}
-                onClick={() => setSearchOpen(true)}
-                className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-9"
+                onFocus={(e) => {
+                  e.preventDefault();
+                  setSearchOpen(true);
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  setSearchOpen(true);
+                }}
+                onKeyDown={(e) => e.preventDefault()}
+                className="h-10 cursor-pointer rounded-xl border-slate-200 bg-slate-50 pl-9"
                 aria-label="Search"
               />
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-0.5 sm:gap-2">
+            <button
+              type="button"
+              className="grid h-9 w-9 place-items-center rounded-full text-slate-600 hover:bg-slate-100 md:hidden"
+              aria-label="Search"
+              onClick={() => setSearchOpen(true)}
+            >
+              <Search className="h-5 w-5" />
+            </button>
             <NotificationBell to={notifPath} unread={unreadCount} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
