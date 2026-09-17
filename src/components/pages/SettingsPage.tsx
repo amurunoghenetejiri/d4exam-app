@@ -131,7 +131,7 @@ export function SettingsPage({ scope }: { scope: string }) {
               </Select>
             </div>
             <Separator />
-            <ToggleRow id="compact" label="Compact tables" hint="Reduce row height on data tables" checked={displayPrefs.compactTables} onCheckedChange={(v) => setDisplayPrefs((p) => ({ ...p, compactTables: v }))} />
+            <ToggleRow id="compact" label="Compact tables" hint="Reduce row height on data tables" checked={displayPrefs.compactTables} onCheckedChange={(v) => setDisplayPrefs((p) => ({ ...p, reducedMotion: v }))} />
             <ToggleRow id="reduced" label="Reduced motion" hint="Minimise interface animation" checked={displayPrefs.reducedMotion} onCheckedChange={(v) => setDisplayPrefs((p) => ({ ...p, reducedMotion: v }))} />
             <Button disabled={saving} onClick={() => void savePrefs()}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save preferences</Button>
           </div>
@@ -161,10 +161,10 @@ export function SettingsPage({ scope }: { scope: string }) {
             ) : null}
           </div>
         </SectionCard>
-        <SectionCard title="Help & legal" description="About, support, privacy and pricing">
+        <SectionCard title="Help & legal" description="About, contact & support, privacy and pricing">
           <div className="flex flex-col gap-1">
             <button type="button" onClick={() => setHelpDoc("about")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><Info className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">About Us</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
-            <button type="button" onClick={() => setHelpDoc("support")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><LifeBuoy className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Support</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
+            <button type="button" onClick={() => setHelpDoc("support")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><LifeBuoy className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Contact & Support</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
             <button type="button" onClick={() => setHelpDoc("privacy")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><Shield className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Privacy Policy</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
             <button type="button" onClick={() => setHelpDoc("pricing")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><CreditCard className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Pricing</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
             <p className="mt-3 px-2 text-center text-[11px] text-slate-400">D4EXAM. Smart. Secure. Seamless.</p>
