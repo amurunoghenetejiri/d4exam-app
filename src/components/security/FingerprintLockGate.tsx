@@ -733,11 +733,10 @@ export function FingerprintLockGate() {
 
       <style>{`
         @keyframes d4-fp-scan {
-          0% { top: 26%; opacity: 0.3; }
+          0% { top: 26%; opacity: 0.35; }
           50% { top: 70%; opacity: 1; }
-          100% { top: 26%; opacity: 0.3; }
+          100% { top: 26%; opacity: 0.35; }
         }
-      `}
         @keyframes d4-fp-ring {
           0% { transform: scale(1); opacity: 0.55; }
           70% { transform: scale(1.2); opacity: 0; }
@@ -758,7 +757,7 @@ export function FingerprintLockGate() {
           transform: scale(0.92) translateY(5px) !important;
           box-shadow: 0 2px 0 #1e3a8a, 0 4px 12px rgba(37,99,235,0.35) !important;
         }
-      </style>
+      `}</style>
     </div>,
     document.body,
   );

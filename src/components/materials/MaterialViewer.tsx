@@ -459,7 +459,7 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
 
   const reader = (
     <div
-      className="fixed inset-0 z-[2147483000] flex flex-col bg-black text-white" style={{ width: "100%", height: "100%", minHeight: "100vh", minWidth: "100vw" }}
+      className="fixed inset-0 z-[2147483000] flex flex-col bg-black text-white"
       role="dialog"
       aria-modal
       aria-label="Material reader"
@@ -468,6 +468,10 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
         right: 0,
         bottom: 0,
         left: 0,
+        width: "100%",
+        height: "100%",
+        minHeight: "100vh",
+        minWidth: "100vw",
         width: "100vw",
         height: "100dvh",
         maxHeight: "100dvh",
