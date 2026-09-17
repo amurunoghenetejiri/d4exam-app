@@ -131,7 +131,7 @@ export function SettingsPage({ scope }: { scope: string }) {
               </Select>
             </div>
             <Separator />
-            <ToggleRow id="compact" label="Compact tables" hint="Reduce row height on data tables" checked={displayPrefs.compactTables} onCheckedChange={(v) => setDisplayPrefs((p) => ({ ...p, reducedMotion: v }))} />
+            <ToggleRow id="compact" label="Compact tables" hint="Reduce row height on data tables" checked={displayPrefs.compactTables} onCheckedChange={(v) => setDisplayPrefs((p) => ({ ...p, compactTables: v }))} />
             <ToggleRow id="reduced" label="Reduced motion" hint="Minimise interface animation" checked={displayPrefs.reducedMotion} onCheckedChange={(v) => setDisplayPrefs((p) => ({ ...p, reducedMotion: v }))} />
             <Button disabled={saving} onClick={() => void savePrefs()}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save preferences</Button>
           </div>
