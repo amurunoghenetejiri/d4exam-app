@@ -67,3 +67,93 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.readAsDataURL(blob);
   });
 }
+
+/** Soft size cap so IndexedDB does not blow up on large PDFs/videos. */
+const MAX_BLOB_BYTES = 12 * 1024 * 1024; // 12 MB
+const DEFAULT_PREFETCH_LIMIT = 24;
+const PREFETCH_CONCURRENCY = 2;
+
+let prefetchRunning = false;
+
+/**
+ * Quiet background download of course materials for offline open.
+ * Safe to call often — skips if already offline, too large, or offline network.
+ * Never throws to UI; best-effort only.
+ */
+export async function prefetchMaterialsOffline(
+  userId: string,
+  materials: Array<{
+    id: string;
+    title: string;
+    file_url: string | null;
+    file_name: string | null;
+    file_mime: string | null;
+    file_size?: number | null;
+  }>,
+  opts?: { schoolId?: string | null; limit?: number },
+): Promise<{ saved: number; skipped: number }> {
+  if (!userId || !materials?.length) return { saved: 0, skipped: 0 };
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return { saved: 0, skipped: materials.length };
+  }
+  if (prefetchRunning) return { saved: 0, skipped: 0 };
+  prefetchRunning = true;
+
+  const limit = Math.max(1, Math.min(opts?.limit ?? DEFAULT_PREFETCH_LIMIT, 40));
+  let saved = 0;
+  let skipped = 0;
+
+  try {
+    const candidates = materials
+      .filter((m) => m.id && m.file_url)
+      .filter((m) => {
+        const size = m.file_size ?? 0;
+        if (size > 0 && size > MAX_BLOB_BYTES) return false;
+        return true;
+      })
+      .slice(0, limit);
+
+    const queue = [...candidates];
+    const workers = Array.from({ length: PREFETCH_CONCURRENCY }, async () => {
+      while (queue.length) {
+        const m = queue.shift();
+        if (!m) break;
+        try {
+          const already = await isMaterialOffline(userId, m.id);
+          if (already) {
+            skipped += 1;
+            continue;
+          }
+          const res = await fetch(m.file_url!);
+          if (!res.ok) {
+            skipped += 1;
+            continue;
+          }
+          const blob = await res.blob();
+          if (blob.size > MAX_BLOB_BYTES) {
+            skipped += 1;
+            continue;
+          }
+          const dataUrl = await blobToDataUrl(blob);
+          const payload: OfflineMaterialBlob = {
+            materialId: m.id,
+            title: m.title,
+            fileName: m.file_name,
+            mime: m.file_mime || blob.type || null,
+            dataUrl,
+            savedAt: Date.now(),
+          };
+          await offlineSet(userId, key(m.id), payload, { schoolId: opts?.schoolId });
+          saved += 1;
+        } catch {
+          skipped += 1;
+        }
+      }
+    });
+    await Promise.all(workers);
+  } finally {
+    prefetchRunning = false;
+  }
+
+  return { saved, skipped };
+}

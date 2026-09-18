@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Upload, Trash2, Loader2, Search, Filter, MoreVertical, Download, Calendar, Eye, Pencil, X, FileImage, FileText, BookOpen,
@@ -9,12 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionUser } from "@/lib/session";
+import { withOfflineCache } from "@/lib/offline-query";
+import { OfflineKeys } from "@/lib/offline-cache";
 import { imagesToPdfBlob, isImageFile } from "@/lib/images-to-pdf";
 import { MaterialViewer } from "@/components/materials/MaterialViewer";
 import {
   TYPE_OPTIONS, CAT_META, MAX_FILES, MAX_FILE_MB, type MaterialType, type CourseOpt, type MaterialRow,
   typeMeta, formatBytes, formatDate,
 } from "@/components/materials/materialsShared";
+import { prefetchMaterialsOffline } from "@/lib/material-offline";
+import { isOnlineNow } from "@/lib/offline-sync";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -65,31 +69,61 @@ export function CourseMaterialsPanel({
   const listQ = useQuery({
     queryKey: ["course-materials", schoolId, courseIds.join(",")],
     enabled: Boolean(schoolId && courseIds.length),
-    staleTime: 8_000,
+    staleTime: 30_000,
     queryFn: async () => {
-      let { data, error } = await supabase
-        .from("course_materials")
-        .select("id, course_id, title, description, material_type, file_url, file_name, file_mime, file_size, uploader_role, uploader_name, uploaded_by, created_at, download_count, tags, ocr_text, ocr_status, converted_pdf_url")
-        .eq("school_id", schoolId)
-        .in("course_id", courseIds)
-        .order("created_at", { ascending: false })
-        .limit(400);
-      if (error) {
-        const retry = await supabase
-          .from("course_materials")
-          .select("id, course_id, title, description, material_type, file_url, file_name, file_mime, file_size, uploader_role, uploader_name, uploaded_by, created_at")
-          .eq("school_id", schoolId)
-          .in("course_id", courseIds)
-          .order("created_at", { ascending: false })
-          .limit(400);
-        if (retry.error) throw retry.error;
-        data = retry.data;
-      }
-      return (data ?? []) as MaterialRow[];
+      const cacheKey = `${OfflineKeys.materialsIndex}::${schoolId}::${courseIds.slice().sort().join(",")}`;
+      return withOfflineCache(
+        session?.userId,
+        cacheKey,
+        async () => {
+          let { data, error } = await supabase
+            .from("course_materials")
+            .select("id, course_id, title, description, material_type, file_url, file_name, file_mime, file_size, uploader_role, uploader_name, uploaded_by, created_at, download_count, tags, ocr_text, ocr_status, converted_pdf_url")
+            .eq("school_id", schoolId)
+            .in("course_id", courseIds)
+            .order("created_at", { ascending: false })
+            .limit(400);
+          if (error) {
+            const retry = await supabase
+              .from("course_materials")
+              .select("id, course_id, title, description, material_type, file_url, file_name, file_mime, file_size, uploader_role, uploader_name, uploaded_by, created_at")
+              .eq("school_id", schoolId)
+              .in("course_id", courseIds)
+              .order("created_at", { ascending: false })
+              .limit(400);
+            if (retry.error) throw retry.error;
+            data = retry.data;
+          }
+          return (data ?? []) as MaterialRow[];
+        },
+        { schoolId, fallback: [] as MaterialRow[] },
+      );
     },
   });
 
   const all = listQ.data ?? [];
+
+  // Quiet background offline cache of material files when online (list already offline via withOfflineCache)
+  useEffect(() => {
+    const uid = session?.userId;
+    if (!uid || !all.length || !isOnlineNow()) return;
+    const t = window.setTimeout(() => {
+      void prefetchMaterialsOffline(
+        uid,
+        all.map((m) => ({
+          id: m.id,
+          title: m.title,
+          file_url: m.file_url,
+          file_name: m.file_name,
+          file_mime: m.file_mime,
+          file_size: m.file_size,
+        })),
+        { schoolId, limit: 24 },
+      );
+    }, 2500);
+    return () => window.clearTimeout(t);
+  }, [session?.userId, schoolId, all]);
+
   const counts = useMemo(() => {
     const c = { notes: 0, assignment: 0, past_question: 0, others: 0 };
     for (const m of all) c[typeMeta(m.material_type).cat] += 1;
