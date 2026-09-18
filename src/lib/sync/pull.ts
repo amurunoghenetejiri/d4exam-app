@@ -1,5 +1,5 @@
 /**
- * Role-scoped pull from Supabase → local SQLite.
+ * Role-scoped pull from Supabase → local SQLite / offline cache.
  * Uses updated_at / created_at cursors. Server-authoritative for results & exams.
  * Does NOT download other students' private data.
  */
@@ -9,7 +9,9 @@ import {
   mirrorNotifications,
   mirrorExaminations,
   mirrorResults,
+  mirrorOfflineBlob,
 } from "@/lib/local-db/mirror";
+import { offlineSet, OfflineKeys } from "@/lib/offline-cache";
 import type { SyncScope } from "./types";
 
 export type PullCtx = {
@@ -124,6 +126,43 @@ async function pullResults(ctx: PullCtx): Promise<number> {
   return data?.length ?? 0;
 }
 
+async function pullCourses(ctx: PullCtx): Promise<number> {
+  if (!ctx.schoolId) return 0;
+  const { data, error } = await supabase
+    .from("courses")
+    .select("id, code, name, school_id, status")
+    .eq("school_id", ctx.schoolId)
+    .limit(200);
+  if (error) throw new Error(error.message);
+  await offlineSet(ctx.userId, OfflineKeys.courses, data ?? [], { schoolId: ctx.schoolId });
+  await mirrorOfflineBlob(ctx.userId, OfflineKeys.courses, data ?? []);
+  return data?.length ?? 0;
+}
+
+async function pullMaterialsIndex(ctx: PullCtx): Promise<number> {
+  if (!ctx.schoolId) return 0;
+  let data: unknown[] | null = null;
+  const res = await supabase
+    .from("course_materials")
+    .select("id, title, course_id, school_id, file_url, mime_type, created_at, updated_at")
+    .eq("school_id", ctx.schoolId)
+    .limit(120);
+  if (res.error) {
+    const res2 = await supabase
+      .from("materials")
+      .select("id, title, course_id, school_id, file_url, created_at")
+      .eq("school_id", ctx.schoolId)
+      .limit(120);
+    if (res2.error) throw new Error(res2.error.message);
+    data = res2.data as unknown[] | null;
+  } else {
+    data = res.data as unknown[] | null;
+  }
+  await offlineSet(ctx.userId, OfflineKeys.materialsIndex, data ?? [], { schoolId: ctx.schoolId });
+  await mirrorOfflineBlob(ctx.userId, OfflineKeys.materialsIndex, data ?? []);
+  return data?.length ?? 0;
+}
+
 export async function pullScopedData(ctx: PullCtx): Promise<PullSummary> {
   const summary: PullSummary = { pulled: 0, scopes: {}, errors: [] };
 
@@ -155,6 +194,24 @@ export async function pullScopedData(ctx: PullCtx): Promise<PullSummary> {
     summary.pulled += n;
   } catch (e) {
     summary.scopes.RESULTS = "fail";
+    summary.errors.push(e instanceof Error ? e.message : String(e));
+  }
+
+  try {
+    const n = await pullCourses(ctx);
+    summary.scopes.COURSES = "ok";
+    summary.pulled += n;
+  } catch (e) {
+    summary.scopes.COURSES = "fail";
+    summary.errors.push(e instanceof Error ? e.message : String(e));
+  }
+
+  try {
+    const n = await pullMaterialsIndex(ctx);
+    summary.scopes.MATERIALS = "ok";
+    summary.pulled += n;
+  } catch (e) {
+    summary.scopes.MATERIALS = "fail";
     summary.errors.push(e instanceof Error ? e.message : String(e));
   }
 
