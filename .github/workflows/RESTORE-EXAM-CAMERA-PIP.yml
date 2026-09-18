@@ -1,0 +1,104 @@
+name: Restore ExamCameraPip
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/RESTORE-EXAM-CAMERA-PIP.yml"
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore ExamCameraPip from good commit
+        run: |
+          set -e
+          git checkout f54dbcae31aa55a3553b1c53080ce20c0cf51f9a -- src/components/cbt/ExamCameraPip.tsx
+          # Apply warm-up patch inline
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("src/components/cbt/ExamCameraPip.tsx")
+          t = p.read_text()
+          if "WARMUP_MS" not in t:
+            t = t.replace(
+              "  const STABILITY_MS = 450;",
+              "  const STABILITY_MS = 450;\n  const WARMUP_MS = 20_000;",
+            )
+            t = t.replace(
+              '  const [faceStatus, setFaceStatus] = useState<FaceState>(faceDetection ? "unclear" : "unavailable");',
+              '  const [faceStatus, setFaceStatus] = useState<FaceState>(faceDetection ? "unclear" : "unavailable");\n  const [warmupDone, setWarmupDone] = useState(!faceDetection);\n  const faceSessionStartRef = useRef(Date.now());',
+            )
+            if "const startedAt = Date.now();" in t and "warmupTimer" not in t:
+              t = t.replace(
+                "const startedAt = Date.now();",
+                "const startedAt = Date.now();\n    faceSessionStartRef.current = startedAt;\n    setWarmupDone(false);\n    const warmupTimer = window.setTimeout(() => setWarmupDone(true), WARMUP_MS);",
+              )
+              t = t.replace(
+                """return () => {\n      cancelled = true;\n      if (timer) window.clearTimeout(timer);\n      faceEngineRef.current?.close?.();\n      faceEngineRef.current = null;""",
+                """return () => {\n      cancelled = true;\n      window.clearTimeout(warmupTimer);\n      if (timer) window.clearTimeout(timer);\n      faceEngineRef.current?.close?.();\n      faceEngineRef.current = null;""",
+              )
+            old = '''  const faceLabel =
+    camConn === "reconnecting"
+      ? "Reconnecting camera…"
+      : camConn === "unavailable"
+        ? "Camera not available"
+        : !faceDetection
+          ? "Camera active"
+          : faceStatus === "multi"
+            ? "Multiple Faces Detected"
+            : faceStatus === "none"
+              ? "No Face Detected"
+              : faceStatus === "ok"
+                ? "1 Face Monitoring"
+                : faceStatus === "unavailable"
+                  ? camConn === "active"
+                    ? "Detecting face…"
+                    : "Camera blocked"
+                  : "Detecting face…";'''
+            new = '''  const inWarmup = Boolean(faceDetection) && camConn === "active" && !warmupDone;
+  const faceLabel =
+    camConn === "reconnecting"
+      ? "Reconnecting camera…"
+      : camConn === "unavailable"
+        ? "Camera not available"
+        : !faceDetection
+          ? "Camera active"
+          : inWarmup
+            ? "Detecting face…"
+            : faceStatus === "multi"
+              ? "Multiple Faces Detected"
+              : faceStatus === "none"
+                ? "No Face Detected"
+                : faceStatus === "ok"
+                  ? "1 Face Monitoring"
+                  : faceStatus === "unavailable"
+                    ? camConn === "active"
+                      ? "Detecting face…"
+                      : "Camera blocked"
+                    : "Detecting face…";'''
+            if old in t:
+              t = t.replace(old, new)
+            if "faceSessionStartRef.current < WARMUP_MS" not in t:
+              t = t.replace(
+                '''  const fireAlert = useCallback((kind: SecurityAlertKind, faceCount: number | null) => {
+    const now = Date.now();
+    if (now - lastAlertRef.current < ALERT_COOLDOWN_MS) return;''',
+                '''  const fireAlert = useCallback((kind: SecurityAlertKind, faceCount: number | null) => {
+    const now = Date.now();
+    if (now - faceSessionStartRef.current < WARMUP_MS) return;
+    if (now - lastAlertRef.current < ALERT_COOLDOWN_MS) return;''',
+              )
+            p.write_text(t)
+            print("warm-up applied")
+          else:
+            print("already has warm-up")
+          PY
+          git config user.name "d4exam-bot"
+          git config user.email "bot@d4exam.local"
+          git add src/components/cbt/ExamCameraPip.tsx
+          git commit -m "fix(cbt): restore ExamCameraPip + 20s face warm-up" || exit 0
+          git push
