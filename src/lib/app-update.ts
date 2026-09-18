@@ -1,7 +1,7 @@
 /**
  * Sideloaded APK version check + install helpers.
- * Not Play Store — update downloads the APK from apkUrl on THIS site.
- * Never redirects users to GitHub for install.
+ * Prefer same-origin /downloads/d4exam.apk when present;
+ * fall back to GitHub Release direct asset (Content-Disposition: attachment).
  */
 import { isNativeShell } from "@/native/platform";
 
@@ -18,12 +18,16 @@ export type AppVersionConfig = {
 
 const PRODUCTION_ORIGIN = "https://d4exam-platform.vercel.app";
 
+/** Official release asset — always a real APK download when CI publishes apk-latest */
+export const GITHUB_APK_RELEASE_URL =
+  "https://github.com/amurunoghenetejiri/d4exam-platform/releases/download/apk-latest/d4exam.apk";
+
 const DEFAULT_CONFIG: AppVersionConfig = {
   minVersion: "1.0.0",
   latestVersion: "1.0.0",
   minBuild: 1,
   latestBuild: 1,
-  apkUrl: "/downloads/d4exam.apk",
+  apkUrl: GITHUB_APK_RELEASE_URL,
   forceUpdate: true,
   message: "A new version of D4EXAM is required. Please update to continue.",
   installMessage:
@@ -70,6 +74,24 @@ export function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+function normalizeApkUrl(u: string): string {
+  const raw = String(u || "").trim();
+  if (!raw) return GITHUB_APK_RELEASE_URL;
+  // Missing local file used to show "no file" — map to working release asset
+  if (raw === "/downloads/d4exam.apk" || raw.endsWith("/downloads/d4exam.apk")) {
+    return GITHUB_APK_RELEASE_URL;
+  }
+  // Allow official release download URLs through unchanged
+  if (/github\.com\/.+\/releases\/download\//i.test(raw)) {
+    return raw;
+  }
+  // Other github.com pages (repo, issues) → force release asset, not HTML
+  if (/github\.com/i.test(raw)) {
+    return GITHUB_APK_RELEASE_URL;
+  }
+  return raw;
+}
+
 export async function fetchAppVersionConfig(): Promise<AppVersionConfig> {
   if (cachedConfig && Date.now() - cachedConfig.at < CACHE_MS) {
     return cachedConfig.value;
@@ -91,11 +113,7 @@ export async function fetchAppVersionConfig(): Promise<AppVersionConfig> {
         minBuild: Number(data.minBuild ?? DEFAULT_CONFIG.minBuild) || 1,
         latestBuild: Number(data.latestBuild ?? DEFAULT_CONFIG.latestBuild) || 1,
         forceUpdate: data.forceUpdate !== false,
-        apkUrl: (() => {
-          const u = String(data.apkUrl || DEFAULT_CONFIG.apkUrl);
-          if (/github\.com/i.test(u)) return "/downloads/d4exam.apk";
-          return u || "/downloads/d4exam.apk";
-        })(),
+        apkUrl: normalizeApkUrl(String(data.apkUrl || DEFAULT_CONFIG.apkUrl)),
       };
       cachedConfig = { at: Date.now(), value };
       return value;
@@ -142,15 +160,7 @@ export function needsForceUpdate(
 }
 
 export function resolveApkUrl(apkUrl: string): string {
-  const raw = (apkUrl || DEFAULT_CONFIG.apkUrl || "/downloads/d4exam.apk").trim();
-  // Never send users to GitHub for APK install
-  if (/github\.com/i.test(raw)) {
-    const origin =
-      typeof window !== "undefined" && window.location?.origin
-        ? window.location.origin
-        : PRODUCTION_ORIGIN;
-    return `${origin.replace(/\/$/, "")}/downloads/d4exam.apk`;
-  }
+  const raw = normalizeApkUrl(apkUrl || DEFAULT_CONFIG.apkUrl);
   if (/^https?:\/\//i.test(raw)) return raw;
   const origin =
     typeof window !== "undefined" && window.location?.origin
@@ -161,11 +171,32 @@ export function resolveApkUrl(apkUrl: string): string {
 }
 
 /**
- * Trigger a real file download of the APK from this site (same origin preferred).
- * Never opens GitHub. Browser shows native "Downloading…" / install prompt.
+ * Start APK download. GitHub Release assets send Content-Disposition: attachment
+ * so Android Chrome downloads the file instead of showing a page.
+ * Cross-origin: navigate (download attribute is same-origin only).
  */
 export function openApkDownload(apkUrl: string) {
   const url = resolveApkUrl(apkUrl);
+  const isCrossOrigin =
+    typeof window !== "undefined" &&
+    /^https?:\/\//i.test(url) &&
+    !url.startsWith(window.location.origin);
+
+  // Cross-origin release asset: assign so browser follows 302 → binary download
+  if (isCrossOrigin) {
+    try {
+      window.location.assign(url);
+      return;
+    } catch {
+      try {
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      } catch {
+        /* fall through */
+      }
+    }
+  }
+
   try {
     const a = document.createElement("a");
     a.href = url;

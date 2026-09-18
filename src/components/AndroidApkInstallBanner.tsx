@@ -6,6 +6,7 @@ import {
   isAndroidWebBrowser,
   isIosWebBrowser,
   openApkDownload,
+  GITHUB_APK_RELEASE_URL,
   type AppVersionConfig,
 } from "@/lib/app-update";
 import { isNativeShell } from "@/native/platform";
@@ -17,7 +18,7 @@ const FALLBACK_CFG: AppVersionConfig = {
   latestVersion: "1.0.0",
   minBuild: 1,
   latestBuild: 1,
-  apkUrl: "/downloads/d4exam.apk",
+  apkUrl: GITHUB_APK_RELEASE_URL,
   forceUpdate: true,
   message: "A new version of D4EXAM is required. Please update to continue.",
   installMessage:
@@ -52,7 +53,7 @@ function shouldShowInstallPrompt(): boolean {
 /**
  * Website only, Android phones: prompt to install the real APK (not PWA).
  * Hidden on iOS and inside the Capacitor shell.
- * Tip: open https://your-site/?install=1 to force-show.
+ * Tip: open https://d4exam-platform.vercel.app/?install=1 to force-show.
  */
 export function AndroidApkInstallBanner() {
   const [cfg, setCfg] = useState<AppVersionConfig>(FALLBACK_CFG);
