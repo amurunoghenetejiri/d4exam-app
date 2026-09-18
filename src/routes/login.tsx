@@ -278,7 +278,13 @@ function LoginPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     e.stopPropagation();
-    if (inFlight.current || loading) return;
+    if (inFlight.current || loading) {
+      // If a previous attempt left the button stuck, a second tap resets it
+      setLoading(false);
+      inFlight.current = false;
+      setError("");
+      return;
+    }
     setError("");
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setError("No network. Check your connection and try again.");
@@ -292,17 +298,17 @@ function LoginPage() {
     setLoading(true);
     let navigated = false;
     let lastServerMsg = "";
+    // Hard ceiling so the Sign in button never stays stuck
     const loginTimeout = window.setTimeout(() => {
-      if (!inFlight.current || navigated) return;
+      if (navigated) return;
       setLoading(false);
       inFlight.current = false;
-      // Only blame network when the browser is actually offline
       if (typeof navigator !== "undefined" && navigator.onLine === false) {
         setError("No network. Check your connection and try again.");
       } else {
         setError("Sign-in is taking longer than usual. Please try again.");
       }
-    }, 28_000);
+    }, 15_000);
 
     try {
       const schoolCode = code.trim().toUpperCase();
@@ -311,7 +317,7 @@ function LoginPage() {
       const looksEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ident);
 
       try {
-        // Allow up to 18s for server login (cold starts on Vercel are normal)
+        // Cap server login so UI never hangs (client fallback still runs)
         const result = await Promise.race([
           loginFn({
             data: {
@@ -320,7 +326,7 @@ function LoginPage() {
               password: pass,
             },
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 18_000)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
         ]);
 
         if (result && "session" in result && result.session?.access_token) {
@@ -380,11 +386,19 @@ function LoginPage() {
 
       for (const email of emailsToTry) {
         try {
-          const { data, error: authErr } = await supabase.auth.signInWithPassword({
+          const authPromise = supabase.auth.signInWithPassword({
             email,
             password: pass,
           });
-          if (!authErr && data.session) {
+          const raced = await Promise.race([
+            authPromise,
+            new Promise<{ data: { session: null }; error: { message: string } }>((resolve) =>
+              setTimeout(() => resolve({ data: { session: null }, error: { message: "timeout" } }), 4_000),
+            ),
+          ]);
+          const data = raced.data;
+          const authErr = raced.error;
+          if (!authErr && data?.session) {
             if (await resolveRoleAndGoHome()) {
               navigated = true;
               return;
@@ -395,7 +409,7 @@ function LoginPage() {
               return;
             }
           }
-          if (authErr?.message) lastServerMsg = authErr.message;
+          if (authErr?.message && authErr.message !== "timeout") lastServerMsg = authErr.message;
         } catch {
           /* try next */
         }
@@ -444,9 +458,17 @@ function LoginPage() {
       setError(friendlyLoginError(err));
     } finally {
       window.clearTimeout(loginTimeout);
+      // Always release the button. Successful navigations leave the page;
+      // if replace is delayed, user can still retry after a short moment.
       if (!navigated) {
         setLoading(false);
         inFlight.current = false;
+      } else {
+        // Safety: if navigation is slow, unstick after 2s
+        window.setTimeout(() => {
+          setLoading(false);
+          inFlight.current = false;
+        }, 2_000);
       }
     }
   }

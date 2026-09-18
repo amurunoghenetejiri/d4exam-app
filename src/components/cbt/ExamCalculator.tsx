@@ -739,7 +739,7 @@ export function ExamCalculatorFab({ onClick }: { onClick: () => void }) {
       aria-label="Calculator"
       title="Calculator"
       className={cn(
-        "fixed z-[130] grid h-12 w-12 place-items-center rounded-full bg-[#2563eb] text-white shadow-lg shadow-blue-900/40 hover:bg-[#1d4ed8] active:scale-95",
+        "fixed z-[2147482500] grid h-12 w-12 place-items-center rounded-full bg-[#2563eb] text-white shadow-lg shadow-blue-900/40 hover:bg-[#1d4ed8] active:scale-95",
         "left-[max(0.75rem,env(safe-area-inset-left))]",
         "bottom-[max(0.75rem,env(safe-area-inset-bottom))]",
       )}

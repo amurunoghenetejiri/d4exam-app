@@ -200,10 +200,20 @@ export function CbtExamPage() {
     queryKey: ["cbt-settings", id],
     enabled: Boolean(id),
     queryFn: async () => {
-      const { data } = await supabase.from("exam_settings")
-        .select("exam_id, fullscreen, tab_monitoring, max_tab_switches, block_copy_paste, randomize_questions, randomize_options, require_camera, require_microphone, face_detection, max_face_warnings, require_screen_share, screen_share_mode, threshold_action, face_violation_action, pause_duration_seconds, total_marks, instructions, result_visibility, questions_to_answer, allow_calculator, calculator_type")
-        .eq("exam_id", id).maybeSingle();
-      return data as ExamSettingsRow | null;
+      // Prefer full select (includes calculator columns). If schema is older, fall back.
+      const full =
+        "exam_id, fullscreen, tab_monitoring, max_tab_switches, block_copy_paste, randomize_questions, randomize_options, require_camera, require_microphone, face_detection, max_face_warnings, require_screen_share, screen_share_mode, threshold_action, face_violation_action, pause_duration_seconds, total_marks, instructions, result_visibility, questions_to_answer, allow_calculator, calculator_type";
+      const basic =
+        "exam_id, fullscreen, tab_monitoring, max_tab_switches, block_copy_paste, randomize_questions, randomize_options, require_camera, require_microphone, face_detection, max_face_warnings, require_screen_share, screen_share_mode, threshold_action, face_violation_action, pause_duration_seconds, total_marks, instructions, result_visibility, questions_to_answer";
+      const first = await supabase.from("exam_settings").select(full).eq("exam_id", id).maybeSingle();
+      if (!first.error) return first.data as ExamSettingsRow | null;
+      const msg = String(first.error.message || "").toLowerCase();
+      if (msg.includes("allow_calculator") || msg.includes("calculator_type") || msg.includes("column") || msg.includes("schema")) {
+        const second = await supabase.from("exam_settings").select(basic).eq("exam_id", id).maybeSingle();
+        if (!second.error) return second.data as ExamSettingsRow | null;
+      }
+      console.warn("[cbt-settings]", first.error.message);
+      return null;
     },
   });
 
@@ -250,6 +260,21 @@ export function CbtExamPage() {
   );
 
   const security = useMemo(() => fromExamSettingsRow(settingsQ.data, examQ.data?.description), [settingsQ.data, examQ.data?.description]);
+  // Extra calculator enable detection: description JSON may use either key style
+  const calculatorEnabled = useMemo(() => {
+    if (security.allowCalculator) return true;
+    if (settingsQ.data && (settingsQ.data as { allow_calculator?: boolean }).allow_calculator === true) return true;
+    const desc = String(examQ.data?.description || "");
+    if (/"allowCalculator"\s*:\s*true/.test(desc) || /"allow_calculator"\s*:\s*true/.test(desc)) return true;
+    return false;
+  }, [security.allowCalculator, settingsQ.data, examQ.data?.description]);
+  const calculatorMode = useMemo((): "basic" | "scientific" => {
+    if (security.calculatorType === "scientific") return "scientific";
+    if ((settingsQ.data as { calculator_type?: string } | null)?.calculator_type === "scientific") return "scientific";
+    const desc = String(examQ.data?.description || "");
+    if (/"calculatorType"\s*:\s*"scientific"/.test(desc) || /"calculator_type"\s*:\s*"scientific"/.test(desc)) return "scientific";
+    return "basic";
+  }, [security.calculatorType, settingsQ.data, examQ.data?.description]);
 
   const shutdownMedia = useCallback(() => {
     holdExamScreenShare(false);
@@ -1466,12 +1491,12 @@ export function CbtExamPage() {
           </div>
         </div>
       )}
-      {started && !done && !previewMode && (security.allowCalculator || settingsQ.data?.allow_calculator === true) && (
+      {started && !done && !previewMode && calculatorEnabled && (
         <>
           <ExamCalculatorFab onClick={() => setCalcOpen(true)} />
           <ExamCalculator
             open={calcOpen}
-            mode={(security.calculatorType === "scientific" || settingsQ.data?.calculator_type === "scientific") ? "scientific" : "basic"}
+            mode={calculatorMode}
             onClose={() => setCalcOpen(false)}
           />
         </>
