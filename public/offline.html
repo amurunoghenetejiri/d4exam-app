@@ -66,32 +66,18 @@
       padding: 0 2rem;
     }
     .slogan span.hi { color: #60a5fa; }
-    /* Soft connecting hint — not a blocking offline screen */
-    .hint {
-      margin-top: 1.75rem;
-      font-size: 12px;
-      color: #64748b;
-      letter-spacing: 0.04em;
-      min-height: 1.25rem;
-      opacity: 0;
-      transition: opacity 0.35s ease;
-    }
-    .hint.show { opacity: 1; }
-    .hint strong { color: #94a3b8; font-weight: 600; }
   </style>
 </head>
 <body>
   <!--
     Capacitor errorPath when live server.url is unreachable.
-    MUST look like the normal app splash — never a full "You're Offline" wall on cold start.
-    Silently retry loading the live app. Soft hint only after a short wait.
-    Online-required actions (start exam, submit, live monitor) still use in-app offline guards.
+    Looks exactly like the normal app splash — no "Connecting" / offline wall.
+    Silently retries the live app. server.url is never changed.
   -->
   <div class="boot-main">
     <img src="/logo.png" alt="" width="160" height="160" onerror="this.style.display='none'" />
     <div class="t">D<span class="b">4</span>EXAM</div>
     <div class="s">Smart Examination System</div>
-    <p class="hint" id="hint" aria-live="polite"></p>
   </div>
   <div class="slogan">SMART. <span class="hi">SECURE.</span> SEAMLESS.</div>
 
@@ -100,7 +86,6 @@
       var LIVE = "https://d4exam-platform.vercel.app/";
       var tries = 0;
       var going = false;
-      var hint = document.getElementById("hint");
 
       function go() {
         if (going) return;
@@ -113,45 +98,25 @@
         }
       }
 
-      function tick() {
-        tries += 1;
-        // After a few silent retries, show a soft connecting line (still not a full offline page)
-        if (tries >= 3 && hint) {
-          hint.textContent = "Connecting…";
-          hint.classList.add("show");
-        }
-        if (tries >= 8 && hint) {
-          hint.innerHTML = "Waiting for connection… <strong>will open when ready</strong>";
-        }
-        // Probe: if browser thinks we're online, jump immediately
-        try {
-          if (navigator.onLine) {
-            go();
-            return;
-          }
-        } catch (e) {}
-        go(); // always attempt — Capacitor may recover; failed load returns here
-      }
+      // Hold normal splash briefly (like online boot), then retry live app silently
+      setTimeout(function () {
+        go();
+      }, 1200);
 
-      // Immediate + interval retries (normal splash stays visible)
-      setTimeout(tick, 200);
       setInterval(function () {
+        tries += 1;
         going = false;
-        tick();
-      }, 2200);
+        go();
+      }, 3500);
 
       window.addEventListener("online", function () {
-        if (hint) {
-          hint.textContent = "Connected — opening…";
-          hint.classList.add("show");
-        }
-        setTimeout(go, 250);
+        going = false;
+        go();
       });
 
-      // If user taps anywhere, retry
       document.addEventListener("click", function () {
         going = false;
-        tick();
+        go();
       });
     })();
   </script>

@@ -1,9 +1,9 @@
 /**
- * Full-screen in-exam calculator (basic + scientific).
- * Student title is always "Calculator" (never Basic/Scientific).
- * Expression at top, live auto-result below. Safe parser (no eval).
+ * D4EXAM natural-entry scientific calculator.
+ * Visual math structures (stacked fractions, radicals, superscripts) — not plain text.
+ * Navy D4EXAM branding; layout inspired by advanced scientific calculators.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Calculator as CalcIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,34 @@ export type CalculatorMode = "basic" | "scientific";
 type AngleMode = "DEG" | "RAD" | "GRAD";
 type Props = { open: boolean; mode: CalculatorMode; onClose: () => void };
 
-type KeyDef = { label: string; action: string; className?: string; span?: number };
+type Atom =
+  | { t: "num"; v: string }
+  | { t: "op"; v: string }
+  | { t: "lparen" }
+  | { t: "rparen" }
+  | { t: "pi" }
+  | { t: "e" }
+  | { t: "ans" }
+  | { t: "x" }
+  | { t: "i" }
+  | { t: "pct" }
+  | { t: "fact" }
+  | { t: "fn"; name: string; arg: Atom[] }
+  | { t: "frac"; num: Atom[]; den: Atom[] }
+  | { t: "mixed"; whole: Atom[]; num: Atom[]; den: Atom[] }
+  | { t: "sqrt"; arg: Atom[] }
+  | { t: "cbrt"; arg: Atom[] }
+  | { t: "nroot"; n: Atom[]; arg: Atom[] }
+  | { t: "pow"; base: Atom[]; exp: Atom[] }
+  | { t: "inv"; base: Atom[] }
+  | { t: "sq"; base: Atom[] }
+  | { t: "logb"; base: Atom[]; arg: Atom[] };
+
+type Cursor = { path: number[]; slot: "main" | "num" | "den" | "whole" | "arg" | "exp" | "n" | "base" };
+
+function emptyCursor(): Cursor {
+  return { path: [], slot: "main" };
+}
 
 function toRad(x: number, angle: AngleMode): number {
   if (angle === "DEG") return (x * Math.PI) / 180;
@@ -26,363 +53,530 @@ function fromRad(x: number, angle: AngleMode): number {
   if (angle === "GRAD") return (x * 200) / Math.PI;
   return x;
 }
-
 function formatResult(v: number): string {
   if (!Number.isFinite(v)) return "Error";
   if (Object.is(v, -0)) return "0";
   if (Number.isInteger(v) && Math.abs(v) < 1e15) return String(v);
   const abs = Math.abs(v);
   if (abs !== 0 && (abs >= 1e12 || abs < 1e-9)) return v.toExponential(6).replace(/\.?0+e/, "e");
-  const s = Number(v.toPrecision(12)).toString();
-  return s;
+  return Number(v.toPrecision(12)).toString();
+}
+function factorial(n: number): number {
+  if (n < 0 || !Number.isInteger(n) || n > 170) return NaN;
+  let r = 1;
+  for (let i = 2; i <= n; i++) r *= i;
+  return r;
 }
 
-/** Tokenize expression for safe evaluation. */
-function tokenize(expr: string): string[] {
-  const s = expr.replace(/\s+/g, "");
-  const out: string[] = [];
-  let i = 0;
-  while (i < s.length) {
-    const c = s[i]!;
-    if ("+-×÷*/^()%,".includes(c) || c === "−") {
-      out.push(c === "*" ? "×" : c === "/" ? "÷" : c === "-" ? "−" : c);
-      i++;
+function evalAtoms(atoms: Atom[], angle: AngleMode, ans: number): number {
+  const tokens: string[] = [];
+  const emit = (a: Atom[]) => {
+    for (const node of a) {
+      switch (node.t) {
+        case "num": tokens.push(node.v || "0"); break;
+        case "op": tokens.push(node.v); break;
+        case "lparen": tokens.push("("); break;
+        case "rparen": tokens.push(")"); break;
+        case "pi": tokens.push(String(Math.PI)); break;
+        case "e": tokens.push(String(Math.E)); break;
+        case "ans": tokens.push(String(ans)); break;
+        case "x": case "i": tokens.push("0"); break;
+        case "pct": tokens.push("%"); break;
+        case "fact": tokens.push("!"); break;
+        case "fn": {
+          const arg = evalAtoms(node.arg, angle, ans);
+          let v = NaN;
+          const name = node.name;
+          if (name === "sin") v = Math.sin(toRad(arg, angle));
+          else if (name === "cos") v = Math.cos(toRad(arg, angle));
+          else if (name === "tan") v = Math.tan(toRad(arg, angle));
+          else if (name === "asin") v = fromRad(Math.asin(arg), angle);
+          else if (name === "acos") v = fromRad(Math.acos(arg), angle);
+          else if (name === "atan") v = fromRad(Math.atan(arg), angle);
+          else if (name === "ln") v = Math.log(arg);
+          else if (name === "log" || name === "log10") v = Math.log10(arg);
+          else if (name === "exp") v = Math.exp(arg);
+          else if (name === "abs") v = Math.abs(arg);
+          else if (name === "10^") v = Math.pow(10, arg);
+          tokens.push(String(v));
+          break;
+        }
+        case "frac": {
+          const n = evalAtoms(node.num.length ? node.num : [{ t: "num", v: "0" }], angle, ans);
+          const d = evalAtoms(node.den.length ? node.den : [{ t: "num", v: "1" }], angle, ans);
+          tokens.push(String(n / d));
+          break;
+        }
+        case "mixed": {
+          const w = evalAtoms(node.whole.length ? node.whole : [{ t: "num", v: "0" }], angle, ans);
+          const n = evalAtoms(node.num.length ? node.num : [{ t: "num", v: "0" }], angle, ans);
+          const d = evalAtoms(node.den.length ? node.den : [{ t: "num", v: "1" }], angle, ans);
+          tokens.push(String(w + n / d));
+          break;
+        }
+        case "sqrt":
+          tokens.push(String(Math.sqrt(evalAtoms(node.arg.length ? node.arg : [{ t: "num", v: "0" }], angle, ans))));
+          break;
+        case "cbrt":
+          tokens.push(String(Math.cbrt(evalAtoms(node.arg.length ? node.arg : [{ t: "num", v: "0" }], angle, ans))));
+          break;
+        case "nroot": {
+          const n = evalAtoms(node.n.length ? node.n : [{ t: "num", v: "2" }], angle, ans);
+          const a = evalAtoms(node.arg.length ? node.arg : [{ t: "num", v: "0" }], angle, ans);
+          tokens.push(String(Math.pow(a, 1 / n)));
+          break;
+        }
+        case "pow": {
+          const b = evalAtoms(node.base.length ? node.base : [{ t: "num", v: "0" }], angle, ans);
+          const e = evalAtoms(node.exp.length ? node.exp : [{ t: "num", v: "1" }], angle, ans);
+          tokens.push(String(Math.pow(b, e)));
+          break;
+        }
+        case "inv": {
+          const b = evalAtoms(node.base.length ? node.base : [{ t: "num", v: "1" }], angle, ans);
+          tokens.push(String(1 / b));
+          break;
+        }
+        case "sq": {
+          const b = evalAtoms(node.base.length ? node.base : [{ t: "num", v: "0" }], angle, ans);
+          tokens.push(String(b * b));
+          break;
+        }
+        case "logb": {
+          const b = evalAtoms(node.base.length ? node.base : [{ t: "num", v: "10" }], angle, ans);
+          const a = evalAtoms(node.arg.length ? node.arg : [{ t: "num", v: "1" }], angle, ans);
+          tokens.push(String(Math.log(a) / Math.log(b)));
+          break;
+        }
+      }
+    }
+  };
+  emit(atoms);
+  return evalTokenList(tokens);
+}
+
+function evalTokenList(tokens: string[]): number {
+  const expanded: string[] = [];
+  for (const t of tokens) {
+    if (t === "%") { expanded.push("/", "100"); continue; }
+    if (t === "!") {
+      const prev = expanded.pop();
+      expanded.push(String(factorial(Number(prev))));
       continue;
     }
-    if (/[0-9.]/.test(c)) {
-      let j = i + 1;
-      while (j < s.length && /[0-9.]/.test(s[j]!)) j++;
-      out.push(s.slice(i, j));
-      i = j;
-      continue;
-    }
-    const rest = s.slice(i).toLowerCase();
-    const fns = [
-      "asin", "acos", "atan", "sinh", "cosh", "tanh",
-      "sin", "cos", "tan", "log10", "log", "ln",
-      "sqrt", "cbrt", "exp", "abs", "pi", "e",
-    ];
-    let matched = false;
-    for (const fn of fns) {
-      if (rest.startsWith(fn)) {
-        out.push(fn);
-        i += fn.length;
-        matched = true;
-        break;
-      }
-    }
-    if (!matched) {
-      i++;
-    }
+    expanded.push(t);
   }
-  return out;
-}
-
-type AngleCtx = { angle: AngleMode };
-
-function evalTokens(tokens: string[], ctx: AngleCtx): number {
-  let pos = 0;
-  const peek = () => tokens[pos];
-  const take = () => tokens[pos++];
-
-  function parseExpr(): number {
-    let v = parseTerm();
-    while (peek() === "+" || peek() === "−") {
-      const op = take()!;
-      const r = parseTerm();
-      v = op === "+" ? v + r : v - r;
-    }
-    return v;
-  }
-  function parseTerm(): number {
-    let v = parsePower();
-    while (peek() === "×" || peek() === "÷" || peek() === "%") {
-      const op = take()!;
-      const r = parsePower();
-      if (op === "×") v = v * r;
-      else if (op === "÷") v = r === 0 ? NaN : v / r;
-      else v = v % r;
-    }
-    return v;
-  }
-  function parsePower(): number {
-    let v = parseUnary();
-    if (peek() === "^") {
-      take();
-      const r = parsePower();
-      v = Math.pow(v, r);
-    }
-    return v;
-  }
-  function parseUnary(): number {
-    if (peek() === "+") {
-      take();
-      return parseUnary();
-    }
-    if (peek() === "−") {
-      take();
-      return -parseUnary();
-    }
-    return parsePrimary();
-  }
-  function parsePrimary(): number {
-    const t = peek();
-    if (t == null) return NaN;
-    if (/^[0-9]*\.?[0-9]+$/.test(t)) {
-      take();
-      return Number(t);
-    }
-    if (t === "pi") {
-      take();
-      return Math.PI;
-    }
-    if (t === "e") {
-      take();
-      return Math.E;
-    }
-    const fns: Record<string, (x: number) => number> = {
-      sin: (x) => Math.sin(toRad(x, ctx.angle)),
-      cos: (x) => Math.cos(toRad(x, ctx.angle)),
-      tan: (x) => Math.tan(toRad(x, ctx.angle)),
-      sinh: (x) => Math.sinh(x),
-      cosh: (x) => Math.cosh(x),
-      tanh: (x) => Math.tanh(x),
-      asin: (x) => fromRad(Math.asin(x), ctx.angle),
-      acos: (x) => fromRad(Math.acos(x), ctx.angle),
-      atan: (x) => fromRad(Math.atan(x), ctx.angle),
-      log: (x) => Math.log10(x),
-      log10: (x) => Math.log10(x),
-      ln: (x) => Math.log(x),
-      sqrt: (x) => Math.sqrt(x),
-      cbrt: (x) => Math.cbrt(x),
-      exp: (x) => Math.exp(x),
-      abs: (x) => Math.abs(x),
-    };
-    if (t in fns) {
-      take();
-      if (peek() === "(") {
-        take();
-        const arg = parseExpr();
-        if (peek() === ")") take();
-        return fns[t]!(arg);
-      }
-      return NaN;
-    }
-    if (t === "(") {
-      take();
-      const v = parseExpr();
-      if (peek() === ")") take();
-      return v;
-    }
-    take();
-    return NaN;
-  }
-
-  try {
-    const v = parseExpr();
-    if (pos < tokens.length) return NaN;
-    return v;
-  } catch {
-    return NaN;
-  }
-}
-
-function insertImplicitMul(tokens: string[]): string[] {
-  if (tokens.length < 2) return tokens;
+  const prec: Record<string, number> = { "+": 1, "−": 1, "-": 1, "×": 2, "÷": 2, "^": 3 };
+  const right: Record<string, boolean> = { "^": true };
   const out: string[] = [];
-  const isValueEnd = (tok: string) =>
-    /^[0-9]*\.?[0-9]+$/.test(tok) || tok === "pi" || tok === "e" || tok === ")";
-  const isValueStart = (tok: string) =>
-    /^[0-9]*\.?[0-9]+$/.test(tok) ||
-    tok === "pi" ||
-    tok === "e" ||
-    tok === "(" ||
-    [
-      "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh", "tanh",
-      "log", "log10", "ln", "sqrt", "cbrt", "exp", "abs",
-    ].includes(tok);
-  for (let i = 0; i < tokens.length; i++) {
-    const cur = tokens[i]!;
-    if (i > 0) {
-      const prev = out[out.length - 1]!;
-      if (isValueEnd(prev) && isValueStart(cur)) {
-        out.push("×");
+  const ops: string[] = [];
+  for (const t of expanded) {
+    if (t === "(") ops.push(t);
+    else if (t === ")") {
+      while (ops.length && ops[ops.length - 1] !== "(") out.push(ops.pop()!);
+      ops.pop();
+    } else if (prec[t] != null) {
+      while (
+        ops.length && ops[ops.length - 1] !== "(" && prec[ops[ops.length - 1]!] != null &&
+        (right[t] ? prec[ops[ops.length - 1]!]! > prec[t]! : prec[ops[ops.length - 1]!]! >= prec[t]!)
+      ) out.push(ops.pop()!);
+      ops.push(t);
+    } else out.push(t);
+  }
+  while (ops.length) out.push(ops.pop()!);
+  const st: number[] = [];
+  for (const t of out) {
+    if (prec[t] != null) {
+      const b = st.pop() ?? 0;
+      const a = st.pop() ?? 0;
+      if (t === "+") st.push(a + b);
+      else if (t === "−" || t === "-") st.push(a - b);
+      else if (t === "×") st.push(a * b);
+      else if (t === "÷") st.push(a / b);
+      else if (t === "^") st.push(Math.pow(a, b));
+    } else st.push(Number(t));
+  }
+  return st.length ? st[st.length - 1]! : NaN;
+}
+
+function getListAt(atoms: Atom[], cur: Cursor): Atom[] {
+  if (cur.path.length === 0) return atoms;
+  const idx = cur.path[0]!;
+  const node = atoms[idx];
+  if (!node) return atoms;
+  if (node.t === "frac") return cur.slot === "den" ? node.den : node.num;
+  if (node.t === "mixed") {
+    if (cur.slot === "whole") return node.whole;
+    if (cur.slot === "den") return node.den;
+    return node.num;
+  }
+  if (node.t === "sqrt" || node.t === "cbrt" || node.t === "fn") return node.arg;
+  if (node.t === "nroot") return cur.slot === "n" ? node.n : node.arg;
+  if (node.t === "pow") return cur.slot === "exp" ? node.exp : node.base;
+  if (node.t === "inv" || node.t === "sq") return node.base;
+  if (node.t === "logb") return cur.slot === "base" ? node.base : node.arg;
+  return atoms;
+}
+
+function setListAt(atoms: Atom[], cur: Cursor, nextList: Atom[]): Atom[] {
+  if (cur.path.length === 0) return nextList;
+  const clone = structuredClone(atoms) as Atom[];
+  const idx = cur.path[0]!;
+  const node = clone[idx];
+  if (!node) return atoms;
+  if (node.t === "frac") {
+    if (cur.slot === "den") node.den = nextList; else node.num = nextList;
+  } else if (node.t === "mixed") {
+    if (cur.slot === "whole") node.whole = nextList;
+    else if (cur.slot === "den") node.den = nextList;
+    else node.num = nextList;
+  } else if (node.t === "sqrt" || node.t === "cbrt" || node.t === "fn") node.arg = nextList;
+  else if (node.t === "nroot") {
+    if (cur.slot === "n") node.n = nextList; else node.arg = nextList;
+  } else if (node.t === "pow") {
+    if (cur.slot === "exp") node.exp = nextList; else node.base = nextList;
+  } else if (node.t === "inv" || node.t === "sq") node.base = nextList;
+  else if (node.t === "logb") {
+    if (cur.slot === "base") node.base = nextList; else node.arg = nextList;
+  }
+  return clone;
+}
+
+function insertAt(atoms: Atom[], cur: Cursor, item: Atom): { atoms: Atom[]; cur: Cursor } {
+  const list = [...getListAt(atoms, cur)];
+  if (item.t === "frac") {
+    list.push(item);
+    return { atoms: setListAt(atoms, cur, list), cur: { path: cur.path.length ? cur.path : [list.length - 1], slot: "num" } };
+  }
+  if (item.t === "mixed") {
+    list.push(item);
+    return { atoms: setListAt(atoms, cur, list), cur: { path: [list.length - 1], slot: "num" } };
+  }
+  if (item.t === "sqrt" || item.t === "cbrt") {
+    list.push(item);
+    return { atoms: setListAt(atoms, cur, list), cur: { path: [list.length - 1], slot: "arg" } };
+  }
+  if (item.t === "nroot") {
+    list.push(item);
+    return { atoms: setListAt(atoms, cur, list), cur: { path: [list.length - 1], slot: "n" } };
+  }
+  if (item.t === "pow" || item.t === "sq" || item.t === "inv") {
+    if (list.length && (list[list.length - 1]!.t === "num" || list[list.length - 1]!.t === "rparen")) {
+      const base = [list.pop()!];
+      if (item.t === "pow") {
+        list.push({ t: "pow", base, exp: [] });
+        return { atoms: setListAt(atoms, cur, list), cur: { path: [list.length - 1], slot: "exp" } };
       }
+      if (item.t === "sq") { list.push({ t: "sq", base }); return { atoms: setListAt(atoms, cur, list), cur }; }
+      if (item.t === "inv") { list.push({ t: "inv", base }); return { atoms: setListAt(atoms, cur, list), cur }; }
     }
-    out.push(cur);
+    list.push(item);
+    const next = setListAt(atoms, cur, list);
+    if (item.t === "pow") return { atoms: next, cur: { path: [list.length - 1], slot: "exp" } };
+    return { atoms: next, cur };
   }
-  return out;
+  if (item.t === "fn" || item.t === "logb") {
+    list.push(item);
+    return { atoms: setListAt(atoms, cur, list), cur: { path: [list.length - 1], slot: "arg" } };
+  }
+  if (item.t === "num" && list.length && list[list.length - 1]!.t === "num") {
+    const last = list[list.length - 1] as { t: "num"; v: string };
+    last.v = last.v + item.v;
+    return { atoms: setListAt(atoms, cur, list), cur };
+  }
+  list.push(item);
+  return { atoms: setListAt(atoms, cur, list), cur };
 }
 
-function prettifyExpr(raw: string): string {
-  let s = raw;
-  const pairs: [string, string][] = [
-    ["asin(", "sin⁻¹("],
-    ["acos(", "cos⁻¹("],
-    ["atan(", "tan⁻¹("],
-    ["sinh(", "sinh("],
-    ["cosh(", "cosh("],
-    ["tanh(", "tanh("],
-    ["sin(", "sin("],
-    ["cos(", "cos("],
-    ["tan(", "tan("],
-    ["log(", "log₁₀("],
-    ["ln(", "ln("],
-    ["sqrt(", "√("],
-    ["cbrt(", "∛("],
-    ["exp(", "e^("],
-    ["10^", "10^"],
-    ["pi", "π"],
-  ];
-  for (const [a, b] of pairs) {
-    s = s.split(a).join(b);
+function backspace(atoms: Atom[], cur: Cursor): { atoms: Atom[]; cur: Cursor } {
+  const list = [...getListAt(atoms, cur)];
+  if (!list.length) {
+    if (cur.path.length) return { atoms, cur: emptyCursor() };
+    return { atoms, cur };
   }
-  s = s.replace(/\^2\b/g, "²");
-  s = s.replace(/\^3\b/g, "³");
-  s = s.replace(/\^/g, "^");
-  return s;
+  const last = list[list.length - 1]!;
+  if (last.t === "num" && last.v.length > 1) {
+    last.v = last.v.slice(0, -1);
+    return { atoms: setListAt(atoms, cur, list), cur };
+  }
+  list.pop();
+  return { atoms: setListAt(atoms, cur, list), cur };
 }
 
-function tryLiveEval(expr: string, angle: AngleMode): string | null {
-  let trimmed = expr.trim();
-  if (!trimmed) return null;
-  if (/[+\-−×÷*/^]$/.test(trimmed)) return null;
-  if (/(sin|cos|tan|asin|acos|atan|sinh|cosh|tanh|log|ln|sqrt|cbrt|exp)\s*$/i.test(trimmed)) return null;
-  const open = (trimmed.match(/\(/g) || []).length;
-  const close = (trimmed.match(/\)/g) || []).length;
-  if (open > close) trimmed = trimmed + ")".repeat(open - close);
-  if (/\($/.test(trimmed.replace(/\)$/, ""))) return null;
-  try {
-    const tokens = insertImplicitMul(tokenize(trimmed));
-    if (!tokens.length) return null;
-    const v = evalTokens(tokens, { angle });
-    if (!Number.isFinite(v)) return null;
-    return formatResult(v);
-  } catch {
-    return null;
+function Caret({ on }: { on: boolean }) {
+  if (!on) return null;
+  return <span className="mx-[1px] inline-block h-[1.1em] w-[2px] animate-pulse bg-[#60a5fa] align-middle" aria-hidden />;
+}
+
+function SlotBox({ atoms, active, onFocus, minW = "0.9em" }: { atoms: Atom[]; active: boolean; onFocus: () => void; minW?: string }) {
+  return (
+    <button type="button" onClick={(e) => { e.stopPropagation(); onFocus(); }}
+      className={cn("inline-flex min-h-[1.15em] items-center justify-center rounded-sm border border-dashed px-0.5 align-middle text-[inherit] leading-none",
+        active ? "border-[#60a5fa] bg-[#1e3a5f]/80" : "border-white/25 bg-transparent")}
+      style={{ minWidth: minW }}>
+      {atoms.length === 0 ? (<><Caret on={active} /><span className="opacity-30">□</span></>) : (
+        <><AtomRow atoms={atoms} cursor={active ? emptyCursor() : null} onCursor={() => onFocus()} /><Caret on={active} /></>
+      )}
+    </button>
+  );
+}
+
+function AtomRow({ atoms, cursor, onCursor, pathPrefix = [] }: { atoms: Atom[]; cursor: Cursor | null; onCursor: (c: Cursor) => void; pathPrefix?: number[] }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-[1px] font-serif text-[1.05em] leading-tight text-white">
+      {atoms.map((node, i) => (
+        <AtomView key={i} node={node} index={i} cursor={cursor} pathPrefix={pathPrefix} onCursor={onCursor} />
+      ))}
+      {cursor && cursor.path.length === pathPrefix.length && cursor.slot === "main" ? <Caret on /> : null}
+    </span>
+  );
+}
+
+function AtomView({ node, index, cursor, pathPrefix, onCursor }: { node: Atom; index: number; cursor: Cursor | null; pathPrefix: number[]; onCursor: (c: Cursor) => void }) {
+  const path = [...pathPrefix, index];
+  const active = (slot: Cursor["slot"]) =>
+    Boolean(cursor && cursor.path.length === path.length && path.every((p, j) => cursor!.path[j] === p) && cursor.slot === slot);
+
+  switch (node.t) {
+    case "num": return <span className="tabular-nums">{node.v}</span>;
+    case "op": return <span className="mx-0.5 opacity-90">{node.v}</span>;
+    case "lparen": return <span>(</span>;
+    case "rparen": return <span>)</span>;
+    case "pi": return <span className="italic">π</span>;
+    case "e": return <span className="italic">e</span>;
+    case "ans": return <span className="text-[0.85em] font-sans font-semibold text-sky-300">Ans</span>;
+    case "x": return <span className="italic">x</span>;
+    case "i": return <span className="italic">i</span>;
+    case "pct": return <span>%</span>;
+    case "fact": return <span>!</span>;
+    case "frac":
+      return (
+        <span className="mx-0.5 inline-flex flex-col items-center align-middle text-[0.92em] leading-none">
+          <SlotBox atoms={node.num} active={active("num")} onFocus={() => onCursor({ path, slot: "num" })} />
+          <span className="my-[1px] h-[1.5px] w-full min-w-[1.4em] bg-white/90" />
+          <SlotBox atoms={node.den} active={active("den")} onFocus={() => onCursor({ path, slot: "den" })} />
+        </span>
+      );
+    case "mixed":
+      return (
+        <span className="mx-0.5 inline-flex items-center gap-0.5 align-middle">
+          <SlotBox atoms={node.whole} active={active("whole")} onFocus={() => onCursor({ path, slot: "whole" })} minW="0.7em" />
+          <span className="inline-flex flex-col items-center text-[0.88em] leading-none">
+            <SlotBox atoms={node.num} active={active("num")} onFocus={() => onCursor({ path, slot: "num" })} />
+            <span className="my-[1px] h-[1.5px] w-full min-w-[1.2em] bg-white/90" />
+            <SlotBox atoms={node.den} active={active("den")} onFocus={() => onCursor({ path, slot: "den" })} />
+          </span>
+        </span>
+      );
+    case "sqrt":
+      return (
+        <span className="mx-0.5 inline-flex items-stretch align-middle">
+          <span className="self-end pb-0.5 pr-0.5 text-[1.15em] leading-none">√</span>
+          <span className="inline-flex flex-col border-t-2 border-white/90 pt-0.5">
+            <SlotBox atoms={node.arg} active={active("arg")} onFocus={() => onCursor({ path, slot: "arg" })} minW="1.2em" />
+          </span>
+        </span>
+      );
+    case "cbrt":
+      return (
+        <span className="mx-0.5 inline-flex items-stretch align-middle">
+          <span className="relative self-end pb-0.5 pr-0.5 text-[1.15em] leading-none">
+            <sup className="absolute -left-1.5 top-0 text-[0.55em]">3</sup>√
+          </span>
+          <span className="inline-flex flex-col border-t-2 border-white/90 pt-0.5">
+            <SlotBox atoms={node.arg} active={active("arg")} onFocus={() => onCursor({ path, slot: "arg" })} minW="1.2em" />
+          </span>
+        </span>
+      );
+    case "nroot":
+      return (
+        <span className="mx-0.5 inline-flex items-stretch align-middle">
+          <span className="relative self-end pb-0.5 pr-0.5 text-[1.15em] leading-none">
+            <span className="absolute -left-2 top-0 scale-90">
+              <SlotBox atoms={node.n} active={active("n")} onFocus={() => onCursor({ path, slot: "n" })} minW="0.6em" />
+            </span>√
+          </span>
+          <span className="inline-flex flex-col border-t-2 border-white/90 pt-0.5">
+            <SlotBox atoms={node.arg} active={active("arg")} onFocus={() => onCursor({ path, slot: "arg" })} minW="1.2em" />
+          </span>
+        </span>
+      );
+    case "pow":
+      return (
+        <span className="mx-0.5 inline-flex items-start align-middle">
+          <SlotBox atoms={node.base} active={active("base")} onFocus={() => onCursor({ path, slot: "base" })} minW="0.7em" />
+          <sup className="ml-0.5 text-[0.72em]">
+            <SlotBox atoms={node.exp} active={active("exp")} onFocus={() => onCursor({ path, slot: "exp" })} minW="0.6em" />
+          </sup>
+        </span>
+      );
+    case "sq":
+      return (
+        <span className="mx-0.5 inline-flex items-start">
+          <SlotBox atoms={node.base} active={active("base")} onFocus={() => onCursor({ path, slot: "base" })} minW="0.7em" />
+          <sup className="text-[0.72em]">2</sup>
+        </span>
+      );
+    case "inv":
+      return (
+        <span className="mx-0.5 inline-flex items-start">
+          <SlotBox atoms={node.base} active={active("base")} onFocus={() => onCursor({ path, slot: "base" })} minW="0.7em" />
+          <sup className="text-[0.72em]">−1</sup>
+        </span>
+      );
+    case "fn":
+      return (
+        <span className="mx-0.5 inline-flex items-center font-sans text-[0.9em]">
+          <span className="mr-0.5">{node.name}</span>(
+          <SlotBox atoms={node.arg} active={active("arg")} onFocus={() => onCursor({ path, slot: "arg" })} />)
+        </span>
+      );
+    case "logb":
+      return (
+        <span className="mx-0.5 inline-flex items-end font-sans text-[0.9em]">
+          <span>log<sub className="ml-0.5">
+            <SlotBox atoms={node.base} active={active("base")} onFocus={() => onCursor({ path, slot: "base" })} minW="0.55em" />
+          </sub></span>(
+          <SlotBox atoms={node.arg} active={active("arg")} onFocus={() => onCursor({ path, slot: "arg" })} />)
+        </span>
+      );
+    default: return null;
   }
 }
 
-const BASIC_ROWS: KeyDef[][] = [
-  [
-    { label: "AC", action: "ac", className: "bg-amber-500 text-white font-bold" },
-    { label: "⌫", action: "del", className: "bg-amber-500 text-white font-bold" },
-    { label: "a/b", action: "frac" },
-    { label: "a b/c", action: "mixed" },
-  ],
-  [
-    { label: "7", action: "7" },
-    { label: "8", action: "8" },
-    { label: "9", action: "9" },
-    { label: "÷", action: "÷" },
-  ],
-  [
-    { label: "4", action: "4" },
-    { label: "5", action: "5" },
-    { label: "6", action: "6" },
-    { label: "×", action: "×" },
-  ],
-  [
-    { label: "1", action: "1" },
-    { label: "2", action: "2" },
-    { label: "3", action: "3" },
-    { label: "−", action: "−" },
-  ],
-  [
-    { label: "0", action: "0" },
-    { label: ".", action: "." },
-    { label: "%", action: "%" },
-    { label: "+", action: "+" },
-  ],
-  [
-    { label: "=", action: "=", className: "bg-[#2563eb] text-white font-bold", span: 4 },
-  ],
-];
+type KeyDef = { label: ReactNode; shiftLabel?: ReactNode; action: string; shiftAction?: string; tone?: "shift" | "ac" | "fn" | "num" | "op" | "eq" | "nav" };
 
-function scientificRows(angle: AngleMode, hyp: boolean): KeyDef[][] {
+function sciKeys(): KeyDef[][] {
   return [
     [
-      { label: angle, action: "angle" },
-      { label: "◀", action: "left" },
-      { label: "▶", action: "right" },
-      { label: "⌫", action: "del", className: "bg-amber-500 text-white font-bold" },
-      { label: "AC", action: "ac", className: "bg-amber-500 text-white font-bold" },
+      { label: "SHIFT", action: "SHIFT", tone: "shift" },
+      { label: "MENU", action: "MENU", tone: "fn" },
+      { label: "◀", action: "LEFT", tone: "nav" },
+      { label: "▶", action: "RIGHT", tone: "nav" },
+      { label: "⌫", action: "BKSP", tone: "ac" },
+      { label: "AC", action: "AC", tone: "ac" },
     ],
     [
-      { label: hyp ? "sinh" : "sin", action: hyp ? "sinh(" : "sin(" },
-      { label: hyp ? "cosh" : "cos", action: hyp ? "cosh(" : "cos(" },
-      { label: hyp ? "tanh" : "tan", action: hyp ? "tanh(" : "tan(" },
-      { label: "log₁₀", action: "log(" },
-      { label: "ln", action: "ln(" },
-      { label: "π", action: "pi" },
+      { label: "DRG", action: "DRG", tone: "fn" },
+      { label: "π", action: "pi", tone: "fn" },
+      { label: "e", action: "e", tone: "fn" },
+      { label: "Ans", action: "ans", tone: "fn" },
+      { label: "MR", action: "MR", tone: "fn" },
+      { label: "M+", action: "M+", tone: "fn" },
     ],
     [
-      { label: hyp ? "HYP●" : "hyp", action: "hyp" },
-      { label: "sin⁻¹", action: "asin(" },
-      { label: "cos⁻¹", action: "acos(" },
-      { label: "tan⁻¹", action: "atan(" },
-      { label: "xʸ", action: "^" },
-      { label: "10ˣ", action: "10^" },
+      { label: "sin", shiftLabel: "sin⁻¹", action: "sin", shiftAction: "asin", tone: "fn" },
+      { label: "cos", shiftLabel: "cos⁻¹", action: "cos", shiftAction: "acos", tone: "fn" },
+      { label: "tan", shiftLabel: "tan⁻¹", action: "tan", shiftAction: "atan", tone: "fn" },
+      { label: "ln", shiftLabel: "eˣ", action: "ln", shiftAction: "exp", tone: "fn" },
+      { label: "log", shiftLabel: "logₓ", action: "log", shiftAction: "logb", tone: "fn" },
+      { label: "Abs", action: "abs", tone: "fn" },
     ],
     [
-      { label: "x²", action: "sq" },
-      { label: "√", action: "sqrt(" },
-      { label: "∛", action: "cbrt(" },
-      { label: "√x", action: "sqrt(" },
-      { label: "eˣ", action: "exp(" },
-      { label: "x⁻¹", action: "inv" },
-      { label: "e", action: "e" },
+      { label: "x⁻¹", action: "inv", tone: "fn" },
+      { label: "x²", action: "sq", tone: "fn" },
+      { label: "√", action: "sqrt", tone: "fn" },
+      { label: "xʸ", action: "pow", tone: "fn" },
+      { label: "∛", action: "cbrt", tone: "fn" },
+      { label: "ⁿ√", action: "nroot", tone: "fn" },
     ],
     [
-      { label: "a/b", action: "frac" },
-      { label: "a b/c", action: "mixed" },
-      { label: "(", action: "(" },
-      { label: ")", action: ")" },
-      { label: "%", action: "%" },
+      { label: "x³", action: "cube", tone: "fn" },
+      { label: "10ˣ", action: "tenx", tone: "fn" },
+      { label: "aᵇ/ᶜ", action: "mixed", tone: "fn" },
+      { label: "ᵃ/ᵇ", action: "frac", tone: "fn" },
+      { label: "n!", action: "fact", tone: "fn" },
+      { label: "X", action: "x", tone: "fn" },
     ],
     [
-      { label: "7", action: "7" },
-      { label: "8", action: "8" },
-      { label: "9", action: "9" },
-      { label: "×", action: "×" },
-      { label: "÷", action: "÷" },
+      { label: "7", action: "7", tone: "num" },
+      { label: "8", action: "8", tone: "num" },
+      { label: "9", action: "9", tone: "num" },
+      { label: "(", action: "(", tone: "op" },
+      { label: ")", action: ")", tone: "op" },
+      { label: "÷", action: "÷", tone: "op" },
     ],
     [
-      { label: "4", action: "4" },
-      { label: "5", action: "5" },
-      { label: "6", action: "6" },
-      { label: "−", action: "−" },
-      { label: "+", action: "+" },
+      { label: "4", action: "4", tone: "num" },
+      { label: "5", action: "5", tone: "num" },
+      { label: "6", action: "6", tone: "num" },
+      { label: "×", action: "×", tone: "op" },
+      { label: "−", action: "−", tone: "op" },
+      { label: "+", action: "+", tone: "op" },
     ],
     [
-      { label: "1", action: "1" },
-      { label: "2", action: "2" },
-      { label: "3", action: "3" },
-      { label: "0", action: "0" },
-      { label: ".", action: "." },
+      { label: "1", action: "1", tone: "num" },
+      { label: "2", action: "2", tone: "num" },
+      { label: "3", action: "3", tone: "num" },
+      { label: "0", action: "0", tone: "num" },
+      { label: ".", action: ".", tone: "num" },
+      { label: "±", action: "neg", tone: "num" },
     ],
     [
-      { label: "=", action: "=", className: "bg-[#2563eb] text-white font-bold", span: 5 },
+      { label: "EXP", action: "EXP", tone: "fn" },
+      { label: "%", action: "%", tone: "fn" },
+      { label: "ran#", action: "rand", tone: "fn" },
+      { label: "M−", action: "M-", tone: "fn" },
+      { label: "=", action: "=", tone: "eq" },
+    ],
+  ];
+}
+
+function basicKeys(): KeyDef[][] {
+  return [
+    [
+      { label: "AC", action: "AC", tone: "ac" },
+      { label: "⌫", action: "BKSP", tone: "ac" },
+      { label: "ᵃ/ᵇ", action: "frac", tone: "fn" },
+      { label: "÷", action: "÷", tone: "op" },
+    ],
+    [
+      { label: "7", action: "7", tone: "num" },
+      { label: "8", action: "8", tone: "num" },
+      { label: "9", action: "9", tone: "num" },
+      { label: "×", action: "×", tone: "op" },
+    ],
+    [
+      { label: "4", action: "4", tone: "num" },
+      { label: "5", action: "5", tone: "num" },
+      { label: "6", action: "6", tone: "num" },
+      { label: "−", action: "−", tone: "op" },
+    ],
+    [
+      { label: "1", action: "1", tone: "num" },
+      { label: "2", action: "2", tone: "num" },
+      { label: "3", action: "3", tone: "num" },
+      { label: "+", action: "+", tone: "op" },
+    ],
+    [
+      { label: "0", action: "0", tone: "num" },
+      { label: ".", action: ".", tone: "num" },
+      { label: "√", action: "sqrt", tone: "fn" },
+      { label: "=", action: "=", tone: "eq" },
     ],
   ];
 }
 
 export function ExamCalculator({ open, mode, onClose }: Props) {
-  const [expr, setExpr] = useState("");
-  const [cursor, setCursor] = useState(0);
+  const [atoms, setAtoms] = useState<Atom[]>([]);
+  const [cursor, setCursor] = useState<Cursor>(emptyCursor());
   const [result, setResult] = useState("0");
   const [finalized, setFinalized] = useState(false);
   const [error, setError] = useState(false);
   const [angle, setAngle] = useState<AngleMode>("DEG");
-  const [hyp, setHyp] = useState(false);
+  const [shift, setShift] = useState(false);
+  const [memory, setMemory] = useState(0);
+  const [ans, setAns] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) {
-      setExpr("");
-      setCursor(0);
+      setAtoms([]);
+      setCursor(emptyCursor());
       setResult("0");
       setFinalized(false);
       setError(false);
+      setShift(false);
     }
   }, [open]);
 
@@ -390,341 +584,223 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
     if (!open) return;
     const onCustom = () => onClose();
     window.addEventListener("d4-close-calculator", onCustom);
-    try {
-      (window as unknown as { __d4CloseCalc?: () => void }).__d4CloseCalc = onClose;
-    } catch {
-      /* ignore */
-    }
+    try { (window as unknown as { __d4CloseCalc?: () => void }).__d4CloseCalc = onClose; } catch { /* */ }
     let handle: { remove: () => Promise<void> } | null = null;
     let cancelled = false;
     if (isNativeShell()) {
       void (async () => {
         try {
-          handle = await CapApp.addListener("backButton", () => {
-            onClose();
-          });
-          if (cancelled) {
-            await handle?.remove();
-            handle = null;
-          }
-        } catch {
-          /* ignore */
-        }
+          handle = await CapApp.addListener("backButton", () => onClose());
+          if (cancelled) await handle?.remove();
+        } catch { /* */ }
       })();
     }
     return () => {
       cancelled = true;
       window.removeEventListener("d4-close-calculator", onCustom);
-      try {
-        delete (window as unknown as { __d4CloseCalc?: () => void }).__d4CloseCalc;
-      } catch {
-        /* ignore */
-      }
+      try { delete (window as unknown as { __d4CloseCalc?: () => void }).__d4CloseCalc; } catch { /* */ }
       void handle?.remove();
     };
   }, [open, onClose]);
 
   useEffect(() => {
     if (finalized) return;
-    if (!expr) {
-      setResult("0");
-      setError(false);
+    if (!atoms.length) { setResult("0"); setError(false); return; }
+    try {
+      const v = evalAtoms(atoms, angle, ans);
+      if (Number.isFinite(v)) { setResult(formatResult(v)); setError(false); }
+    } catch { /* */ }
+  }, [atoms, angle, finalized, ans]);
+
+  const apply = useCallback((action: string) => {
+    setError(false);
+    if (finalized && !["=", "AC", "BKSP", "LEFT", "RIGHT", "SHIFT", "DRG", "MR", "M+", "M-", "MENU"].includes(action)) {
+      setFinalized(false);
+      if (/^[0-9.]$/.test(action)) {
+        setAtoms([{ t: "num", v: action }]);
+        setCursor(emptyCursor());
+        return;
+      }
+      setAtoms([]);
+      setCursor(emptyCursor());
+    }
+    if (action === "SHIFT") { setShift((s) => !s); return; }
+    if (action === "AC") {
+      setAtoms([]); setCursor(emptyCursor()); setResult("0"); setFinalized(false); setShift(false); return;
+    }
+    if (action === "BKSP") {
+      const r = backspace(atoms, cursor); setAtoms(r.atoms); setCursor(r.cur); setFinalized(false); return;
+    }
+    if (action === "LEFT" || action === "RIGHT") {
+      if (atoms.length) {
+        const last = atoms[atoms.length - 1]!;
+        if (last.t === "frac") {
+          setCursor({ path: [atoms.length - 1], slot: action === "RIGHT" ? (cursor.slot === "num" ? "den" : "num") : (cursor.slot === "den" ? "num" : "den") });
+          return;
+        }
+        if (last.t === "mixed") {
+          const order: Cursor["slot"][] = ["whole", "num", "den"];
+          const i = Math.max(0, order.indexOf(cursor.slot));
+          const next = order[(i + (action === "RIGHT" ? 1 : order.length - 1)) % order.length]!;
+          setCursor({ path: [atoms.length - 1], slot: next });
+          return;
+        }
+        if (last.t === "sqrt" || last.t === "cbrt" || last.t === "fn") {
+          setCursor({ path: [atoms.length - 1], slot: "arg" }); return;
+        }
+        if (last.t === "pow") {
+          setCursor({ path: [atoms.length - 1], slot: cursor.slot === "exp" ? "base" : "exp" }); return;
+        }
+      }
+      setCursor(emptyCursor());
       return;
     }
-    const live = tryLiveEval(expr, angle);
-    if (live != null) {
-      setResult(live);
-      setError(false);
+    if (action === "DRG") { setAngle((a) => (a === "DEG" ? "RAD" : a === "RAD" ? "GRAD" : "DEG")); return; }
+    if (action === "MENU" || action === "NOP") return;
+    if (action === "MR") {
+      const r = insertAt(atoms, cursor, { t: "num", v: formatResult(memory) }); setAtoms(r.atoms); setCursor(r.cur); return;
     }
-  }, [expr, angle, finalized]);
+    if (action === "M+") {
+      try { const v = evalAtoms(atoms, angle, ans); if (Number.isFinite(v)) setMemory((m) => m + v); } catch { /* */ } return;
+    }
+    if (action === "M-") {
+      try { const v = evalAtoms(atoms, angle, ans); if (Number.isFinite(v)) setMemory((m) => m - v); } catch { /* */ } return;
+    }
+    if (action === "=") {
+      try {
+        const v = evalAtoms(atoms, angle, ans);
+        if (!Number.isFinite(v)) { setError(true); setResult("Error"); return; }
+        setAns(v); setResult(formatResult(v)); setFinalized(true);
+        setAtoms([{ t: "num", v: formatResult(v) }]); setCursor(emptyCursor());
+      } catch { setError(true); setResult("Error"); }
+      return;
+    }
+    if (action === "rand") {
+      const r = insertAt(atoms, cursor, { t: "num", v: Math.random().toFixed(6) }); setAtoms(r.atoms); setCursor(r.cur); return;
+    }
+    if (action === "neg") {
+      const list = [...getListAt(atoms, cursor)];
+      if (list.length && list[list.length - 1]!.t === "num") {
+        const n = list[list.length - 1] as { t: "num"; v: string };
+        n.v = n.v.startsWith("-") ? n.v.slice(1) : "-" + n.v;
+        setAtoms(setListAt(atoms, cursor, list));
+      } else {
+        const r = insertAt(atoms, cursor, { t: "op", v: "−" }); setAtoms(r.atoms); setCursor(r.cur);
+      }
+      return;
+    }
+    if (action === "cube") {
+      const list = [...getListAt(atoms, cursor)];
+      let base: Atom[] = [];
+      if (list.length) base = [list.pop()!];
+      list.push({ t: "pow", base: base.length ? base : [{ t: "num", v: "" }], exp: [{ t: "num", v: "3" }] });
+      setAtoms(setListAt(atoms, cursor, list)); setCursor(emptyCursor()); return;
+    }
+    if (action === "mixed") {
+      const list = [...getListAt(atoms, cursor)];
+      let whole: Atom[] = [];
+      if (list.length && list[list.length - 1]!.t === "num") whole = [list.pop()!];
+      list.push({ t: "mixed", whole, num: [], den: [] });
+      setAtoms(setListAt(atoms, cursor, list));
+      setCursor({ path: [list.length - 1], slot: "num" });
+      setShift(false);
+      return;
+    }
 
-  const append = useCallback(
-    (chunk: string) => {
-      setError(false);
-      if (finalized) {
-        setFinalized(false);
-        if (/^[+\-−×÷*/^%]/.test(chunk) || chunk === "^") {
-          const next = result + chunk;
-          setExpr(next);
-          setCursor(next.length);
-        } else {
-          setExpr(chunk);
-          setCursor(chunk.length);
-        }
-        return;
-      }
-      setExpr((prev) => {
-        const i = Math.max(0, Math.min(cursor, prev.length));
-        const next = prev.slice(0, i) + chunk + prev.slice(i);
-        setCursor(i + chunk.length);
-        return next;
-      });
-    },
-    [finalized, result, cursor],
-  );
+    let item: Atom | null = null;
+    if (/^[0-9]$/.test(action)) item = { t: "num", v: action };
+    else if (action === ".") item = { t: "num", v: "." };
+    else if (["+", "−", "×", "÷"].includes(action)) item = { t: "op", v: action };
+    else if (action === "(") item = { t: "lparen" };
+    else if (action === ")") item = { t: "rparen" };
+    else if (action === "%") item = { t: "pct" };
+    else if (action === "fact") item = { t: "fact" };
+    else if (action === "pi") item = { t: "pi" };
+    else if (action === "e") item = { t: "e" };
+    else if (action === "ans") item = { t: "ans" };
+    else if (action === "x") item = { t: "x" };
+    else if (action === "i") item = { t: "i" };
+    else if (action === "frac") item = { t: "frac", num: [], den: [] };
+    else if (action === "sqrt") item = { t: "sqrt", arg: [] };
+    else if (action === "cbrt") item = { t: "cbrt", arg: [] };
+    else if (action === "nroot") item = { t: "nroot", n: [], arg: [] };
+    else if (action === "pow") item = { t: "pow", base: [], exp: [] };
+    else if (action === "sq") item = { t: "sq", base: [] };
+    else if (action === "inv") item = { t: "inv", base: [] };
+    else if (["sin","cos","tan","asin","acos","atan","ln","log","abs","exp"].includes(action))
+      item = { t: "fn", name: action === "log" ? "log" : action, arg: [] };
+    else if (action === "tenx") item = { t: "fn", name: "10^", arg: [] };
+    else if (action === "logb") item = { t: "logb", base: [], arg: [] };
+    else if (action === "EXP") item = { t: "op", v: "×" };
+    else return;
 
-  const applyAction = useCallback(
-    (action: string) => {
-      if (action === "noop") return;
-      if (action === "ac") {
-        setExpr("");
-        setCursor(0);
-        setResult("0");
-        setFinalized(false);
-        setError(false);
-        return;
-      }
-      // Fraction a/b: turn current value into numerator ÷ (wait for denominator)
-      if (action === "frac") {
-        setError(false);
-        const base = finalized ? result : expr || result;
-        if (!base || base === "0" && !expr) {
-          setExpr("");
-          setCursor(0);
-          return;
-        }
-        const next = `(${base})÷`;
-        setFinalized(false);
-        setExpr(next);
-        setCursor(next.length);
-        return;
-      }
-      // Mixed fraction a b/c: whole + (numerator ÷ denominator)
-      if (action === "mixed") {
-        setError(false);
-        const base = finalized ? result : expr || result;
-        if (!base || base === "Error") {
-          setExpr("");
-          setCursor(0);
-          return;
-        }
-        const next = `(${base})+(`;
-        setFinalized(false);
-        setExpr(next);
-        setCursor(next.length);
-        return;
-      }
-      if (action === "left") {
-        setCursor((c) => Math.max(0, c - 1));
-        return;
-      }
-      if (action === "right") {
-        setCursor((c) => Math.min(expr.length, c + 1));
-        return;
-      }
-      if (action === "del") {
-        setFinalized(false);
-        setError(false);
-        setExpr((e) => {
-          if (!e) return "";
-          const i = Math.max(0, Math.min(cursor, e.length));
-          if (i <= 0) return e;
-          const before = e.slice(0, i);
-          const after = e.slice(i);
-          const fns = ["asin(", "acos(", "atan(", "sinh(", "cosh(", "tanh(", "sin(", "cos(", "tan(", "log(", "ln(", "sqrt(", "cbrt(", "exp(", "10^"];
-          for (const f of fns) {
-            if (before.endsWith(f)) {
-              setCursor(i - f.length);
-              return before.slice(0, -f.length) + after;
-            }
-          }
-          if (before.endsWith("pi")) {
-            setCursor(i - 2);
-            return before.slice(0, -2) + after;
-          }
-          setCursor(i - 1);
-          return before.slice(0, -1) + after;
-        });
-        return;
-      }
-      if (action === "angle") {
-        setAngle((a) => (a === "DEG" ? "RAD" : a === "RAD" ? "GRAD" : "DEG"));
-        return;
-      }
-      if (action === "hyp") {
-        setHyp((h) => !h);
-        return;
-      }
-      if (action === "=") {
-        const toEval = expr || result;
-        const live = tryLiveEval(toEval, angle);
-        if (live == null || live === "Error") {
-          setResult("Error");
-          setError(true);
-          setFinalized(true);
-          return;
-        }
-        setResult(live);
-        setExpr(toEval);
-        setCursor(toEval.length);
-        setFinalized(true);
-        setError(false);
-        return;
-      }
-      if (action === "sq") {
-        setFinalized(false);
-        setExpr((e) => {
-          if (finalized) return `(${result})^2`;
-          if (!e) return "";
-          return `(${e})^2`;
-        });
-        return;
-      }
-      if (action === "inv") {
-        setFinalized(false);
-        setExpr((e) => {
-          if (finalized) return `1/(${result})`;
-          if (!e) return "1/(";
-          return `1/(${e})`;
-        });
-        return;
-      }
-      if (action === "pi") {
-        append("pi");
-        return;
-      }
-      if (action === "e") {
-        append("e");
-        return;
-      }
-      if (action === "10^") {
-        append("10^");
-        return;
-      }
-      if (
-        action.endsWith("(") ||
-        action === "(" ||
-        action === ")" ||
-        /^[0-9.]$/.test(action) ||
-        ["+", "−", "×", "÷", "^", "%"].includes(action)
-      ) {
-        if (action === ")" && !expr && !finalized) return;
-        append(action);
-        return;
-      }
-      append(action);
-    },
-    [append, angle, expr, cursor, finalized, result],
-  );
+    const r = insertAt(atoms, cursor, item);
+    setAtoms(r.atoms); setCursor(r.cur); setShift(false);
+    requestAnimationFrame(() => { const el = scrollRef.current; if (el) el.scrollLeft = el.scrollWidth; });
+  }, [atoms, cursor, finalized, angle, ans, memory]);
 
-  const rows = useMemo(
-    () => (mode === "scientific" ? scientificRows(angle, hyp) : BASIC_ROWS),
-    [mode, angle, hyp],
-  );
+  const rows = useMemo(() => (mode === "basic" ? basicKeys() : sciKeys()), [mode]);
 
-  if (!open) return null;
-
-  const resultShown = error ? "Error" : result;
+  if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div
-      className="d4-exam-calculator flex flex-col"
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        width: "100%",
-        height: "100%",
-        minWidth: "100vw",
-        minHeight: "100vh",
-        maxWidth: "100vw",
-        maxHeight: "100vh",
-        inset: 0,
-        margin: 0,
-        zIndex: 2147483000,
-        backgroundColor: "#0b1b3a",
-        paddingTop: "max(0.5rem, env(safe-area-inset-top, 0px))",
-        paddingBottom: "max(0.5rem, env(safe-area-inset-bottom, 0px))",
-        paddingLeft: "max(0.5rem, env(safe-area-inset-left, 0px))",
-        paddingRight: "max(0.5rem, env(safe-area-inset-right, 0px))",
-        boxSizing: "border-box",
-        overflow: "hidden",
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Calculator"
-    >
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#1e3a5f] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#2563eb] text-white">
-            <CalcIcon className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-base font-bold text-white">Calculator</p>
-            <p className="text-xs text-slate-400">{mode === "scientific" ? "Scientific" : "Basic"} · {angle}</p>
-          </div>
+    <div className="fixed inset-0 z-[2147483000] flex flex-col bg-[#0b1b3a] text-white"
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+      role="dialog" aria-modal aria-label="Calculator">
+      <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <CalcIcon className="h-5 w-5 text-sky-400" />
+          <span className="text-sm font-extrabold tracking-wide">Calculator</span>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="grid h-9 w-9 place-items-center rounded-full hover:bg-white/10"
-          aria-label="Close calculator"
-        >
-          <X className="h-5 w-5 text-white" />
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="rounded bg-white/10 px-2 py-0.5 text-[10px] font-bold tracking-wider text-sky-200">{angle}</span>
+          {memory !== 0 ? <span className="rounded bg-white/10 px-2 py-0.5 text-[10px] font-bold text-amber-200">M</span> : null}
+          {shift ? <span className="rounded bg-emerald-600/90 px-2 py-0.5 text-[10px] font-bold">SHIFT</span> : null}
+          <button type="button" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20" aria-label="Close calculator">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
-      <div className="shrink-0 px-4 pt-3">
-        <div className="rounded-2xl border border-[#1e3a5f] bg-[#06101f] px-4 py-3">
-          <p className="min-h-[1.5rem] break-all font-mono text-sm text-slate-300">
-            {(() => {
-              const shown = prettifyExpr(expr);
-              if (finalized) return shown || " ";
-              if (!expr) {
-                return <span className="inline-block h-[1.05em] w-[2px] animate-pulse bg-sky-400 align-middle" />;
-              }
-              const left = prettifyExpr(expr.slice(0, cursor));
-              const right = prettifyExpr(expr.slice(cursor));
+      <div ref={scrollRef} className="shrink-0 overflow-x-auto border-b border-white/10 bg-[#071428] px-3 py-4"
+        style={{ minHeight: "7.5rem" }} onClick={() => setCursor(emptyCursor())}>
+        <div className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-500">Expression</div>
+        <div className="min-h-[2.5rem] whitespace-nowrap">
+          {atoms.length === 0 ? (
+            <span className="inline-flex items-center text-white/40"><Caret on /><span className="ml-1 text-sm">Enter expression</span></span>
+          ) : (
+            <AtomRow atoms={atoms} cursor={cursor} onCursor={setCursor} />
+          )}
+        </div>
+        <div className={cn("mt-3 text-right font-mono text-3xl font-extrabold tabular-nums sm:text-4xl", error ? "text-red-400" : "text-white")}>{result}</div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2">
+        {rows.map((row, ri) => (
+          <div key={ri} className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}>
+            {row.map((k, ki) => {
+              const useShift = shift && k.shiftAction;
+              const label = useShift && k.shiftLabel ? k.shiftLabel : k.label;
+              const act = useShift && k.shiftAction ? k.shiftAction : k.action;
               return (
-                <>
-                  <span>{left}</span>
-                  <span className="mx-px inline-block h-[1.05em] w-[2px] animate-pulse bg-sky-400 align-middle" />
-                  <span>{right}</span>
-                </>
-              );
-            })()}
-          </p>
-          <p
-            className={cn(
-              "mt-2 break-all font-mono tabular-nums text-white",
-              finalized ? "text-4xl font-extrabold sm:text-5xl" : "text-3xl font-bold sm:text-4xl",
-              error && "text-red-400",
-            )}
-          >
-            {resultShown}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-2 flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
-        <div className="flex flex-1 flex-col gap-1.5">
-          {rows.map((row, ri) => (
-            <div
-              key={ri}
-              className="grid flex-1 gap-1.5"
-              style={{
-                gridTemplateColumns: `repeat(${row.reduce((a, k) => a + (k.span || 1), 0)}, minmax(0, 1fr))`,
-              }}
-            >
-              {row.map((k) => (
-                <button
-                  key={`${ri}-${k.label}-${k.action}`}
-                  type="button"
-                  onClick={() => applyAction(k.action)}
+                <button key={`${ri}-${ki}`} type="button" onClick={() => apply(act)}
                   className={cn(
-                    "min-h-[2.5rem] rounded-xl border border-white/10 bg-gradient-to-b from-[#1a3a66] to-[#0f2340] text-[13px] font-semibold text-slate-100 shadow-[0_3px_0_0_#06101f,0_4px_10px_rgba(0,0,0,0.4)] transition-all duration-75 hover:from-[#1e4475] hover:to-[#132a4d] active:translate-y-[2px] active:shadow-[0_1px_0_0_#06101f,0_2px_4px_rgba(0,0,0,0.35)] sm:text-base",
-                    k.className,
-                  )}
-                  style={k.span ? { gridColumn: `span ${k.span}` } : undefined}
-                >
-                  {k.label}
+                    "min-h-[2.35rem] rounded-lg text-[12px] font-semibold shadow-md transition active:translate-y-px sm:text-[13px]",
+                    k.tone === "shift" && (shift ? "bg-emerald-500 text-white" : "bg-emerald-700/80 text-white"),
+                    k.tone === "ac" && "bg-amber-600 text-white",
+                    k.tone === "fn" && "border border-white/10 bg-[#1a3358] text-slate-100",
+                    k.tone === "nav" && "bg-[#243b5c] text-white",
+                    k.tone === "num" && "border border-white/10 bg-[#0a0f18] text-white",
+                    k.tone === "op" && "bg-[#2a4060] text-white",
+                    k.tone === "eq" && "bg-[#2563eb] font-extrabold text-white",
+                    !k.tone && "bg-[#1a3358] text-white",
+                  )}>
+                  {label}
                 </button>
-              ))}
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
     </div>,
     document.body,
@@ -733,17 +809,12 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
 
 export function ExamCalculatorFab({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Calculator"
-      title="Calculator"
+    <button type="button" onClick={onClick} aria-label="Calculator" title="Calculator"
       className={cn(
         "fixed z-[2147482500] grid h-12 w-12 place-items-center rounded-full bg-[#2563eb] text-white shadow-lg shadow-blue-900/40 hover:bg-[#1d4ed8] active:scale-95",
         "left-[max(0.75rem,env(safe-area-inset-left))]",
         "bottom-[max(0.75rem,env(safe-area-inset-bottom))]",
-      )}
-    >
+      )}>
       <CalcIcon className="h-5 w-5" />
     </button>
   );
