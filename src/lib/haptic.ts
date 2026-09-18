@@ -20,12 +20,12 @@ export type HapticKind =
 
 const DURATION: Record<HapticKind, number> = {
   start: 220,
-  none: 320,       // gentle — no face (not disturbing)
-  unclear: 380,    // gentle
-  light: 320,
-  tab_switch: 450,
-  multi: 1100,     // strong — multiple faces
-  strong: 1100,
+  none: 300,       // gentle — no face
+  unclear: 350,
+  light: 300,
+  tab_switch: 420,
+  multi: 1400,     // harder / stronger than no-face
+  strong: 1400,
   camera_blocked: 900,
   officer_pause: 700,
   officer_submit: 600,
@@ -97,16 +97,20 @@ async function vibrateHard(ms: number): Promise<void> {
   const duration = Math.max(60, Math.min(Math.floor(ms), 1500));
   const solid: number[] = [0, duration];
   // Multi / strong: short-gap double for emphasis without long disturbance
-  const multiPattern: number[] = duration >= 800 ? [0, Math.floor(duration * 0.55), 70, Math.floor(duration * 0.4)] : solid;
+  // Triple pulse for multi / strong so student clearly feels it
+  const multiPattern: number[] =
+    duration >= 700
+      ? [0, Math.floor(duration * 0.4), 60, Math.floor(duration * 0.3), 60, Math.floor(duration * 0.25)]
+      : solid;
 
   if (useNative()) {
-    const pattern = duration >= 800 ? multiPattern : solid;
+    const pattern = duration >= 700 ? multiPattern : solid;
     let ok = await nativeVibrate(duration, pattern);
     if (!ok) ok = await nativeVibrate(duration, solid);
     if (ok) return;
   }
 
-  if (duration >= 800) {
+  if (duration >= 700) {
     if (webVibrate(multiPattern)) return;
   }
   webVibrate(solid);
@@ -134,7 +138,11 @@ export function refreshHapticUnlock() {
 export function haptic(kind: HapticKind) {
   if (typeof window === "undefined") return;
   const now = Date.now();
-  if (now - lastFireAt < 280) return;
+  // Multi always gets priority — must fire even if a soft "none" just ran
+  const isMulti = kind === "multi" || kind === "strong";
+  const gap = isMulti ? 120 : 320;
+  if (now - lastFireAt < gap && !isMulti) return;
+  if (isMulti && now - lastFireAt < 80) return;
   lastFireAt = now;
   primed = true;
   const ms = DURATION[kind] ?? 1500;

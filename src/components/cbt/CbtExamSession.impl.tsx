@@ -427,7 +427,7 @@ export function CbtExamPage() {
   }, []);
 
   useLiveCamPublish({
-    enabled: started && !done && !previewMode && !paused && Boolean(security.requireCamera),
+    enabled: started && !done && !previewMode && Boolean(security.requireCamera),
     schoolId: examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId,
     studentId: student?.studentId,
     examId: id,
@@ -451,7 +451,7 @@ export function CbtExamPage() {
   useLiveScreenPublish({
     // Keep enabled for whole exam (hook gates on native share / stream / hold).
     // Do not require MediaStream — Android MediaProjection uses native JPEG path.
-    enabled: started && !done && !previewMode && !paused,
+    enabled: started && !done && !previewMode,
     schoolId: examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId,
     studentId: student?.studentId,
     examId: id,
@@ -460,7 +460,7 @@ export function CbtExamPage() {
     getStream: () => screenStreamRef.current || screenStream,
   });
   useLiveMicPublish({
-    enabled: started && !done && !previewMode && !paused,
+    enabled: started && !done && !previewMode,
     schoolId: examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId,
     studentId: student?.studentId,
     examId: id,
@@ -773,6 +773,19 @@ export function CbtExamPage() {
         }
         leftExamSessionRef.current = false;
       }
+      // Resume live clock immediately (do not leave UI frozen)
+      try {
+        const ends = endsAtRef.current;
+        if (ends != null) {
+          setSeconds(Math.max(0, Math.ceil((ends - Date.now()) / 1000)));
+        }
+      } catch { /* ignore */ }
+      // Native never uses browser fullscreen — clear any stuck gate
+      try {
+        if (typeof window !== "undefined" && (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()) {
+          setFsGate(false);
+        }
+      } catch { /* ignore */ }
       void flushAttemptProgress();
       void reconnectCamera();
     };
@@ -780,17 +793,39 @@ export function CbtExamPage() {
     const onFsChange = () => {
       if (finishingRef.current || doneRef.current) return;
       if (!security.fullscreen) return;
+      // Native app: Fullscreen API is unreliable — never hard-block the exam UI
+      try {
+        if (typeof window !== "undefined" && (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()) {
+          setFsGate(false);
+          return;
+        }
+      } catch { /* ignore */ }
       if (document.fullscreenElement) {
         setFsGate(false);
         return;
       }
       fullscreenExitCountRef.current += 1;
       setFsGate(true);
-      void applyConsequence("FULLSCREEN_EXIT", "Fullscreen was exited during the examination.");
       if (attemptIdRef.current) {
         void supabase.from("exam_attempts").update({
           fullscreen_exit_count: fullscreenExitCountRef.current,
         } as never).eq("id", attemptIdRef.current);
+      }
+      const max = Math.max(1, Number(security.maxTabSwitches) || 5);
+      if (fullscreenExitCountRef.current >= max) {
+        void applyConsequence(
+          "FULLSCREEN_EXIT",
+          `Fullscreen exited (exit ${fullscreenExitCountRef.current}/${max}). Threshold reached.`,
+        );
+      } else {
+        void logSecurityEvent({
+          schoolId, examId: id, attemptId: attemptIdRef.current, studentId,
+          eventType: "FULLSCREEN_EXIT", severity: "low",
+          description: `Fullscreen exited (exit ${fullscreenExitCountRef.current}/${max}).`,
+          questionIndex: index,
+        });
+        setWarnBanner(`Return to fullscreen. Exits: ${fullscreenExitCountRef.current}/${max}`);
+        window.setTimeout(() => setWarnBanner(null), 4000);
       }
     };
 
@@ -807,7 +842,9 @@ export function CbtExamPage() {
     };
 
     const onWindowBlur = () => {
-      if (document.visibilityState === "hidden") return;
+      // Only treat as leave when the document is actually hidden (true tab switch / app background).
+      // Blur alone (keyboard, permission dialog, OS sheet) must NOT freeze the exam.
+      if (document.visibilityState !== "hidden") return;
       recordTabLeave();
     };
 
@@ -1213,9 +1250,17 @@ export function CbtExamPage() {
   }
 
   async function restoreFullscreenFromUser() {
-    const ok = await requestExamFullscreen();
-    if (ok) { setFsGate(false); setPaused(false); examSafeToast.success("Fullscreen restored"); }
-    else examSafeToast.error("Could not enter fullscreen. Tap again or check device permissions.");
+    try {
+      const ok = await requestExamFullscreen();
+      if (ok) {
+        setFsGate(false);
+        examSafeToast.success("Fullscreen restored");
+        return;
+      }
+    } catch { /* ignore */ }
+    // Never freeze the exam — allow continue even if browser blocks fullscreen
+    setFsGate(false);
+    examSafeToast.message("Could not re-enter fullscreen. Continue your exam — stay on this tab.");
   }
 
   async function goToResult() {
@@ -1478,7 +1523,7 @@ export function CbtExamPage() {
       )}
       {started && !done && security.requireCamera && (
         <ExamCameraPip
-          enabled={started && !done && !paused}
+          enabled={started && !done}
           faceDetection={Boolean(security.faceDetection || security.requireCamera)}
           maxFaceWarnings={security.maxFaceWarnings ?? 3}
           stream={liveStream}
@@ -1558,13 +1603,26 @@ export function CbtExamPage() {
         </>
       )}
       {fsGate && security.fullscreen && started && !done && !paused && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-white p-6 text-center shadow-2xl">
+        <div
+          className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-sm"
+          style={{ pointerEvents: "auto" }}
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-white p-6 text-center shadow-2xl pointer-events-auto">
             <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary"><Maximize className="h-6 w-6" /></div>
             <h2 className="text-lg font-extrabold text-slate-900">Fullscreen required</h2>
-            <p className="mt-2 text-sm text-slate-600">Tap below to continue in fullscreen.</p>
-            <Button className="mt-5 w-full font-semibold" onClick={() => void restoreFullscreenFromUser()}>
+            <p className="mt-2 text-sm text-slate-600">Tap below to continue. Your exam timer is still running.</p>
+            <Button className="mt-5 w-full font-semibold" type="button" onClick={() => void restoreFullscreenFromUser()}>
               <Maximize className="mr-2 h-4 w-4" /> Return to fullscreen
+            </Button>
+            <Button
+              className="mt-2 w-full font-semibold"
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setFsGate(false);
+              }}
+            >
+              Continue exam
             </Button>
           </div>
         </div>

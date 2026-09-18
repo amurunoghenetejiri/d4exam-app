@@ -117,7 +117,10 @@ export function ExamCameraPip({
 
   const fireAlert = useCallback((kind: SecurityAlertKind, faceCount: number | null) => {
     const now = Date.now();
-    if (now - lastAlertRef.current < ALERT_COOLDOWN_MS) return;
+    const cool = kind === "multi" ? MULTI_ALERT_COOLDOWN_MS : ALERT_COOLDOWN_MS;
+    if (now - lastAlertRef.current < cool && kind !== "multi") return;
+    // Multi always allowed after short gap so it is never swallowed by a prior "none"
+    if (kind === "multi" && now - lastAlertRef.current < 200) return;
     lastAlertRef.current = now;
     try {
       refreshHapticUnlock();

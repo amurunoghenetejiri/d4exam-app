@@ -178,7 +178,7 @@ export function FingerprintLockGate() {
         window.clearInterval(id);
       }
     }, 50);
-    const cap = window.setTimeout(() => setSplashDone(true), 2_200);
+    const cap = window.setTimeout(() => setSplashDone(true), 800);
     return () => {
       window.clearInterval(id);
       window.clearTimeout(cap);
@@ -310,6 +310,14 @@ export function FingerprintLockGate() {
     if (!native) return;
     evaluateLock();
   }, [native, evaluateLock, session?.userId, splashDone]);
+  // Never leave the user on a blank navy screen
+  useEffect(() => {
+    if (!locked || !native) return;
+    setSplashDone(true);
+    const t = window.setTimeout(() => setPageReady(true), 150);
+    return () => window.clearTimeout(t);
+  }, [locked, native]); // force-splash-on-lock
+
   useEffect(() => {
     if (!locked) return;
     const fpOn = isFingerprintEnabledFor(userId) || Boolean(pref?.enabled && pref.userId);
@@ -475,9 +483,10 @@ export function FingerprintLockGate() {
     };
   }, [locked]);
 
-  if (!native || !locked || isPublicAuthPath || !splashDone) {
+  if (!native || !locked || isPublicAuthPath) {
     return null;
   }
+  // Never return a blank navy: if splash is slow, still render unlock UI
 
   const role = (session?.role || lastKnownRole()) as AppRole | null;
   const isSuperAdmin = role === "super_admin";
