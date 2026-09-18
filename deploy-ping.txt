@@ -1,1 +1,1 @@
-deploy-ping offline entry uses normal splash 2026-09-18T16:06:01Z
+deploy-ping login messages + web sync 2026-09-18T21:00:10Z

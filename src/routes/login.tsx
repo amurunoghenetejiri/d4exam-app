@@ -87,16 +87,63 @@ const features = [
 ];
 
 function friendlyLoginError(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err || "");
-  const cleaned = msg.replace(/\s+/g, " ").trim();
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  const cleaned = raw.replace(/\s+/g, " ").trim();
+  const lower = cleaned.toLowerCase();
+
+  // Offline / network
   if (
-    cleaned.toLowerCase().includes("<!doctype") ||
-    cleaned.toLowerCase().includes("<html") ||
-    cleaned.length > 280
+    typeof navigator !== "undefined" &&
+    navigator.onLine === false
   ) {
-    return "Unable to sign in right now. Please try again in a moment.";
+    return "No network. Check your connection and try again.";
   }
-  return cleaned || msg;
+  if (
+    lower.includes("failed to fetch") ||
+    lower.includes("networkerror") ||
+    lower.includes("network request failed") ||
+    lower.includes("load failed") ||
+    lower.includes("timeout") ||
+    lower.includes("timed out") ||
+    lower.includes("err_internet") ||
+    lower.includes("offline") ||
+    lower.includes("unable to connect") ||
+    lower.includes("connection")
+  ) {
+    return "No network. Check your connection and try again.";
+  }
+
+  // Wrong credentials (Supabase + generic)
+  if (
+    lower.includes("invalid login") ||
+    lower.includes("invalid credentials") ||
+    lower.includes("invalid_grant") ||
+    lower.includes("email not confirmed") ||
+    lower.includes("user not found") ||
+    lower.includes("wrong password") ||
+    lower.includes("incorrect password") ||
+    lower.includes("invalid password") ||
+    lower.includes("auth api error") ||
+    lower.includes("invalid email or password")
+  ) {
+    return "Invalid credentials.";
+  }
+
+  // Empty / validation
+  if (lower.includes("enter your") || lower.includes("required")) {
+    return cleaned.length <= 80 ? cleaned : "Please fill in all fields.";
+  }
+
+  // HTML / huge dumps
+  if (
+    lower.includes("<!doctype") ||
+    lower.includes("<html") ||
+    cleaned.length > 120
+  ) {
+    return "Unable to sign in right now. Please try again.";
+  }
+
+  return cleaned || "Unable to sign in. Please try again.";
 }
 
 function readQueryPrefill(): { email: string; isSwitch: boolean; isAdd: boolean } {
@@ -234,8 +281,12 @@ function LoginPage() {
     e.stopPropagation();
     if (inFlight.current || loading) return;
     setError("");
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setError("No network. Check your connection and try again.");
+      return;
+    }
     if (!identifier.trim() || !password.trim()) {
-      setError("Enter your email / name / matric and password to continue.");
+      setError("Please enter your login details.");
       return;
     }
     inFlight.current = true;
@@ -246,7 +297,7 @@ function LoginPage() {
       if (!inFlight.current || navigated) return;
       setLoading(false);
       inFlight.current = false;
-      setError("Login is taking longer than expected. Check your connection and try again.");
+      setError("No network. Check your connection and try again.");
     }, 9_000);
 
     try {
@@ -376,14 +427,12 @@ function LoginPage() {
         }
       }
 
-      const msg = friendlyLoginError(lastServerMsg || "Invalid login credentials.");
-      setError(
-        msg +
-          (msg.toLowerCase().includes("unable to sign in right now") ||
-          msg.toLowerCase().includes("unable to connect")
-            ? ""
-            : " Check school code, email/matric/staff ID, and password. Students: password is usually your matric number."),
-      );
+      // Prefer network message when offline; otherwise short credentials message
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setError("No network. Check your connection and try again.");
+      } else {
+        setError(friendlyLoginError(lastServerMsg || "Invalid login credentials."));
+      }
     } catch (err) {
       console.error("[login] sign-in failed:", err);
       setError(friendlyLoginError(err));
