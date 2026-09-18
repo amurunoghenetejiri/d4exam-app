@@ -1,25 +1,21 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 /**
- * D4EXAM Capacitor config
+ * D4EXAM Capacitor config — OFFLINE-FIRST.
  *
- * Live server.url is REQUIRED: TanStack Start is SSR + server functions.
- * A pure local SPA stubs every .functions/.server module to no-ops, which
- * breaks login, session, menus, and navigation.
- * The working product loads the production Vercel app inside the native shell
- * (push, camera, status bar still work). Offline network errors use offline.html.
+ * No `server.url`: the Android app boots from bundled local assets (dist/),
+ * produced by scripts/prepare-capacitor-dist.mjs. It never loads the website.
+ * Supabase is contacted only when the device is online; cached data is served
+ * from the existing IndexedDB / local-db layer when it is not.
  */
 const config: CapacitorConfig = {
   appId: "com.d4exam.app",
   appName: "D4EXAM",
   webDir: "dist",
   server: {
-    url: "https://d4exam-platform.vercel.app",
     androidScheme: "https",
     errorPath: "offline.html",
     allowNavigation: [
-      "d4exam-platform.vercel.app",
-      "*.vercel.app",
       "*.supabase.co",
       "*.googleapis.com",
       "*.gstatic.com",
