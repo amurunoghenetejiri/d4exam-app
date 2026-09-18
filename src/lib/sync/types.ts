@@ -37,7 +37,10 @@ export type SyncScope =
   | "EXAMINATIONS_META"
   | "RESULTS"
   | "STUDENT_CONTEXT"
-  | "OUTBOX";
+  | "COURSES"
+  | "MATERIALS"
+  | "OUTBOX"
+  | "PREFETCH_ALL";
 
 export type SyncRunResult = {
   status: SyncEngineStatus;
