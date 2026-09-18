@@ -4,7 +4,7 @@ import { bootstrapOfflineSync } from "@/lib/offline-sync";
 import { useSessionUser } from "@/lib/session";
 
 /**
- * Mounts offline sync + reconnect invalidation.
+ * Mounts offline sync + full authorized prefetch on reconnect / resume.
  * No visible UI — does not change layout.
  */
 export function OfflineBootstrap() {
@@ -21,10 +21,11 @@ export function OfflineBootstrap() {
             userId: session.userId,
             schoolId: session.schoolId,
             role: session.role,
+            profileId: session.profileId,
           }
         : null,
     }));
-  }, [queryClient, session?.userId, session?.schoolId, session?.role]);
+  }, [queryClient, session?.userId, session?.schoolId, session?.role, session?.profileId]);
 
   return null;
 }

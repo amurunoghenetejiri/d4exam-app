@@ -7,132 +7,35 @@
   <title>D4EXAM — Offline</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      min-height: 100%;
-      min-height: 100dvh;
-    }
+    html, body { min-height: 100%; min-height: 100dvh; }
     body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: #0a1a3a;
-      color: #e2e8f0;
-      text-align: center;
-      padding:
-        max(1.5rem, env(safe-area-inset-top))
-        1.5rem
-        max(1.5rem, env(safe-area-inset-bottom));
+      background: #0a1a3a; color: #e2e8f0; text-align: center;
+      padding: max(1.5rem, env(safe-area-inset-top)) 1.5rem max(1.5rem, env(safe-area-inset-bottom));
       -webkit-font-smoothing: antialiased;
     }
-    .wrap {
-      width: 100%;
-      max-width: 22rem;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .icon-wrap {
-      position: relative;
-      width: 140px;
-      height: 140px;
-      margin-bottom: 1.75rem;
-      display: grid;
-      place-items: center;
-    }
-    .icon-blob {
-      position: absolute;
-      border-radius: 50%;
-      background: rgba(37, 99, 235, 0.18);
-    }
+    .wrap { width: 100%; max-width: 22rem; display: flex; flex-direction: column; align-items: center; }
+    .icon-wrap { position: relative; width: 140px; height: 140px; margin-bottom: 1.75rem; display: grid; place-items: center; }
+    .icon-blob { position: absolute; border-radius: 50%; background: rgba(37, 99, 235, 0.18); }
     .icon-blob.a { width: 120px; height: 120px; top: 10px; left: 10px; }
     .icon-blob.b { width: 36px; height: 36px; top: 8px; right: 6px; background: rgba(59, 130, 246, 0.22); }
-    .icon-blob.c { width: 18px; height: 18px; top: 42px; right: 0; background: rgba(96, 165, 250, 0.28); }
     .icon-circle {
-      position: relative;
-      z-index: 1;
-      width: 96px;
-      height: 96px;
-      border-radius: 50%;
+      position: relative; z-index: 1; width: 96px; height: 96px; border-radius: 50%;
       background: linear-gradient(160deg, #1e3a6e 0%, #152a52 100%);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
-      display: grid;
-      place-items: center;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); display: grid; place-items: center;
     }
-    .cloud {
-      position: absolute;
-      z-index: 2;
-      right: 14px;
-      bottom: 22px;
-      width: 34px;
-      height: 22px;
-      opacity: 0.95;
-    }
-    h1 {
-      font-size: 1.65rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: #ffffff;
-      margin-bottom: 0.85rem;
-      line-height: 1.2;
-    }
-    h1 .accent {
-      color: #3b82f6;
-    }
-    .msg {
-      font-size: 0.95rem;
-      line-height: 1.55;
-      color: #94a3b8;
-      max-width: 19rem;
-      margin: 0 auto 1.75rem;
-    }
+    h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em; color: #ffffff; margin-bottom: 0.85rem; }
+    h1 .accent { color: #3b82f6; }
+    .msg { font-size: 0.95rem; line-height: 1.55; color: #94a3b8; max-width: 19rem; margin: 0 auto 1.75rem; }
     button#retry {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.55rem;
-      min-width: 11.5rem;
-      border: 0;
-      border-radius: 9999px;
-      background: #2563eb;
-      color: #fff;
-      font-weight: 600;
-      font-size: 0.95rem;
-      padding: 0.9rem 1.75rem;
-      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem;
+      min-width: 11.5rem; border: 0; border-radius: 9999px; background: #2563eb; color: #fff;
+      font-weight: 600; font-size: 0.95rem; padding: 0.9rem 1.75rem; cursor: pointer;
       box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
-      transition: background 0.15s ease, transform 0.1s ease;
-      -webkit-tap-highlight-color: transparent;
     }
-    button#retry:active {
-      background: #1d4ed8;
-      transform: scale(0.98);
-    }
-    button#retry svg {
-      width: 18px;
-      height: 18px;
-      flex-shrink: 0;
-    }
-    .footer {
-      margin-top: 2.25rem;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 0.45rem;
-      max-width: 16rem;
-    }
-    .footer-icon {
-      width: 18px;
-      height: 18px;
-      color: #64748b;
-      opacity: 0.9;
-    }
-    .footer p {
-      font-size: 0.8rem;
-      line-height: 1.45;
-      color: #64748b;
-    }
+    button#retry:active { background: #1d4ed8; transform: scale(0.98); }
+    .footer { margin-top: 2.25rem; font-size: 0.8rem; color: #64748b; line-height: 1.45; }
   </style>
 </head>
 <body>
@@ -140,59 +43,52 @@
     <div class="icon-wrap" aria-hidden="true">
       <span class="icon-blob a"></span>
       <span class="icon-blob b"></span>
-      <span class="icon-blob c"></span>
       <div class="icon-circle">
-        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none">
           <path d="M5.07 11.05a9 9 0 0 1 13.86 0" stroke="#93c5fd" stroke-width="2" stroke-linecap="round"/>
           <path d="M8.53 14.11a5 5 0 0 1 6.95 0" stroke="#93c5fd" stroke-width="2" stroke-linecap="round"/>
           <circle cx="12" cy="18" r="1.35" fill="#93c5fd"/>
           <path d="M4.5 5.5 L19.5 18.5" stroke="#ef4444" stroke-width="2.25" stroke-linecap="round"/>
         </svg>
       </div>
-      <svg class="cloud" viewBox="0 0 34 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M27.5 13.5c0-3.3-2.5-6-5.7-6-0.6 0-1.2.1-1.7.3C18.8 5.2 16.3 3.5 13.4 3.5c-3.9 0-7 3-7.1 6.8C4 10.7 2.5 12.5 2.5 14.7c0 2.6 2.1 4.8 4.8 4.8h19.2c2.5 0 4.5-2 4.5-4.5 0-1.7-1-3.2-2.5-4z" fill="#60a5fa" fill-opacity="0.55"/>
-      </svg>
     </div>
-
     <h1>You're <span class="accent">Offline</span></h1>
     <p class="msg">
-      It looks like you're not connected to the internet.<br />
-      Please check your network connection and<br />
-      try again.
+      No internet connection for this action.<br />
+      Check your network and try again.<br />
+      Saved content stays available in the app.
     </p>
-
-    <button type="button" id="retry">
-      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M21 12a9 9 0 1 1-2.6-6.3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-        <path d="M21 4v5h-5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      Try Again
-    </button>
-
-    <div class="footer">
-      <svg class="footer-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M5.07 11.05a9 9 0 0 1 13.86 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <path d="M8.53 14.11a5 5 0 0 1 6.95 0" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="12" cy="18" r="1.2" fill="currentColor"/>
-      </svg>
-      <p>D4EXAM will reconnect automatically<br />once you're back online.</p>
-    </div>
+    <button type="button" id="retry">Try Again</button>
+    <div class="footer">D4EXAM reconnects automatically when you're back online.</div>
   </div>
-
   <script>
     (function () {
-      var LIVE = "https://d4exam-platform.vercel.app/";
+      function isNativeShell() {
+        try {
+          var C = window.Capacitor;
+          if (C && C.isNativePlatform && C.isNativePlatform()) return true;
+          if (C && C.getPlatform && (C.getPlatform() === "android" || C.getPlatform() === "ios")) return true;
+        } catch (e) {}
+        try {
+          var ua = navigator.userAgent || "";
+          if (/Android/i.test(ua) && (/; wv\)/i.test(ua) || /Capacitor/i.test(ua))) return true;
+        } catch (e) {}
+        return false;
+      }
       function go() {
         try {
-          window.location.replace(LIVE + "?offline_retry=" + Date.now());
+          if (isNativeShell()) {
+            // Local SPA shell — never bounce to Vercel
+            window.location.replace("./index.html?offline_retry=" + Date.now());
+            return;
+          }
+          window.location.replace("https://d4exam-platform.vercel.app/?offline_retry=" + Date.now());
         } catch (e) {
-          window.location.href = LIVE;
+          try { window.location.reload(); } catch (e2) {}
         }
       }
       document.getElementById("retry").addEventListener("click", go);
-      window.addEventListener("online", function () {
-        setTimeout(go, 400);
-      });
+      window.addEventListener("online", function () { setTimeout(go, 400); });
     })();
   </script>
 </body>
