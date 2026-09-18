@@ -20,7 +20,6 @@ import { Watermark } from "@/components/brand/Watermark";
 import { InstallAndPushPrompt } from "@/components/InstallAndPushPrompt";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   DropdownMenu,
@@ -35,6 +34,7 @@ import { useSchoolIdentity } from "@/lib/school-identity";
 import { useUnreadNotificationCount } from "@/lib/queries";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import type { RoleConfig } from "@/components/navigation/navConfig";
+import { GlobalSearchPage } from "@/components/search/GlobalSearchPage";
 
 export interface AppUser {
   name: string;
@@ -225,6 +225,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: session } = useSessionUser();
   const { data: school } = useSchoolIdentity(session?.schoolId);
@@ -385,13 +386,16 @@ export function AppShell({
           </div>
 
           <div className="hidden min-w-0 md:block">
-            <div className="relative max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                placeholder="Search…"
-                className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-9"
-                aria-label="Search"
-              />
+            <div className="relative max-w-md flex-1">
+              <button
+                type="button"
+                onClick={() => setSearchOpen(true)}
+                className="flex h-10 w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Open search"
+              >
+                <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
+                <span className="truncate">Search exams, materials, courses…</span>
+              </button>
             </div>
           </div>
 
@@ -513,6 +517,7 @@ export function AppShell({
         </nav>
       )}
 
+      <GlobalSearchPage open={searchOpen} onClose={() => setSearchOpen(false)} />
       <InstallAndPushPrompt />
     </div>
   );

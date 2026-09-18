@@ -471,8 +471,8 @@ export function ExamCameraPip({
       const dy = e.clientY - d.startY;
       const edge = 2;
       const el = document.querySelector("[data-exam-pip]") as HTMLElement | null;
-      const w = el?.offsetWidth || 96;
-      const h = el?.offsetHeight || 140;
+      const w = el?.offsetWidth || 120;
+      const h = el?.offsetHeight || 150;
       const maxL = Math.max(edge, window.innerWidth - w - edge);
       const maxT = Math.max(edge, window.innerHeight - h - edge);
       setPos({
@@ -529,7 +529,7 @@ export function ExamCameraPip({
   return (
     <div
       data-exam-pip
-      className="fixed z-[100] w-[88px] touch-none overflow-hidden rounded-lg border-2 border-white/80 bg-black shadow-2xl sm:w-[104px]"
+      className="fixed z-[100] w-[112px] touch-none overflow-hidden rounded-xl border-2 border-white/90 bg-black shadow-2xl sm:w-[128px]"
       style={{ left: pos.left, top: pos.top }}
       onPointerDown={(e) => {
         e.preventDefault();
@@ -559,13 +559,13 @@ export function ExamCameraPip({
       {stream ? (
         <video
           ref={setVideoNode}
-          className="aspect-[3/4] w-full scale-x-[-1] bg-black object-cover pointer-events-none"
+          className="aspect-square w-full scale-x-[-1] bg-black object-cover pointer-events-none"
           autoPlay
           playsInline
           muted
         />
       ) : (
-        <div className="flex aspect-[3/4] w-full items-center justify-center bg-slate-900 px-1 text-center text-[9px] font-semibold text-white/80">
+        <div className="flex aspect-square w-full items-center justify-center bg-slate-900 px-1 text-center text-[9px] font-semibold text-white/80">
           {camConn === "reconnecting" ? "Reconnecting camera…" : "Allow camera access"}
         </div>
       )}

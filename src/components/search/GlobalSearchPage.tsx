@@ -396,13 +396,16 @@ async function runSearch(
   userId: string | null,
 ): Promise<SearchHit[]> {
   const hits: SearchHit[] = [];
-  const like = `%${term.replace(/[%_]/g, "").slice(0, 48)}%`;
-  const lower = term.toLowerCase();
+  const raw = term.trim().slice(0, 64);
+  const lower = raw.toLowerCase();
+  // Escape PostgREST special chars in ilike patterns
+  const safe = raw.replace(/[%_,.()]/g, " ").replace(/\s+/g, " ").trim();
+  const pattern = `%${safe}%`;
 
-  // Features (local)
+  // Features (local, always available)
   for (const f of FEATURES) {
     if (f.roles && !f.roles.includes(role)) continue;
-    if (f.q.some((k) => lower.includes(k) || k.includes(lower))) {
+    if (f.q.some((k) => lower.includes(k) || k.includes(lower) || lower === k)) {
       hits.push({
         id: `feat-${f.title}`,
         kind: "feature",
@@ -418,7 +421,7 @@ async function runSearch(
       const { data: schools } = await supabase
         .from("schools")
         .select("id, name, code")
-        .or(`name.ilike.${like},code.ilike.${like}`)
+        .or(`name.ilike.${JSON.stringify(pattern)},code.ilike.${JSON.stringify(pattern)}`)
         .limit(8);
       for (const s of schools ?? []) {
         hits.push({
@@ -434,16 +437,20 @@ async function runSearch(
     }
   }
 
-  if (!schoolId) return hits.slice(0, 40);
+  if (!schoolId) {
+    // Still return feature hits so search is never empty of all UX
+    return hits.slice(0, 40);
+  }
 
-  // Courses — all school roles including students
+  // Courses
   try {
-    const { data: courses } = await supabase
+    const { data: courses, error } = await supabase
       .from("courses")
       .select("id, code, name")
       .eq("school_id", schoolId)
-      .or(`code.ilike.${like},name.ilike.${like}`)
+      .or(`code.ilike.${JSON.stringify(pattern)},name.ilike.${JSON.stringify(pattern)}`)
       .limit(12);
+    if (error) console.warn("[search] courses err", error.message);
     for (const c of courses ?? []) {
       hits.push({
         id: String(c.id),
@@ -466,13 +473,13 @@ async function runSearch(
 
   // Examinations
   try {
-    let eq = supabase
+    const { data: exams, error } = await supabase
       .from("examinations")
       .select("id, title, status, duration_minutes")
       .eq("school_id", schoolId)
-      .ilike("title", like)
+      .ilike("title", pattern)
       .limit(12);
-    const { data: exams } = await eq;
+    if (error) console.warn("[search] exams err", error.message);
     for (const e of exams ?? []) {
       hits.push({
         id: String(e.id),
@@ -493,62 +500,75 @@ async function runSearch(
     console.warn("[search] exams", e);
   }
 
-  // Materials (title/description) — students + teachers + officers
+  // Materials — title, description, file_name, tags
   try {
-    const { data: mats } = await supabase
+    let q = supabase
       .from("course_materials")
-      .select("id, title, description, course_id, file_name")
+      .select("id, title, description, course_id, file_name, tags")
       .eq("school_id", schoolId)
-      .or(`title.ilike.${like},description.ilike.${like},file_name.ilike.${like}`)
-      .limit(12);
-    for (const m of mats ?? []) {
-      hits.push({
-        id: String(m.id),
-        kind: "material",
-        title: String(m.title || m.file_name || "Material"),
-        subtitle: m.description ? String(m.description).slice(0, 80) : "Study material",
-        href: role === "student" ? "/student/materials" : role === "teacher" ? "/teacher/materials" : roleHome(role),
-      });
-    }
-  } catch (e) {
-    // fallback table name variants
-    try {
+      .limit(15);
+    // Prefer multi-column or; fall back to title only
+    const { data: mats, error } = await q.or(
+      `title.ilike.${JSON.stringify(pattern)},description.ilike.${JSON.stringify(pattern)},file_name.ilike.${JSON.stringify(pattern)},tags.ilike.${JSON.stringify(pattern)}`,
+    );
+    if (error) {
       const { data: mats2 } = await supabase
-        .from("materials")
-        .select("id, title, description, name")
+        .from("course_materials")
+        .select("id, title, description, course_id, file_name")
         .eq("school_id", schoolId)
-        .or(`title.ilike.${like},description.ilike.${like},name.ilike.${like}`)
-        .limit(12);
+        .ilike("title", pattern)
+        .limit(15);
       for (const m of mats2 ?? []) {
         hits.push({
           id: String(m.id),
           kind: "material",
-          title: String((m as { title?: string; name?: string }).title || (m as { name?: string }).name || "Material"),
-          subtitle: "Study material",
-          href: role === "student" ? "/student/materials" : roleHome(role),
+          title: String(m.title || m.file_name || "Material"),
+          subtitle: m.description ? String(m.description).slice(0, 80) : "Study material",
+          href: role === "student" ? "/student/materials" : role === "teacher" ? "/teacher/materials" : roleHome(role),
         });
       }
-    } catch (e2) {
-      console.warn("[search] materials", e, e2);
+    } else {
+      for (const m of mats ?? []) {
+        hits.push({
+          id: String(m.id),
+          kind: "material",
+          title: String(m.title || m.file_name || "Material"),
+          subtitle: m.description ? String(m.description).slice(0, 80) : "Study material",
+          href: role === "student" ? "/student/materials" : role === "teacher" ? "/teacher/materials" : roleHome(role),
+        });
+      }
     }
+  } catch (e) {
+    console.warn("[search] materials", e);
   }
 
   // Student results (own)
   if (role === "student" && userId) {
     try {
-      const { data: stud } = await supabase
+      let sid: string | null = null;
+      const byProfile = await supabase
         .from("students")
         .select("id")
         .eq("profile_id", userId)
         .eq("school_id", schoolId)
         .maybeSingle();
-      const sid = stud?.id;
+      sid = byProfile.data?.id ? String(byProfile.data.id) : null;
+      if (!sid) {
+        const byUser = await supabase
+          .from("students")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("school_id", schoolId)
+          .maybeSingle();
+        sid = byUser.data?.id ? String(byUser.data.id) : null;
+      }
       if (sid) {
         const { data: results } = await supabase
           .from("results")
           .select("id, percentage, grade, examinations(title)")
           .eq("student_id", sid)
-          .limit(20);
+          .order("created_at", { ascending: false })
+          .limit(25);
         for (const r of results ?? []) {
           const title =
             (r as { examinations?: { title?: string } | null }).examinations?.title ||
@@ -557,7 +577,8 @@ async function runSearch(
             String(title).toLowerCase().includes(lower) ||
             String(r.grade || "").toLowerCase().includes(lower) ||
             lower.includes("result") ||
-            lower.includes("score")
+            lower.includes("score") ||
+            lower.includes("grade")
           ) {
             hits.push({
               id: String(r.id),
@@ -584,7 +605,9 @@ async function runSearch(
         .from("students")
         .select("id, matric_number, student_id, full_name")
         .eq("school_id", schoolId)
-        .or(`matric_number.ilike.${like},student_id.ilike.${like},full_name.ilike.${like}`)
+        .or(
+          `matric_number.ilike.${JSON.stringify(pattern)},student_id.ilike.${JSON.stringify(pattern)},full_name.ilike.${JSON.stringify(pattern)}`,
+        )
         .limit(12);
       for (const s of students ?? []) {
         hits.push({
@@ -601,7 +624,28 @@ async function runSearch(
         });
       }
     } catch (e) {
-      console.warn("[search] students", e);
+      // full_name may not exist — try without it
+      try {
+        const { data: students } = await supabase
+          .from("students")
+          .select("id, matric_number, student_id")
+          .eq("school_id", schoolId)
+          .or(
+            `matric_number.ilike.${JSON.stringify(pattern)},student_id.ilike.${JSON.stringify(pattern)}`,
+          )
+          .limit(12);
+        for (const s of students ?? []) {
+          hits.push({
+            id: String(s.id),
+            kind: "student",
+            title: String(s.matric_number || s.student_id || "Student"),
+            subtitle: s.matric_number ? `Matric: ${s.matric_number}` : undefined,
+            href: role === "examination_officer" ? "/officer/results" : `/admin/student/${s.id}`,
+          });
+        }
+      } catch (e2) {
+        console.warn("[search] students", e, e2);
+      }
     }
   }
 
@@ -612,14 +656,14 @@ async function runSearch(
         .from("teachers")
         .select("id, full_name, staff_id")
         .eq("school_id", schoolId)
-        .or(`full_name.ilike.${like},staff_id.ilike.${like}`)
+        .or(`full_name.ilike.${JSON.stringify(pattern)},staff_id.ilike.${JSON.stringify(pattern)}`)
         .limit(8);
-      for (const t of teachers ?? []) {
+      for (const te of teachers ?? []) {
         hits.push({
-          id: String(t.id),
+          id: String(te.id),
           kind: "teacher",
-          title: String(t.full_name || "Teacher"),
-          subtitle: t.staff_id ? `Staff: ${t.staff_id}` : undefined,
+          title: String(te.full_name || "Teacher"),
+          subtitle: te.staff_id ? `Staff: ${te.staff_id}` : undefined,
           href: "/admin/teachers",
         });
       }
