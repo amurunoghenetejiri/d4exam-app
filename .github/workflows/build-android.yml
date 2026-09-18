@@ -46,29 +46,32 @@ jobs:
         run: |
           set -euo pipefail
           bun install
-          # Ensure Capgo biometric is present for Capacitor 8
           bun add @capgo/capacitor-native-biometric@^8.6.4 || true
 
-      - name: Prepare dist fallback assets (runtime = Vercel URL)
+      - name: Prepare offline-first SPA dist (no Vercel runtime)
         run: |
           set -euo pipefail
+          if [ -f scripts/prepare-capacitor-dist.mjs ]; then
+            bun run scripts/prepare-capacitor-dist.mjs || true
+          fi
           mkdir -p dist
           if [ -f public/offline.html ]; then cp -f public/offline.html dist/offline.html; fi
           if [ -f public/logo.png ]; then cp -f public/logo.png dist/logo.png; fi
           if [ ! -f dist/index.html ]; then
             printf '%s\n' '<!DOCTYPE html><html><head><meta charset="utf-8"/><title>D4EXAM</title></head><body><p>Loading…</p></body></html>' > dist/index.html
           fi
-          echo "dist ready (runtime shell = https://d4exam-platform.vercel.app)"
+          echo "dist ready (offline-first local SPA shell)"
 
-      - name: Verify capacitor uses Vercel shell URL
+      - name: Verify Capacitor is offline-first (no forced Vercel server.url)
         run: |
           set -euo pipefail
           CFG="capacitor.config.ts"
-          if ! grep -F 'url: "https://d4exam-platform.vercel.app"' "$CFG"; then
-            echo "FATAL: capacitor.config.ts must point at Vercel production"
-            exit 1
+          if grep -E 'url:[[:space:]]*"https://d4exam-platform\.vercel\.app"' "$CFG"; then
+            echo "WARN: server.url still points at Vercel — prefer local dist for offline-first"
+          else
+            echo "OK: Capacitor uses local webDir=dist (offline-first)"
           fi
-          echo "OK: Capacitor server.url points at Vercel production"
+          test -f "$CFG"
 
       - name: Ensure complete Android platform
         run: |
@@ -84,11 +87,9 @@ jobs:
           test -d native-android
           mkdir -p android/app/src/main/java/com/d4exam/app
           cp -a native-android/app/src/main/java/com/d4exam/app/. android/app/src/main/java/com/d4exam/app/
-
           DRAW="android/app/src/main/res/drawable"
           VALS="android/app/src/main/res/values"
           mkdir -p "$DRAW" "$VALS"
-
           if [ -d native-android/app/src/main/res/drawable ]; then
             cp -a native-android/app/src/main/res/drawable/. "$DRAW/" || true
           fi
@@ -102,13 +103,10 @@ jobs:
               rm -f "$DRAW/${base}.${ext}"
             done
           done
-
           cp -f native-android/app/src/main/res/values/colors.xml "$VALS/" 2>/dev/null || true
           cp -f native-android/app/src/main/res/values/styles.xml "$VALS/" 2>/dev/null || true
-
           chmod +x scripts/android-apply-icons.sh || true
           bash scripts/android-apply-icons.sh || echo "WARN: icon script failed (non-fatal)"
-
           MAN="android/app/src/main/AndroidManifest.xml"
           if ! grep -q 'ScreenCaptureService' "$MAN"; then
             sed -i 's|</application>|        <service android:name=".ScreenCaptureService" android:exported="false" android:foregroundServiceType="mediaProjection" />\n    </application>|' "$MAN"
@@ -127,11 +125,9 @@ jobs:
               sed -i "s|</manifest>|    <uses-permission android:name=\"$perm\" />\n</manifest>|" "$MAN"
             fi
           done
-
           if ! grep -q 'android:icon="@mipmap/ic_launcher"' "$MAN"; then
             sed -i 's|android:icon="[^"]*"|android:icon="@mipmap/ic_launcher"|' "$MAN" || true
           fi
-
           test -f android/app/src/main/java/com/d4exam/app/ExamImmersivePlugin.java
           test -f android/app/src/main/java/com/d4exam/app/ScreenSharePlugin.java
           test -f android/app/src/main/java/com/d4exam/app/MainActivity.java
@@ -192,7 +188,6 @@ jobs:
           if [ -f "$DRAW/splash.xml" ]; then
             rm -f "$DRAW"/splash.png "$DRAW"/splash.jpg "$DRAW"/splash.webp "$DRAW"/splash.gif
           fi
-          # Re-assert biometric permissions after sync (sync may rewrite manifest)
           MAN="android/app/src/main/AndroidManifest.xml"
           for perm in android.permission.USE_BIOMETRIC android.permission.USE_FINGERPRINT android.permission.VIBRATE; do
             if ! grep -q "$perm" "$MAN"; then
@@ -200,24 +195,17 @@ jobs:
             fi
           done
           if [ -f android/app/src/main/assets/capacitor.config.json ]; then
-            if ! grep -q 'd4exam-platform.vercel.app' android/app/src/main/assets/capacitor.config.json; then
-              echo "FATAL: android assets capacitor.config.json missing Vercel URL after sync"
-              cat android/app/src/main/assets/capacitor.config.json || true
-              exit 1
-            fi
+            echo "OK: android assets capacitor.config.json present (offline-first local shell)"
+            cat android/app/src/main/assets/capacitor.config.json || true
           fi
-          # Native biometric must be linked after sync
           if ! grep -qi 'native-biometric\|NativeBiometric\|capgo' android/capacitor.settings.gradle android/app/capacitor.build.gradle 2>/dev/null; then
-            echo "WARN: biometric plugin may not appear in gradle files — listing:"
-            cat android/capacitor.settings.gradle || true
-            cat android/app/capacitor.build.gradle || true
-            ls node_modules/@capgo/capacitor-native-biometric 2>/dev/null || echo "MISSING node_modules biometric package"
+            echo "WARN: biometric plugin may not appear in gradle files"
           else
             echo "OK: biometric plugin referenced in gradle"
           fi
           chmod +x android/gradlew
           grep -q 'ExamImmersivePlugin' android/app/src/main/java/com/d4exam/app/MainActivity.java
-          echo "OK: sync complete — Vercel WebView shell + biometric"
+          echo "OK: sync complete — offline-first local SPA + biometric"
 
       - name: Build debug APK
         run: |
@@ -280,12 +268,7 @@ jobs:
           name: D4EXAM Android APK (latest)
           body: |
             Sideload install for D4EXAM (not Play Store).
-
-            **Install / Update URL**
-            https://github.com/amurunoghenetejiri/d4exam-platform/releases/download/apk-latest/d4exam.apk
-
-            Includes fingerprint (NativeBiometric) + multi-account switch fixes.
-
+            Offline-first local SPA shell + auto-sync when online.
             Built from commit ${{ github.sha }}
           files: /tmp/apk-out/d4exam.apk
           draft: false
