@@ -103,12 +103,11 @@ function friendlyLoginError(err: unknown): string {
     lower.includes("networkerror") ||
     lower.includes("network request failed") ||
     lower.includes("load failed") ||
-    lower.includes("timeout") ||
-    lower.includes("timed out") ||
     lower.includes("err_internet") ||
     lower.includes("offline") ||
     lower.includes("unable to connect") ||
-    lower.includes("connection")
+    lower.includes("net::err_") ||
+    lower.includes("network error")
   ) {
     return "No network. Check your connection and try again.";
   }
@@ -297,8 +296,13 @@ function LoginPage() {
       if (!inFlight.current || navigated) return;
       setLoading(false);
       inFlight.current = false;
-      setError("No network. Check your connection and try again.");
-    }, 9_000);
+      // Only blame network when the browser is actually offline
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setError("No network. Check your connection and try again.");
+      } else {
+        setError("Sign-in is taking longer than usual. Please try again.");
+      }
+    }, 28_000);
 
     try {
       const schoolCode = code.trim().toUpperCase();
@@ -307,6 +311,7 @@ function LoginPage() {
       const looksEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ident);
 
       try {
+        // Allow up to 18s for server login (cold starts on Vercel are normal)
         const result = await Promise.race([
           loginFn({
             data: {
@@ -315,7 +320,7 @@ function LoginPage() {
               password: pass,
             },
           }),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 6_000)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 18_000)),
         ]);
 
         if (result && "session" in result && result.session?.access_token) {
@@ -354,6 +359,7 @@ function LoginPage() {
         lastServerMsg = friendlyLoginError(serverErr);
       }
 
+      // Client-side auth fallback (works even if server fn is slow/unavailable)
       const emailsToTry: string[] = [];
       if (looksEmail) emailsToTry.push(ident.toLowerCase());
       if (!looksEmail && schoolCode) {
