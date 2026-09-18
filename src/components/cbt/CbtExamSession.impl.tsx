@@ -17,6 +17,7 @@ import { loadExamQuestionBank, prepareStudentPaper } from "@/lib/cbt-load-questi
 import { type DeviceCapabilities } from "@/lib/device-capabilities";
 import { toast } from "sonner";
 import { ExamCameraPip, type FaceSecurityEvent } from "@/components/cbt/ExamCameraPip";
+import { ExamCalculator, ExamCalculatorFab } from "@/components/cbt/ExamCalculator";
 import { saveCbtResult } from "@/lib/cbt-save-result";
 import { logSecurityEvent } from "@/lib/cbt-security";
 import { mapFaceSecurityEvent } from "@/lib/live-monitor";
@@ -29,6 +30,7 @@ import { useLiveCamPublish } from "@/lib/use-live-cam-publish";
 import { useLiveMicPublish } from "@/lib/use-live-mic-publish";
 import { useExamAttemptHeartbeat } from "@/lib/use-exam-attempt-heartbeat";
 import { isExamAttemptFinished } from "@/lib/student";
+import { setExamActiveFlag } from "@/lib/fingerprint-lock";
 
 function isPreviewPath() {
   if (typeof window === "undefined") return false;
@@ -130,6 +132,8 @@ export function CbtExamPage() {
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [pauseRemainingSec, setPauseRemainingSec] = useState<number | null>(null);
   const [isOfficerPause, setIsOfficerPause] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const calcOpenRef = useRef(false);
   const attemptIdRef = useRef<string | null>(null);
   const tabSwitchCountRef = useRef(0);
   const fullscreenExitCountRef = useRef(0);
@@ -197,7 +201,7 @@ export function CbtExamPage() {
     enabled: Boolean(id),
     queryFn: async () => {
       const { data } = await supabase.from("exam_settings")
-        .select("exam_id, fullscreen, tab_monitoring, max_tab_switches, block_copy_paste, randomize_questions, randomize_options, require_camera, require_microphone, face_detection, max_face_warnings, require_screen_share, screen_share_mode, threshold_action, face_violation_action, pause_duration_seconds, total_marks, instructions, result_visibility, questions_to_answer")
+        .select("exam_id, fullscreen, tab_monitoring, max_tab_switches, block_copy_paste, randomize_questions, randomize_options, require_camera, require_microphone, face_detection, max_face_warnings, require_screen_share, screen_share_mode, threshold_action, face_violation_action, pause_duration_seconds, total_marks, instructions, result_visibility, questions_to_answer, allow_calculator, calculator_type")
         .eq("exam_id", id).maybeSingle();
       return data as ExamSettingsRow | null;
     },
@@ -341,6 +345,13 @@ export function CbtExamPage() {
     }
   }, [done, shutdownMedia]);
 
+  /** Keep fingerprint app-lock from interrupting an active CBT session */
+  useEffect(() => {
+    const active = Boolean(started && !done && !previewMode);
+    setExamActiveFlag(active);
+    return () => setExamActiveFlag(false);
+  }, [started, done, previewMode]);
+
   useEffect(() => () => {
     stopMediaStream(mediaStreamRef.current);
     mediaStreamRef.current = null;
@@ -348,7 +359,7 @@ export function CbtExamPage() {
   }, []);
 
   useLiveCamPublish({
-    enabled: started && !done && !previewMode && Boolean(security.requireCamera),
+    enabled: started && !done && !previewMode && !paused && Boolean(security.requireCamera),
     schoolId: examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId,
     studentId: student?.studentId,
     examId: id,
@@ -370,7 +381,9 @@ export function CbtExamPage() {
     getTabSwitchCount: () => tabSwitchCountRef.current,
   });
   useLiveScreenPublish({
-    enabled: started && !done && !previewMode && Boolean(screenStream),
+    // Keep enabled for whole exam (hook gates on native share / stream / hold).
+    // Do not require MediaStream — Android MediaProjection uses native JPEG path.
+    enabled: started && !done && !previewMode && !paused,
     schoolId: examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId,
     studentId: student?.studentId,
     examId: id,
@@ -379,7 +392,7 @@ export function CbtExamPage() {
     getStream: () => screenStreamRef.current || screenStream,
   });
   useLiveMicPublish({
-    enabled: started && !done && !previewMode,
+    enabled: started && !done && !previewMode && !paused,
     schoolId: examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId,
     studentId: student?.studentId,
     examId: id,
@@ -388,9 +401,21 @@ export function CbtExamPage() {
   });
 
 
+  
+
   useExamAttemptHeartbeat({
     enabled: started && !done && !previewMode,
     attemptId: liveAttemptId || attemptIdRef.current,
+    getStats: () => ({
+      answeredCount: Object.keys(answersRef.current || answers || {}).length,
+      totalQuestions: questions.length || undefined,
+      timeRemainingSec: endsAtRef.current
+        ? Math.max(0, Math.floor((endsAtRef.current - Date.now()) / 1000))
+        : (typeof seconds === "number" ? seconds : null),
+      tabSwitchCount: tabSwitchCountRef.current,
+      faceStatus: faceStatusForLiveRef.current,
+      cameraActive: Boolean(mediaStreamRef.current || liveStream),
+    }),
   });
 
   useEffect(() => {
@@ -444,7 +469,9 @@ export function CbtExamPage() {
         setPauseReason("");
         setWarnBanner("Your examination has been resumed by the officer");
         window.setTimeout(() => setWarnBanner(null), 6000);
+        // Immediate resume — reconnect media without delay
         void reconnectCamera();
+        try { void requestExamFullscreen(); } catch { /* ignore */ }
       } else if (cmd === "terminate") {
         doneTerminatedRef.current = true;
         setDoneTerminated(true);
@@ -511,7 +538,7 @@ export function CbtExamPage() {
             setPaused(true);
           }
         } else if (st === "in_progress" || st === "active" || st === "started") {
-          if (pausedRef.current && officerPauseRef.current) {
+          if (pausedRef.current) {
             officerPauseRef.current = false;
             setIsOfficerPause(false);
             pauseUntilRef.current = null;
@@ -525,7 +552,7 @@ export function CbtExamPage() {
         /* ignore */
       }
     };
-    const t = window.setInterval(() => void poll(), 1500);
+    const t = window.setInterval(() => void poll(), 600);
     void poll();
     return () => {
       cancelled = true;
@@ -535,6 +562,26 @@ export function CbtExamPage() {
   }, [started, done, previewMode, student?.studentId, id, liveAttemptId]);
 
   // Integrity: fullscreen exit + app background / tab switch
+
+  useEffect(() => {
+    calcOpenRef.current = calcOpen;
+    try {
+      const w = window as unknown as { __d4CalcOpen?: boolean; __d4CloseCalc?: () => void };
+      w.__d4CalcOpen = calcOpen;
+      w.__d4CloseCalc = () => setCalcOpen(false);
+    } catch { /* ignore */ }
+    const onCloseEvt = () => setCalcOpen(false);
+    window.addEventListener("d4-close-calculator", onCloseEvt);
+    return () => {
+      window.removeEventListener("d4-close-calculator", onCloseEvt);
+      try {
+        const w = window as unknown as { __d4CalcOpen?: boolean; __d4CloseCalc?: () => void };
+        w.__d4CalcOpen = false;
+        w.__d4CloseCalc = undefined;
+      } catch { /* ignore */ }
+    };
+  }, [calcOpen]);
+
   useEffect(() => {
     if (!started || done || previewMode) return;
     const schoolId = String(examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId ?? "");
@@ -580,6 +627,7 @@ export function CbtExamPage() {
 
     const recordTabLeave = () => {
       if (finishingRef.current || doneRef.current) return;
+      if (calcOpenRef.current || (window as unknown as { __d4CalcOpen?: boolean }).__d4CalcOpen) return;
       if (!security.tabMonitoring) {
         leftExamSessionRef.current = true;
         void flushAttemptProgress();
@@ -743,6 +791,25 @@ export function CbtExamPage() {
   const q = questions[index];
   const answeredCount = Object.keys(answers).length;
 
+
+  // Push live answered count to officer quickly when answers change
+  useEffect(() => {
+    if (!started || done || previewMode || !attemptIdRef.current) return;
+    const aid = attemptIdRef.current;
+    const tId = window.setTimeout(() => {
+      void import("@/lib/cbt-attempt-heartbeat").then(({ pulseExamAttempt }) => {
+        void pulseExamAttempt(aid, {
+          answeredCount: Object.keys(answersRef.current).length,
+          totalQuestions: questions.length || undefined,
+          timeRemainingSec: endsAtRef.current
+            ? Math.max(0, Math.floor((endsAtRef.current - Date.now()) / 1000))
+            : null,
+          tabSwitchCount: tabSwitchCountRef.current,
+        });
+      });
+    }, 350);
+    return () => window.clearTimeout(tId);
+  }, [answers, started, done, previewMode, questions.length]);
 
   // Persist answers + ends_at while in progress (resume safety)
   useEffect(() => {
@@ -1237,7 +1304,19 @@ export function CbtExamPage() {
             <p className="hidden truncate text-sm font-bold sm:block">{(exam as { courses?: { code?: string } }).courses?.code ?? "EXAM"} — {exam.title}</p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="rounded-lg bg-white/10 px-3 py-1.5 font-mono text-sm font-bold tabular-nums">{mm}:{ss}</div>
+            <div
+              className={
+                (seconds != null && seconds <= 300
+                  ? "rounded-lg bg-red-600 px-3 py-1.5 font-mono text-sm font-bold tabular-nums text-white shadow-lg shadow-red-900/40 animate-pulse ring-2 ring-red-300/80"
+                  : "rounded-lg bg-white/10 px-3 py-1.5 font-mono text-sm font-bold tabular-nums")
+              }
+              title={seconds != null && seconds <= 300 ? "Less than 5 minutes remaining" : "Time remaining"}
+            >
+              {mm}:{ss}
+              {seconds != null && seconds <= 300 && seconds > 0 ? (
+                <span className="ml-1.5 hidden text-[10px] font-semibold uppercase tracking-wide sm:inline">left</span>
+              ) : null}
+            </div>
             <Button size="sm" variant="secondary" className="font-semibold" onClick={() => void requestSubmit()}>Submit</Button>
           </div>
         </div>
@@ -1318,7 +1397,7 @@ export function CbtExamPage() {
       )}
       {started && !done && security.requireCamera && (
         <ExamCameraPip
-          enabled={started && !done}
+          enabled={started && !done && !paused}
           faceDetection={Boolean(security.faceDetection || security.requireCamera)}
           maxFaceWarnings={security.maxFaceWarnings ?? 3}
           stream={liveStream}
@@ -1386,6 +1465,16 @@ export function CbtExamPage() {
             )}
           </div>
         </div>
+      )}
+      {started && !done && !previewMode && security.allowCalculator && (
+        <>
+          <ExamCalculatorFab onClick={() => setCalcOpen(true)} />
+          <ExamCalculator
+            open={calcOpen}
+            mode={security.calculatorType === "scientific" ? "scientific" : "basic"}
+            onClose={() => setCalcOpen(false)}
+          />
+        </>
       )}
       {fsGate && security.fullscreen && started && !done && !paused && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/90 p-4 backdrop-blur-sm">

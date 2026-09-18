@@ -10,6 +10,9 @@ import { useStudentContext, type StudentCourse } from "@/lib/student";
 import { useSessionUser } from "@/lib/session";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
+import { withOfflineCache } from "@/lib/offline-query";
+import { OfflineKeys } from "@/lib/offline-cache";
+import { isOnlineNow } from "@/lib/offline-sync";
 
 export const Route = createFileRoute("/student/courses")({
   head: () => ({
@@ -36,28 +39,38 @@ function Page() {
     ],
     enabled: Boolean(student?.schoolId && student?.departmentId),
     staleTime: 30_000,
+    refetchInterval: isOnlineNow() ? 60_000 : false,
     queryFn: async (): Promise<StudentCourse[]> => {
       if (!student?.schoolId || !student.departmentId) return [];
-      const { data, error } = await supabase
-        .from("courses")
-        .select("id, code, name, level_id")
-        .eq("school_id", student.schoolId)
-        .eq("department_id", student.departmentId)
-        .limit(400);
-      if (error) {
-        console.warn("[student-courses] available", error.message);
-        return [];
-      }
-      let rows = (data ?? []) as { id: string; code?: string; name?: string; level_id?: string | null }[];
-      if (student.levelId) {
-        const sameLevel = rows.filter((r) => !r.level_id || String(r.level_id) === String(student.levelId));
-        if (sameLevel.length) rows = sameLevel;
-      }
-      return rows.map((c) => ({
-        id: String(c.id),
-        code: String(c.code || ""),
-        name: String(c.name || ""),
-      }));
+      const uid = session?.userId ?? student.profileId;
+      const cacheKey = `${OfflineKeys.courses}::${student.schoolId}::${student.departmentId}::${student.levelId ?? ""}`;
+      return withOfflineCache(
+        uid,
+        cacheKey,
+        async () => {
+          const { data, error } = await supabase
+            .from("courses")
+            .select("id, code, name, level_id")
+            .eq("school_id", student.schoolId)
+            .eq("department_id", student.departmentId)
+            .limit(400);
+          if (error) {
+            console.warn("[student-courses] available", error.message);
+            return [] as StudentCourse[];
+          }
+          let rows = (data ?? []) as { id: string; code?: string; name?: string; level_id?: string | null }[];
+          if (student.levelId) {
+            const sameLevel = rows.filter((r) => !r.level_id || String(r.level_id) === String(student.levelId));
+            if (sameLevel.length) rows = sameLevel;
+          }
+          return rows.map((c) => ({
+            id: String(c.id),
+            code: String(c.code || ""),
+            name: String(c.name || ""),
+          }));
+        },
+        { schoolId: student.schoolId, fallback: [] as StudentCourse[] },
+      );
     },
   });
 

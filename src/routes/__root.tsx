@@ -233,7 +233,7 @@ const BOOT_SPLASH_SCRIPT = `
     if (sessionStorage.getItem('d4exam_splash_shown_v6') === '1') return;
     var el = document.getElementById('d4-boot-splash');
     if (el) el.style.display = 'flex';
-    // Hide as soon as React signals (or short safety). Never leave overlay blocking clicks.
+    // Stay up until React signals ready — avoids white gap between boot + app splash / fingerprint
     var hidden = false;
     function hideBoot(){
       if (hidden) return;
@@ -244,13 +244,12 @@ const BOOT_SPLASH_SCRIPT = `
         if (!b) return;
         b.style.opacity = '0';
         b.style.pointerEvents = 'none';
-        b.style.display = 'none';
-        setTimeout(function(){ try { b.remove(); } catch(e){} }, 80);
+        setTimeout(function(){ try { b.remove(); } catch(e){} }, 180);
       } catch(e){}
     }
     window.addEventListener('d4-hide-boot-splash', hideBoot);
-    // Short safety — React AnimatedSplash also fires hide immediately on mount
-    setTimeout(hideBoot, 1600);
+    // Absolute safety only (never leave forever)
+    setTimeout(hideBoot, 1800);
   } catch(e){}
 })();
 `;
@@ -315,18 +314,18 @@ function RootComponent() {
   useEffect(() => {
     installGlobalErrorHandlers();
     startAccountVaultKeepAlive();
-    // Ensure no leftover full-screen locks block menu / navigation clicks
+    // Clear leftover overlays that can freeze taps after splash / lock gates
     try {
+      window.dispatchEvent(new Event("d4-hide-boot-splash"));
+      const el = document.getElementById("d4-boot-splash");
+      if (el) {
+        el.style.opacity = "0";
+        el.style.pointerEvents = "none";
+        el.style.display = "none";
+      }
       document.body.style.overflow = "";
       document.documentElement.style.overflow = "";
-      document.body.classList.remove("d4-setup-lock-active", "d4-fp-lock-active");
-      window.dispatchEvent(new Event("d4-hide-boot-splash"));
-      const boot = document.getElementById("d4-boot-splash");
-      if (boot) {
-        boot.style.pointerEvents = "none";
-        boot.style.display = "none";
-        boot.style.opacity = "0";
-      }
+      document.body.classList.remove("d4-fp-lock-active", "d4-setup-lock-active");
     } catch {
       /* ignore */
     }

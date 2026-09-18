@@ -17,6 +17,10 @@ import { processDueExamReminders } from "@/lib/notify";
 import { assertOnline } from "@/lib/require-online";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
+import { useSessionUser } from "@/lib/session";
+import { withOfflineCache } from "@/lib/offline-query";
+import { OfflineKeys } from "@/lib/offline-cache";
+import { isOnlineNow } from "@/lib/offline-sync";
 
 export const Route = createFileRoute("/student/examinations")({
   head: () => ({
@@ -174,7 +178,9 @@ function StartOrCountdownButton({
 
 function Page() {
   const { data: student, isLoading: sLoading } = useStudentContext();
+  const { data: user } = useSessionUser();
   const schoolId = student?.schoolId ?? null;
+  const uid = user?.userId ?? student?.profileId;
 
   useEffect(() => {
     if (!schoolId) return;
@@ -206,26 +212,33 @@ function Page() {
     queryKey: ["student-exams", schoolId, student?.courseIds?.join(","), student?.departmentId, student?.levelId],
     enabled: Boolean(schoolId && student?.studentId),
     staleTime: 1_500,
-    refetchInterval: 4_000,
+    refetchInterval: isOnlineNow() ? 4_000 : false,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
     queryFn: async () => {
       if (!schoolId || !student) return [] as ExamRow[];
-      const { data, error } = await supabase
-        .from("examinations")
-        .select(
-          "id, title, status, scheduled_start, scheduled_end, duration_minutes, course_id, school_id, courses(code, name, department_id, level_id)",
-        )
-        .eq("school_id", schoolId)
-        .in("status", [...STUDENT_VISIBLE_EXAM_STATUSES])
-        .order("scheduled_start", { ascending: true, nullsFirst: false })
-        .limit(150);
-      if (error) {
-        console.warn("[student-exams]", error);
-        return [] as ExamRow[];
-      }
-      const rows = (data ?? []) as ExamRow[];
-      return filterExamsForStudent(student, rows);
+      return withOfflineCache(
+        uid,
+        OfflineKeys.studentExams,
+        async () => {
+          const { data, error } = await supabase
+            .from("examinations")
+            .select(
+              "id, title, status, scheduled_start, scheduled_end, duration_minutes, course_id, school_id, courses(code, name, department_id, level_id)",
+            )
+            .eq("school_id", schoolId)
+            .in("status", [...STUDENT_VISIBLE_EXAM_STATUSES])
+            .order("scheduled_start", { ascending: true, nullsFirst: false })
+            .limit(150);
+          if (error) {
+            console.warn("[student-exams]", error);
+            return [] as ExamRow[];
+          }
+          const rows = (data ?? []) as ExamRow[];
+          return filterExamsForStudent(student, rows);
+        },
+        { schoolId, fallback: [] as ExamRow[] },
+      );
     },
   });
 
@@ -233,15 +246,26 @@ function Page() {
     queryKey: ["student-attempts", student?.studentId],
     enabled: Boolean(student?.studentId),
     staleTime: 5_000,
+    refetchInterval: isOnlineNow() ? 8_000 : false,
     refetchOnMount: "always",
     queryFn: async () => {
       if (!student?.studentId) return [] as AttemptRow[];
-      const { data, error } = await supabase
-        .from("exam_attempts")
-        .select("exam_id, status, submitted_at, ends_at, started_at")
-        .eq("student_id", student.studentId);
-      if (error) { console.warn("[offline]", error); return []; }
-      return (data ?? []) as AttemptRow[];
+      return withOfflineCache(
+        uid,
+        OfflineKeys.studentExamAttempts,
+        async () => {
+          const { data, error } = await supabase
+            .from("exam_attempts")
+            .select("exam_id, status, submitted_at, ends_at, started_at")
+            .eq("student_id", student.studentId);
+          if (error) {
+            console.warn("[offline]", error);
+            return [] as AttemptRow[];
+          }
+          return (data ?? []) as AttemptRow[];
+        },
+        { schoolId: student.schoolId, fallback: [] as AttemptRow[] },
+      );
     },
   });
 
@@ -249,21 +273,32 @@ function Page() {
     queryKey: ["student-result-ids", student?.studentId],
     enabled: Boolean(student?.studentId),
     staleTime: 5_000,
+    refetchInterval: isOnlineNow() ? 15_000 : false,
     refetchOnMount: "always",
     queryFn: async () => {
       if (!student?.studentId) return {} as Record<string, string>;
-      let q = supabase
-        .from("results")
-        .select("id, exam_id")
-        .eq("student_id", student.studentId);
-      if (student.schoolId) q = q.eq("school_id", student.schoolId);
-      const { data, error } = await q;
-      if (error) { console.warn("[offline]", error); return {}; }
-      const map: Record<string, string> = {};
-      for (const r of data ?? []) {
-        map[(r as { exam_id: string }).exam_id] = (r as { id: string }).id;
-      }
-      return map;
+      return withOfflineCache(
+        uid,
+        `${OfflineKeys.studentResults}::ids`,
+        async () => {
+          let q = supabase
+            .from("results")
+            .select("id, exam_id")
+            .eq("student_id", student.studentId);
+          if (student.schoolId) q = q.eq("school_id", student.schoolId);
+          const { data, error } = await q;
+          if (error) {
+            console.warn("[offline]", error);
+            return {} as Record<string, string>;
+          }
+          const map: Record<string, string> = {};
+          for (const r of data ?? []) {
+            map[(r as { exam_id: string }).exam_id] = (r as { id: string }).id;
+          }
+          return map;
+        },
+        { schoolId: student.schoolId, fallback: {} as Record<string, string> },
+      );
     },
   });
   const resultIdByExam = resultsQ.data ?? {};

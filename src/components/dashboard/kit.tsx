@@ -306,11 +306,7 @@ export function EmptyState({
   );
 }
 
-/**
- * Lightweight page loader — no full-screen BrandLoader splash.
- * Avoids the secondary "Preparing your examination environment…" screen
- * after the app splash; keeps dashboard interactive while data hydrates.
- */
+/** Lightweight page loader — no full-screen BrandLoader splash. */
 export function PageLoading({
   label,
   schoolId: _schoolId,

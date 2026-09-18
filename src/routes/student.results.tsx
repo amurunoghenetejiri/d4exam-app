@@ -5,8 +5,12 @@ import { PageHeader, EmptyState, StatusBadge } from "@/components/dashboard/kit"
 import { Button } from "@/components/ui/button";
 import { SchoolResultHeader } from "@/components/brand/SchoolResultHeader";
 import { useStudentContext } from "@/lib/student";
+import { useSessionUser } from "@/lib/session";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "@/lib/realtime";
+import { withOfflineCache } from "@/lib/offline-query";
+import { OfflineKeys } from "@/lib/offline-cache";
+import { isOnlineNow } from "@/lib/offline-sync";
 
 export const Route = createFileRoute("/student/results")({
   head: () => ({ meta: [{ title: "My Results — D4EXAM" }] }),
@@ -38,25 +42,36 @@ function Page() {
 
 function ResultsList() {
   const { data: student, isLoading } = useStudentContext();
+  const { data: user } = useSessionUser();
   const navigate = useNavigate();
 
   const resultsQ = useQuery({
     queryKey: ["student-results", student?.studentId],
     enabled: Boolean(student?.studentId),
+    staleTime: 5_000,
+    refetchInterval: isOnlineNow() ? 15_000 : false,
     queryFn: async () => {
       if (!student?.studentId) return [] as ResultRow[];
-      const { data, error } = await supabase
-        .from("results")
-        .select(
-          "id, exam_id, total_score, max_score, percentage, grade, pass_fail, status, security_review_status, released_at, created_at, examinations(title, courses(code, name))",
-        )
-        .eq("student_id", student.studentId)
-        .order("created_at", { ascending: false });
-      if (error) {
-        console.warn("[student-results]", error);
-        return [] as ResultRow[];
-      }
-      return (data ?? []) as ResultRow[];
+      const uid = user?.userId ?? student.profileId;
+      return withOfflineCache(
+        uid,
+        OfflineKeys.studentResults,
+        async () => {
+          const { data, error } = await supabase
+            .from("results")
+            .select(
+              "id, exam_id, total_score, max_score, percentage, grade, pass_fail, status, security_review_status, released_at, created_at, examinations(title, courses(code, name))",
+            )
+            .eq("student_id", student.studentId)
+            .order("created_at", { ascending: false });
+          if (error) {
+            console.warn("[student-results]", error);
+            return [] as ResultRow[];
+          }
+          return (data ?? []) as ResultRow[];
+        },
+        { schoolId: student.schoolId, fallback: [] as ResultRow[] },
+      );
     },
   });
 

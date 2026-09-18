@@ -633,24 +633,26 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
           <p className="min-h-[1.5rem] break-all font-mono text-sm text-slate-300">
             {(() => {
               const shown = prettifyExpr(expr);
-              if (!shown) return "\u00a0";
-              if (finalized) return shown;
-              const i = Math.min(cursor, expr.length);
-              const left = prettifyExpr(expr.slice(0, i));
-              const right = prettifyExpr(expr.slice(i));
+              if (finalized) return shown || " ";
+              if (!expr) {
+                return <span className="inline-block h-[1.05em] w-[2px] animate-pulse bg-sky-400 align-middle" />;
+              }
+              const left = prettifyExpr(expr.slice(0, cursor));
+              const right = prettifyExpr(expr.slice(cursor));
               return (
                 <>
-                  {left}
-                  <span className="inline-block w-0.5 h-4 bg-sky-400 align-middle animate-pulse mx-0.5" />
-                  {right}
+                  <span>{left}</span>
+                  <span className="mx-px inline-block h-[1.05em] w-[2px] animate-pulse bg-sky-400 align-middle" />
+                  <span>{right}</span>
                 </>
               );
             })()}
           </p>
           <p
             className={cn(
-              "mt-1 break-all text-right font-mono text-2xl font-bold tracking-tight",
-              error ? "text-red-400" : "text-white",
+              "mt-2 break-all font-mono tabular-nums text-white",
+              finalized ? "text-4xl font-extrabold sm:text-5xl" : "text-3xl font-bold sm:text-4xl",
+              error && "text-red-400",
             )}
           >
             {resultShown}
@@ -658,14 +660,14 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         </div>
       </div>
 
-      <div className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-3">
-        <div className="flex min-h-0 flex-1 flex-col justify-end gap-1.5 overflow-y-auto">
+      <div className="mt-2 flex min-h-0 flex-1 flex-col px-2.5 pb-2.5">
+        <div className="flex flex-1 flex-col gap-1.5">
           {rows.map((row, ri) => (
             <div
               key={ri}
-              className="grid gap-1.5"
+              className="grid flex-1 gap-1.5"
               style={{
-                gridTemplateColumns: `repeat(${row.reduce((n, k) => n + (k.span || 1), 0)}, minmax(0, 1fr))`,
+                gridTemplateColumns: `repeat(${row.reduce((a, k) => a + (k.span || 1), 0)}, minmax(0, 1fr))`,
               }}
             >
               {row.map((k) => (

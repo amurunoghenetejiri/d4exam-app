@@ -1,1 +1,1 @@
-deploy-ping 2026-09-11T19:10:00Z — trigger Vercel production deploy from main
+deploy-ping offline entry uses normal splash 2026-09-18T16:06:01Z

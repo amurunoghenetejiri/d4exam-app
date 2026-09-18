@@ -5,8 +5,12 @@ import { ArrowLeft } from "lucide-react";
 import { PageHeader, SectionCard, StatusBadge, EmptyState } from "@/components/dashboard/kit";
 import { Button } from "@/components/ui/button";
 import { useStudentContext } from "@/lib/student";
+import { useSessionUser } from "@/lib/session";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "@/lib/realtime";
+import { withOfflineCache } from "@/lib/offline-query";
+import { OfflineKeys } from "@/lib/offline-cache";
+import { isOnlineNow } from "@/lib/offline-sync";
 
 export const Route = createFileRoute("/student/history")({
   head: () => ({
@@ -47,6 +51,8 @@ type ExamLite = {
 
 function Page() {
   const { data: student, isLoading } = useStudentContext();
+  const { data: user } = useSessionUser();
+  const uid = user?.userId ?? student?.profileId;
 
   useRealtimeInvalidate(
     `student-history-${student?.studentId ?? "x"}`,
@@ -66,30 +72,54 @@ function Page() {
   const resultsQ = useQuery({
     queryKey: ["student-history-results", student?.studentId],
     enabled: Boolean(student?.studentId),
+    staleTime: 5_000,
+    refetchInterval: isOnlineNow() ? 20_000 : false,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("results")
-        .select(
-          "id, exam_id, percentage, grade, pass_fail, status, released_at, created_at, examinations(title, duration_minutes, courses(code, name))",
-        )
-        .eq("student_id", student!.studentId)
-        .order("created_at", { ascending: false });
-      if (error) { console.warn("[offline]", error); return []; }
-      return (data ?? []) as ResultRow[];
+      return withOfflineCache(
+        uid,
+        `${OfflineKeys.studentResults}::history`,
+        async () => {
+          const { data, error } = await supabase
+            .from("results")
+            .select(
+              "id, exam_id, percentage, grade, pass_fail, status, released_at, created_at, examinations(title, duration_minutes, courses(code, name))",
+            )
+            .eq("student_id", student!.studentId)
+            .order("created_at", { ascending: false });
+          if (error) {
+            console.warn("[offline]", error);
+            return [] as ResultRow[];
+          }
+          return (data ?? []) as ResultRow[];
+        },
+        { schoolId: student?.schoolId, fallback: [] as ResultRow[] },
+      );
     },
   });
 
   const attemptsQ = useQuery({
     queryKey: ["student-history-attempts", student?.studentId],
     enabled: Boolean(student?.studentId),
+    staleTime: 5_000,
+    refetchInterval: isOnlineNow() ? 20_000 : false,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("exam_attempts")
-        .select("id, exam_id, status, submitted_at, started_at")
-        .eq("student_id", student!.studentId)
-        .order("started_at", { ascending: false });
-      if (error) { console.warn("[offline]", error); return []; }
-      return (data ?? []) as AttemptRow[];
+      return withOfflineCache(
+        uid,
+        OfflineKeys.studentExamAttempts,
+        async () => {
+          const { data, error } = await supabase
+            .from("exam_attempts")
+            .select("id, exam_id, status, submitted_at, started_at")
+            .eq("student_id", student!.studentId)
+            .order("started_at", { ascending: false });
+          if (error) {
+            console.warn("[offline]", error);
+            return [] as AttemptRow[];
+          }
+          return (data ?? []) as AttemptRow[];
+        },
+        { schoolId: student?.schoolId, fallback: [] as AttemptRow[] },
+      );
     },
   });
 
@@ -103,13 +133,24 @@ function Page() {
   const examsQ = useQuery({
     queryKey: ["student-history-exams", examIds.join(",")],
     enabled: examIds.length > 0,
+    staleTime: 30_000,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("examinations")
-        .select("id, title, courses(code, name)")
-        .in("id", examIds);
-      if (error) { console.warn("[offline]", error); return []; }
-      return (data ?? []) as ExamLite[];
+      return withOfflineCache(
+        uid,
+        `${OfflineKeys.studentExams}::history::${examIds.slice().sort().join(",")}`,
+        async () => {
+          const { data, error } = await supabase
+            .from("examinations")
+            .select("id, title, courses(code, name)")
+            .in("id", examIds);
+          if (error) {
+            console.warn("[offline]", error);
+            return [] as ExamLite[];
+          }
+          return (data ?? []) as ExamLite[];
+        },
+        { schoolId: student?.schoolId, fallback: [] as ExamLite[] },
+      );
     },
   });
 

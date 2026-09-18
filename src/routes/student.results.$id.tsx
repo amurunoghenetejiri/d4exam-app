@@ -16,9 +16,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { SchoolResultHeader } from "@/components/brand/SchoolResultHeader";
 import { useStudentContext } from "@/lib/student";
+import { useSessionUser } from "@/lib/session";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
+import { withOfflineCache } from "@/lib/offline-query";
+import { OfflineKeys } from "@/lib/offline-cache";
 
 export const Route = createFileRoute("/student/results/$id")({
   head: () => ({
@@ -107,6 +110,7 @@ function scoreTone(pct: number | null, passFail: string | null, released: boolea
 function ResultDetailPage() {
   const { id } = Route.useParams();
   const { data: student, isLoading: sLoading } = useStudentContext();
+  const { data: user } = useSessionUser();
 
   useRealtimeInvalidate(
     `student-result-detail-${id}`,
@@ -120,28 +124,37 @@ function ResultDetailPage() {
   const resultQ = useQuery({
     queryKey: ["student-result-detail", id, student?.studentId],
     enabled: Boolean(id && student?.studentId),
+    staleTime: 10_000,
     queryFn: async () => {
       if (!student?.studentId) return null;
-      const select = `id, exam_id, student_id, attempt_id, total_score, max_score, percentage, grade, pass_fail,
+      const uid = user?.userId ?? student.profileId;
+      return withOfflineCache(
+        uid,
+        `${OfflineKeys.studentResults}::detail::${id}`,
+        async () => {
+          const select = `id, exam_id, student_id, attempt_id, total_score, max_score, percentage, grade, pass_fail,
            correct_count, wrong_count, unanswered_count, status, security_review_status,
            released_at, created_at,
            examinations(title, duration_minutes, scheduled_start, scheduled_end, courses(code, name))`;
-      const byId = await supabase
-        .from("results")
-        .select(select)
-        .eq("student_id", student.studentId)
-        .eq("id", id)
-        .maybeSingle();
-      if (byId.data) return byId.data as unknown as ResultRow;
-      const byExam = await supabase
-        .from("results")
-        .select(select)
-        .eq("student_id", student.studentId)
-        .eq("exam_id", id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      return (byExam.data as unknown as ResultRow) ?? null;
+          const byId = await supabase
+            .from("results")
+            .select(select)
+            .eq("student_id", student.studentId)
+            .eq("id", id)
+            .maybeSingle();
+          if (byId.data) return byId.data as unknown as ResultRow;
+          const byExam = await supabase
+            .from("results")
+            .select(select)
+            .eq("student_id", student.studentId)
+            .eq("exam_id", id)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          return (byExam.data as unknown as ResultRow) ?? null;
+        },
+        { schoolId: student.schoolId, fallback: null },
+      );
     },
   });
 

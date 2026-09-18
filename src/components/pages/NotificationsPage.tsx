@@ -10,6 +10,9 @@ import { useSessionUser } from "@/lib/session";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
+import { withOfflineCache } from "@/lib/offline-query";
+import { OfflineKeys } from "@/lib/offline-cache";
+import { isOnlineNow } from "@/lib/offline-sync";
 
 type Notif = {
   id: string;
@@ -281,10 +284,16 @@ export function NotificationsPage({ scope }: { scope: string }) {
     queryKey: ["own-notifications", user?.userId],
     enabled: Boolean(user?.userId),
     staleTime: 5_000,
+    refetchInterval: isOnlineNow() ? 12_000 : false,
     refetchOnWindowFocus: true,
     queryFn: async () => {
       if (!user?.userId) return [] as Notif[];
-      return fetchOwnNotifications(user.userId);
+      return withOfflineCache(
+        user.userId,
+        OfflineKeys.notifications,
+        () => fetchOwnNotifications(user.userId),
+        { schoolId: user.schoolId, fallback: [] as Notif[] },
+      );
     },
   });
 

@@ -26,7 +26,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useSessionUser } from "@/lib/session";
 import { runImageOcr, downloadTextFile, openPrintableOcr } from "@/lib/material-ocr";
-import { isMaterialOffline, saveMaterialOffline } from "@/lib/material-offline";
+import { isMaterialOffline, saveMaterialOffline, getOfflineMaterial } from "@/lib/material-offline";
+import { isOnlineNow } from "@/lib/offline-sync";
 import { supabase } from "@/integrations/supabase/client";
 
 export type ViewerMaterial = {
@@ -101,6 +102,7 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
   const [ocrDraft, setOcrDraft] = useState(item.ocr_text || "");
   const [ocrStatusMsg, setOcrStatusMsg] = useState("");
   const [offlineSaved, setOfflineSaved] = useState(false);
+  const [offlineSrc, setOfflineSrc] = useState<string | null>(null);
   const [imgScale, setImgScale] = useState(1);
   const [imgOffset, setImgOffset] = useState({ x: 0, y: 0 });
   const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
@@ -190,14 +192,55 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!session?.userId) return;
-      const off = await isMaterialOffline(session.userId, item.id);
-      if (!cancelled) setOfflineSaved(off);
+      if (!session?.userId) {
+        setOfflineSrc(null);
+        setOfflineSaved(false);
+        return;
+      }
+      try {
+        const blob = await getOfflineMaterial(session.userId, item.id);
+        if (cancelled) return;
+        if (blob?.dataUrl) {
+          setOfflineSrc(blob.dataUrl);
+          setOfflineSaved(true);
+        } else {
+          setOfflineSrc(null);
+          setOfflineSaved(false);
+        }
+        // When online, quietly cache for next offline open (does not block UI)
+        if (isOnlineNow() && item.file_url && !blob?.dataUrl) {
+          try {
+            await saveMaterialOffline(
+              session.userId,
+              {
+                id: item.id,
+                title: item.title,
+                file_url: item.file_url,
+                file_name: item.file_name,
+                file_mime: item.file_mime,
+              },
+              session.schoolId,
+            );
+            if (!cancelled) {
+              setOfflineSaved(true);
+              const again = await getOfflineMaterial(session.userId, item.id);
+              if (again?.dataUrl && !cancelled) setOfflineSrc(again.dataUrl);
+            }
+          } catch {
+            /* quota / CORS — ignore */
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setOfflineSrc(null);
+          setOfflineSaved(false);
+        }
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [item.id, session?.userId]);
+  }, [item.id, item.file_url, item.file_name, item.file_mime, item.title, session?.userId, session?.schoolId]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -229,8 +272,11 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
     return () => window.removeEventListener("keydown", onKey);
   }, [chromeVisible, moreOpen, ocrOpen, goPageOpen, onClose, pages]);
 
+  // Prefer offline blob when network is down or remote URL unavailable
+  const activeUrl = offlineSrc || item.file_url;
+
   useEffect(() => {
-    if (!item.file_url || !isPdf(item)) return;
+    if (!activeUrl || !isPdf(item)) return;
     let cancelled = false;
     (async () => {
       setBusy(true);
@@ -241,7 +287,7 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
         if (pdfjs.GlobalWorkerOptions) {
           pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
         }
-        const doc = await pdfjs.getDocument({ url: item.file_url!, withCredentials: false }).promise;
+        const doc = await pdfjs.getDocument({ url: activeUrl!, withCredentials: false }).promise;
         if (cancelled) return;
         pdfDocRef.current = doc;
         setPages(doc.numPages);
@@ -255,7 +301,7 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
     return () => {
       cancelled = true;
     };
-  }, [item.id, item.file_url, item.file_mime, item.file_name]);
+  }, [item.id, activeUrl, item.file_mime, item.file_name]);
 
   const renderPage = useCallback(async () => {
     if (!pdfDocRef.current || !canvasRef.current || !isPdf(item)) return;
@@ -295,9 +341,10 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
   }
 
   function download() {
-    if (!item.file_url) return;
+    const href = offlineSrc || item.file_url;
+    if (!href) return;
     const a = document.createElement("a");
-    a.href = item.file_url;
+    a.href = href;
     a.download = item.file_name || item.title || "material";
     a.target = "_blank";
     a.rel = "noreferrer";
@@ -515,13 +562,22 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
         )}
         {error && <p className="px-6 text-center text-sm text-red-300">{error}</p>}
 
-        {!item.file_url && !busy && (
+                {!activeUrl && !busy && !isOnlineNow() && (
+          <div className="mx-auto max-w-lg rounded-xl bg-white p-6 text-center text-slate-800 shadow">
+            <p className="text-sm font-semibold">Not available offline yet</p>
+            <p className="mt-2 text-sm text-slate-500">
+              Open this material once while online (or tap Save offline) so you can read it without internet.
+            </p>
+          </div>
+        )}
+
+{!activeUrl && !busy && isOnlineNow() && (
           <div className="mx-auto max-w-lg rounded-xl bg-white p-6 text-slate-800 shadow">
             <p className="whitespace-pre-wrap text-sm">{item.ocr_text || item.description || "No file attached."}</p>
           </div>
         )}
 
-        {item.file_url && isImage(item) && (
+        {activeUrl && isImage(item) && (
           <div
             className="flex h-full w-full touch-none items-center justify-center"
             onPointerDown={onImgPointerDown}
@@ -533,7 +589,7 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
             onDoubleClick={onImgDoubleClick}
           >
             <img
-              src={item.file_url}
+              src={activeUrl || item.file_url || ""}
               alt={item.title}
               draggable={false}
               className="h-auto max-h-full w-auto max-w-full select-none object-contain"
@@ -545,13 +601,13 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
           </div>
         )}
 
-        {item.file_url && isPdf(item) && !error && (
+        {activeUrl && isPdf(item) && !error && (
           <div className="flex h-full w-full items-center justify-center overflow-auto p-2 sm:p-4">
             <canvas ref={canvasRef} className="mx-auto block max-w-full bg-white shadow-2xl" />
           </div>
         )}
 
-        {item.file_url && !isPdf(item) && !isImage(item) && (
+        {activeUrl && !isPdf(item) && !isImage(item) && (
           <div className="mx-auto max-w-md rounded-xl bg-white p-8 text-center text-slate-800 shadow">
             <File className="mx-auto h-12 w-12 text-slate-400" />
             <p className="mt-3 font-semibold">Preview not available for this file type</p>
@@ -708,9 +764,9 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
               </div>
             ) : (
               <div className="mx-auto grid max-w-4xl gap-3 lg:grid-cols-2">
-                {item.file_url && isImage(item) && (
+                {activeUrl && isImage(item) && (
                   <div className="overflow-hidden rounded-xl bg-slate-900">
-                    <img src={item.file_url} alt="Original" className="max-h-[40vh] w-full object-contain lg:max-h-[70vh]" />
+                    <img src={activeUrl || item.file_url || ""} alt="Original" className="max-h-[40vh] w-full object-contain lg:max-h-[70vh]" />
                     <p className="px-3 py-2 text-center text-[11px] text-white/50">Original image (kept intact)</p>
                   </div>
                 )}

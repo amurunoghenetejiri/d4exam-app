@@ -1,6 +1,6 @@
 /**
  * Online reconnection + background sync for offline-first reads.
- * Outbox push + scoped pull + proactive full authorized prefetch.
+ * Step 4: delegates to sync engine (outbox push + scoped pull).
  * Does not mutate UI layout. Safe to call from root bootstrap.
  */
 
@@ -9,7 +9,6 @@ import { offlineSet, OfflineKeys } from "@/lib/offline-cache";
 import { runSyncEngine, type SyncEngineCtx } from "@/lib/sync/engine";
 import { setConnectivityOnSnapshot } from "@/lib/sync/status";
 import { resolveConnectivity } from "@/lib/sync/connectivity";
-import { prefetchAllAuthorized } from "@/lib/sync/prefetch-all";
 
 type SyncCtx = {
   userId: string;
@@ -80,20 +79,7 @@ export async function runOfflineSync(opts?: {
 
     const result = await runSyncEngine(engineCtx);
 
-    // Full authorized dataset — user should not need to open each page first
     if (opts?.ctx?.userId) {
-      try {
-        await prefetchAllAuthorized({
-          userId: opts.ctx.userId,
-          schoolId: opts.ctx.schoolId,
-          role: opts.ctx.role,
-          studentId: opts.ctx.studentId,
-          profileId: opts.ctx.profileId,
-        });
-      } catch (e) {
-        console.warn("[offline-sync] prefetch-all", e);
-      }
-
       await offlineSet(
         opts.ctx.userId,
         OfflineKeys.settings,
@@ -142,22 +128,6 @@ export function bootstrapOfflineSync(getCtx: () => {
   };
   document.addEventListener("visibilitychange", onVisible);
 
-  // App resume (Capacitor)
-  let removeApp: (() => void) | null = null;
-  void (async () => {
-    try {
-      const { App } = await import("@capacitor/app");
-      const h = await App.addListener("appStateChange", ({ isActive }) => {
-        if (isActive) void runOfflineSync(getCtx());
-      });
-      removeApp = () => {
-        void h.remove();
-      };
-    } catch {
-      /* web */
-    }
-  })();
-
   const t = window.setTimeout(() => {
     void runOfflineSync(getCtx());
   }, 1800);
@@ -167,7 +137,6 @@ export function bootstrapOfflineSync(getCtx: () => {
     document.removeEventListener("visibilitychange", onVisible);
     unsubNet?.();
     unsubNet = null;
-    removeApp?.();
     bootstrapped = false;
   };
 }

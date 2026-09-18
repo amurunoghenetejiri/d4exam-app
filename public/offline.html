@@ -3,92 +3,156 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a1a3a" />
-  <title>D4EXAM — Offline</title>
+  <meta name="theme-color" content="#0b1b3a" />
+  <title>D4EXAM</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { min-height: 100%; min-height: 100dvh; }
-    body {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    html, body {
+      min-height: 100%;
+      min-height: 100dvh;
+      background: #0b1b3a;
+      color: #fff;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      background: #0a1a3a; color: #e2e8f0; text-align: center;
-      padding: max(1.5rem, env(safe-area-inset-top)) 1.5rem max(1.5rem, env(safe-area-inset-bottom));
       -webkit-font-smoothing: antialiased;
     }
-    .wrap { width: 100%; max-width: 22rem; display: flex; flex-direction: column; align-items: center; }
-    .icon-wrap { position: relative; width: 140px; height: 140px; margin-bottom: 1.75rem; display: grid; place-items: center; }
-    .icon-blob { position: absolute; border-radius: 50%; background: rgba(37, 99, 235, 0.18); }
-    .icon-blob.a { width: 120px; height: 120px; top: 10px; left: 10px; }
-    .icon-blob.b { width: 36px; height: 36px; top: 8px; right: 6px; background: rgba(59, 130, 246, 0.22); }
-    .icon-circle {
-      position: relative; z-index: 1; width: 96px; height: 96px; border-radius: 50%;
-      background: linear-gradient(160deg, #1e3a6e 0%, #152a52 100%);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); display: grid; place-items: center;
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding:
+        max(1.5rem, env(safe-area-inset-top))
+        1.5rem
+        max(1.5rem, env(safe-area-inset-bottom));
     }
-    h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em; color: #ffffff; margin-bottom: 0.85rem; }
-    h1 .accent { color: #3b82f6; }
-    .msg { font-size: 0.95rem; line-height: 1.55; color: #94a3b8; max-width: 19rem; margin: 0 auto 1.75rem; }
-    button#retry {
-      display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem;
-      min-width: 11.5rem; border: 0; border-radius: 9999px; background: #2563eb; color: #fff;
-      font-weight: 600; font-size: 0.95rem; padding: 0.9rem 1.75rem; cursor: pointer;
-      box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+    .boot-main {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
     }
-    button#retry:active { background: #1d4ed8; transform: scale(0.98); }
-    .footer { margin-top: 2.25rem; font-size: 0.8rem; color: #64748b; line-height: 1.45; }
+    .boot-main img {
+      width: min(40vw, 160px);
+      height: min(40vw, 160px);
+      object-fit: contain;
+    }
+    .t {
+      margin-top: 1.25rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      font-size: clamp(1.5rem, 6vw, 2.25rem);
+    }
+    .t span.b { color: #2563eb; }
+    .s {
+      margin-top: 0.5rem;
+      font-size: 10px;
+      letter-spacing: 0.28em;
+      color: #94a3b8;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .slogan {
+      position: absolute;
+      bottom: max(1.5rem, env(safe-area-inset-bottom));
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 10px;
+      letter-spacing: 0.28em;
+      color: #94a3b8;
+      font-weight: 600;
+      padding: 0 2rem;
+    }
+    .slogan span.hi { color: #60a5fa; }
+    /* Soft connecting hint — not a blocking offline screen */
+    .hint {
+      margin-top: 1.75rem;
+      font-size: 12px;
+      color: #64748b;
+      letter-spacing: 0.04em;
+      min-height: 1.25rem;
+      opacity: 0;
+      transition: opacity 0.35s ease;
+    }
+    .hint.show { opacity: 1; }
+    .hint strong { color: #94a3b8; font-weight: 600; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="icon-wrap" aria-hidden="true">
-      <span class="icon-blob a"></span>
-      <span class="icon-blob b"></span>
-      <div class="icon-circle">
-        <svg width="52" height="52" viewBox="0 0 24 24" fill="none">
-          <path d="M5.07 11.05a9 9 0 0 1 13.86 0" stroke="#93c5fd" stroke-width="2" stroke-linecap="round"/>
-          <path d="M8.53 14.11a5 5 0 0 1 6.95 0" stroke="#93c5fd" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="12" cy="18" r="1.35" fill="#93c5fd"/>
-          <path d="M4.5 5.5 L19.5 18.5" stroke="#ef4444" stroke-width="2.25" stroke-linecap="round"/>
-        </svg>
-      </div>
-    </div>
-    <h1>You're <span class="accent">Offline</span></h1>
-    <p class="msg">
-      No internet connection for this action.<br />
-      Check your network and try again.<br />
-      Saved content stays available in the app.
-    </p>
-    <button type="button" id="retry">Try Again</button>
-    <div class="footer">D4EXAM reconnects automatically when you're back online.</div>
+  <!--
+    Capacitor errorPath when live server.url is unreachable.
+    MUST look like the normal app splash — never a full "You're Offline" wall on cold start.
+    Silently retry loading the live app. Soft hint only after a short wait.
+    Online-required actions (start exam, submit, live monitor) still use in-app offline guards.
+  -->
+  <div class="boot-main">
+    <img src="/logo.png" alt="" width="160" height="160" onerror="this.style.display='none'" />
+    <div class="t">D<span class="b">4</span>EXAM</div>
+    <div class="s">Smart Examination System</div>
+    <p class="hint" id="hint" aria-live="polite"></p>
   </div>
+  <div class="slogan">SMART. <span class="hi">SECURE.</span> SEAMLESS.</div>
+
   <script>
     (function () {
-      function isNativeShell() {
-        try {
-          var C = window.Capacitor;
-          if (C && C.isNativePlatform && C.isNativePlatform()) return true;
-          if (C && C.getPlatform && (C.getPlatform() === "android" || C.getPlatform() === "ios")) return true;
-        } catch (e) {}
-        try {
-          var ua = navigator.userAgent || "";
-          if (/Android/i.test(ua) && (/; wv\)/i.test(ua) || /Capacitor/i.test(ua))) return true;
-        } catch (e) {}
-        return false;
-      }
+      var LIVE = "https://d4exam-platform.vercel.app/";
+      var tries = 0;
+      var going = false;
+      var hint = document.getElementById("hint");
+
       function go() {
+        if (going) return;
+        going = true;
         try {
-          if (isNativeShell()) {
-            // Local SPA shell — never bounce to Vercel
-            window.location.replace("./index.html?offline_retry=" + Date.now());
-            return;
-          }
-          window.location.replace("https://d4exam-platform.vercel.app/?offline_retry=" + Date.now());
+          window.location.replace(LIVE + "?boot=" + Date.now());
         } catch (e) {
-          try { window.location.reload(); } catch (e2) {}
+          going = false;
+          try { window.location.href = LIVE; } catch (e2) { going = false; }
         }
       }
-      document.getElementById("retry").addEventListener("click", go);
-      window.addEventListener("online", function () { setTimeout(go, 400); });
+
+      function tick() {
+        tries += 1;
+        // After a few silent retries, show a soft connecting line (still not a full offline page)
+        if (tries >= 3 && hint) {
+          hint.textContent = "Connecting…";
+          hint.classList.add("show");
+        }
+        if (tries >= 8 && hint) {
+          hint.innerHTML = "Waiting for connection… <strong>will open when ready</strong>";
+        }
+        // Probe: if browser thinks we're online, jump immediately
+        try {
+          if (navigator.onLine) {
+            go();
+            return;
+          }
+        } catch (e) {}
+        go(); // always attempt — Capacitor may recover; failed load returns here
+      }
+
+      // Immediate + interval retries (normal splash stays visible)
+      setTimeout(tick, 200);
+      setInterval(function () {
+        going = false;
+        tick();
+      }, 2200);
+
+      window.addEventListener("online", function () {
+        if (hint) {
+          hint.textContent = "Connected — opening…";
+          hint.classList.add("show");
+        }
+        setTimeout(go, 250);
+      });
+
+      // If user taps anywhere, retry
+      document.addEventListener("click", function () {
+        going = false;
+        tick();
+      });
     })();
   </script>
 </body>
