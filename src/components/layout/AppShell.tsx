@@ -35,8 +35,6 @@ import { useSchoolIdentity } from "@/lib/school-identity";
 import { useUnreadNotificationCount } from "@/lib/queries";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import type { RoleConfig } from "@/components/navigation/navConfig";
-import { useBottomNavSwipe } from "@/hooks/useBottomNavSwipe";
-import { GlobalSearchPage } from "@/components/search/GlobalSearchPage";
 
 export interface AppUser {
   name: string;
@@ -146,7 +144,6 @@ function PortalBrand({
           schoolName={schoolName}
           size="md"
           className="shrink-0 bg-transparent"
-          priority
         />
         <span className="min-w-0">
           <span className="block truncate text-sm font-extrabold leading-tight text-white sm:text-base">
@@ -196,17 +193,17 @@ function NotificationBell({ to, unread }: { to: string; unread: number }) {
   );
 }
 
+
 const SCHOOL_BRAND_KEY = "d4exam_school_brand_v1";
 function readSeededSchoolBrand(schoolId?: string | null): { name: string | null; logoUrl: string | null } {
-  if (typeof window === "undefined") return { name: null, logoUrl: null };
+  if (typeof window === "undefined" || !schoolId) return { name: null, logoUrl: null };
   try {
     const raw = window.localStorage.getItem(SCHOOL_BRAND_KEY);
     if (!raw) return { name: null, logoUrl: null };
     const parsed = JSON.parse(raw) as { id?: string; name?: string | null; logoUrl?: string | null };
-    if (schoolId && parsed?.id && String(parsed.id) !== String(schoolId)) {
-      return { name: null, logoUrl: null };
+    if (parsed?.id && String(parsed.id) === String(schoolId)) {
+      return { name: parsed.name ?? null, logoUrl: parsed.logoUrl ?? null };
     }
-    return { name: parsed.name ?? null, logoUrl: parsed.logoUrl ?? null };
   } catch { /* ignore */ }
   return { name: null, logoUrl: null };
 }
@@ -227,7 +224,6 @@ export function AppShell({
   user: AppUser;
   children: ReactNode;
 }) {
-  const [searchOpen, setSearchOpen] = useState(false);
   const [open, setOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: session } = useSessionUser();
@@ -250,24 +246,16 @@ export function AppShell({
   const unreadQ = useUnreadNotificationCount(session?.userId);
   const unreadCount = unreadQ.data ?? 0;
   const notifPath = `${config.home}/notifications`;
-  const isSuperAdmin = session?.role === "super_admin" || (session?.roles ?? []).includes("super_admin");
-  const pathIsSchoolPortal =
-    pathname.startsWith("/student") ||
-    pathname.startsWith("/teacher") ||
-    pathname.startsWith("/officer") ||
-    pathname.startsWith("/admin");
-  const isSchoolPortal = !isSuperAdmin && (Boolean(session?.schoolId) || pathIsSchoolPortal);
-  const seeded = isSchoolPortal && !isSuperAdmin ? readSeededSchoolBrand(session?.schoolId) : { name: null, logoUrl: null };
+  const isSuperAdmin = session?.role === "super_admin";
+  const isSchoolPortal = Boolean(session?.schoolId) && !isSuperAdmin;
+  const seeded = isSchoolPortal ? readSeededSchoolBrand(session?.schoolId) : { name: null, logoUrl: null };
   const logoUrl = isSuperAdmin ? null : (school?.logoUrl ?? session?.schoolLogoUrl ?? seeded.logoUrl ?? null);
   const schoolName = isSuperAdmin ? null : (school?.name ?? session?.schoolName ?? seeded.name ?? null);
-  if (!isSuperAdmin && session?.schoolId && (schoolName || logoUrl)) {
+  if (isSchoolPortal && session?.schoolId && (schoolName || logoUrl)) {
     seedSchoolBrand(session.schoolId, schoolName, logoUrl);
   }
   const avatarLetters = user.avatar || initials(user.name || "U");
   const role = session?.role ?? null;
-
-  // App-like: swipe between bottom-nav tabs on mobile
-  useBottomNavSwipe(config.bottomNav, config.home, true);
 
   return (
     <div className="relative min-h-dvh bg-slate-50">
@@ -385,7 +373,6 @@ export function AppShell({
                     schoolName={schoolName}
                     size="sm"
                     className="shrink-0 bg-transparent"
-                    priority
                   />
                   <span className="truncate text-sm font-extrabold leading-tight tracking-tight text-slate-900 sm:text-[0.9375rem] md:text-base">
                     {shortLabel(schoolName || "School", 28)}
@@ -401,37 +388,22 @@ export function AppShell({
             <div className="relative max-w-md">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
-                type="search"
                 placeholder="Search…"
-                readOnly
-                onFocus={(e) => {
-                  e.preventDefault();
-                  setSearchOpen(true);
-                }}
-                onClick={(e) => {
-                  e.preventDefault();
-                  setSearchOpen(true);
-                }}
-                onKeyDown={(e) => e.preventDefault()}
-                className="h-10 cursor-pointer rounded-xl border-slate-200 bg-slate-50 pl-9"
+                className="h-10 rounded-xl border-slate-200 bg-slate-50 pl-9"
                 aria-label="Search"
               />
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-0.5 sm:gap-2">
-            <button
-              type="button"
-              className="grid h-9 w-9 place-items-center rounded-full text-slate-600 hover:bg-slate-100 md:hidden"
-              aria-label="Search"
-              onClick={() => setSearchOpen(true)}
-            >
-              <Search className="h-5 w-5" />
-            </button>
             <NotificationBell to={notifPath} unread={unreadCount} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2 px-1.5 sm:px-2" aria-label="Account menu">
+                <Button
+                  variant="ghost"
+                  className="gap-2 px-1.5 sm:px-2"
+                  aria-label="Account menu"
+                >
                   <span className="grid h-8 w-8 place-items-center rounded-full bg-slate-800 text-[11px] font-semibold text-white ring-1 ring-slate-200">
                     {avatarLetters.slice(0, 2)}
                   </span>
@@ -464,14 +436,20 @@ export function AppShell({
                 </div>
                 <div className="p-1">
                   <DropdownMenuItem asChild>
-                    <Link to={`${config.home}/profile` as never} className="cursor-pointer rounded-lg px-2.5 py-2">
+                    <Link
+                      to={`${config.home}/profile` as never}
+                      className="cursor-pointer rounded-lg px-2.5 py-2"
+                    >
                       <UserRound className="mr-2.5 h-4 w-4 text-slate-500" />
                       <span className="text-sm font-medium text-slate-800">Profile</span>
                       <ChevronRight className="ml-auto h-4 w-4 text-slate-300" aria-hidden />
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to={`${config.home}/settings` as never} className="cursor-pointer rounded-lg px-2.5 py-2">
+                    <Link
+                      to={`${config.home}/settings` as never}
+                      className="cursor-pointer rounded-lg px-2.5 py-2"
+                    >
                       <Settings className="mr-2.5 h-4 w-4 text-slate-500" />
                       <span className="text-sm font-medium text-slate-800">Settings</span>
                       <ChevronRight className="ml-auto h-4 w-4 text-slate-300" aria-hidden />
@@ -520,7 +498,7 @@ export function AppShell({
                     to={item.to}
                     preload="intent"
                     className={cn(
-                      "pressable flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors active:scale-[0.96]",
+                      "pressable flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors",
                       active ? "text-white" : "text-slate-400 hover:text-white",
                     )}
                     aria-current={active ? "page" : undefined}
@@ -536,7 +514,6 @@ export function AppShell({
       )}
 
       <InstallAndPushPrompt />
-      <GlobalSearchPage open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 }
