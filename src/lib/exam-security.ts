@@ -214,18 +214,28 @@ export function fromExamSettingsRow(
       fromRow.resultVisibility = row.result_visibility as ExamSecuritySettings["resultVisibility"];
     }
     if (row.questions_to_answer != null) fromRow.questionsToAnswer = row.questions_to_answer;
-    if (row.allow_calculator != null) fromRow.allowCalculator = row.allow_calculator;
+    if (row.allow_calculator != null) fromRow.allowCalculator = Boolean(row.allow_calculator);
     if (row.calculator_type != null) {
       fromRow.calculatorType = row.calculator_type === "scientific" ? "scientific" : "basic";
     }
   }
 
-  const hasDesc = Object.keys(fromDesc).length > 0;
-  return normalizeSecuritySettings(
-    hasDesc
-      ? { ...fromRow, ...fromDesc }
-      : { ...fromDesc, ...fromRow },
-  );
+  // Prefer explicit calculator flags: if either source enables it, keep it on
+  // so the FAB shows when the teacher enabled calculator (row or description).
+  const mergedPartial: Partial<ExamSecuritySettings> = {
+    ...fromDesc,
+    ...fromRow,
+  };
+  if (fromDesc.allowCalculator === true || fromRow.allowCalculator === true) {
+    mergedPartial.allowCalculator = true;
+  }
+  if (fromRow.calculatorType) {
+    mergedPartial.calculatorType = fromRow.calculatorType;
+  } else if (fromDesc.calculatorType) {
+    mergedPartial.calculatorType = fromDesc.calculatorType;
+  }
+
+  return normalizeSecuritySettings(mergedPartial);
 }
 
 export function stripInternalMarkers(description: string | null | undefined): string {

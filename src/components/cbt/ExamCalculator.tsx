@@ -267,31 +267,35 @@ const BASIC_ROWS: KeyDef[][] = [
   [
     { label: "AC", action: "ac", className: "bg-amber-500 text-white font-bold" },
     { label: "⌫", action: "del", className: "bg-amber-500 text-white font-bold" },
-    { label: "%", action: "%" },
-    { label: "÷", action: "÷" },
+    { label: "a/b", action: "frac" },
+    { label: "a b/c", action: "mixed" },
   ],
   [
     { label: "7", action: "7" },
     { label: "8", action: "8" },
     { label: "9", action: "9" },
-    { label: "×", action: "×" },
+    { label: "÷", action: "÷" },
   ],
   [
     { label: "4", action: "4" },
     { label: "5", action: "5" },
     { label: "6", action: "6" },
-    { label: "−", action: "−" },
+    { label: "×", action: "×" },
   ],
   [
     { label: "1", action: "1" },
     { label: "2", action: "2" },
     { label: "3", action: "3" },
+    { label: "−", action: "−" },
+  ],
+  [
+    { label: "0", action: "0" },
+    { label: ".", action: "." },
+    { label: "%", action: "%" },
     { label: "+", action: "+" },
   ],
   [
-    { label: "0", action: "0", span: 2 },
-    { label: ".", action: "." },
-    { label: "=", action: "=", className: "bg-[#2563eb] text-white font-bold" },
+    { label: "=", action: "=", className: "bg-[#2563eb] text-white font-bold", span: 4 },
   ],
 ];
 
@@ -330,31 +334,35 @@ function scientificRows(angle: AngleMode, hyp: boolean): KeyDef[][] {
       { label: "e", action: "e" },
     ],
     [
-      { label: "7", action: "7" },
-      { label: "8", action: "8" },
-      { label: "9", action: "9" },
+      { label: "a/b", action: "frac" },
+      { label: "a b/c", action: "mixed" },
       { label: "(", action: "(" },
       { label: ")", action: ")" },
       { label: "%", action: "%" },
     ],
     [
+      { label: "7", action: "7" },
+      { label: "8", action: "8" },
+      { label: "9", action: "9" },
+      { label: "×", action: "×" },
+      { label: "÷", action: "÷" },
+    ],
+    [
       { label: "4", action: "4" },
       { label: "5", action: "5" },
       { label: "6", action: "6" },
-      { label: "×", action: "×" },
-      { label: "÷", action: "÷" },
+      { label: "−", action: "−" },
+      { label: "+", action: "+" },
     ],
     [
       { label: "1", action: "1" },
       { label: "2", action: "2" },
       { label: "3", action: "3" },
-      { label: "−", action: "−" },
-      { label: "+", action: "+" },
+      { label: "0", action: "0" },
+      { label: ".", action: "." },
     ],
     [
-      { label: "0", action: "0", span: 2 },
-      { label: ".", action: "." },
-      { label: "=", action: "=", className: "bg-[#2563eb] text-white font-bold", span: 2 },
+      { label: "=", action: "=", className: "bg-[#2563eb] text-white font-bold", span: 5 },
     ],
   ];
 }
@@ -464,6 +472,36 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         setResult("0");
         setFinalized(false);
         setError(false);
+        return;
+      }
+      // Fraction a/b: turn current value into numerator ÷ (wait for denominator)
+      if (action === "frac") {
+        setError(false);
+        const base = finalized ? result : expr || result;
+        if (!base || base === "0" && !expr) {
+          setExpr("");
+          setCursor(0);
+          return;
+        }
+        const next = `(${base})÷`;
+        setFinalized(false);
+        setExpr(next);
+        setCursor(next.length);
+        return;
+      }
+      // Mixed fraction a b/c: whole + (numerator ÷ denominator)
+      if (action === "mixed") {
+        setError(false);
+        const base = finalized ? result : expr || result;
+        if (!base || base === "Error") {
+          setExpr("");
+          setCursor(0);
+          return;
+        }
+        const next = `(${base})+(`;
+        setFinalized(false);
+        setExpr(next);
+        setCursor(next.length);
         return;
       }
       if (action === "left") {

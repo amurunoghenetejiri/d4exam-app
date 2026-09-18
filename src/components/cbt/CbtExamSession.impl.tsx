@@ -1466,12 +1466,12 @@ export function CbtExamPage() {
           </div>
         </div>
       )}
-      {started && !done && !previewMode && security.allowCalculator && (
+      {started && !done && !previewMode && (security.allowCalculator || settingsQ.data?.allow_calculator === true) && (
         <>
           <ExamCalculatorFab onClick={() => setCalcOpen(true)} />
           <ExamCalculator
             open={calcOpen}
-            mode={security.calculatorType === "scientific" ? "scientific" : "basic"}
+            mode={(security.calculatorType === "scientific" || settingsQ.data?.calculator_type === "scientific") ? "scientific" : "basic"}
             onClose={() => setCalcOpen(false)}
           />
         </>

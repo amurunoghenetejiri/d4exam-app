@@ -19,7 +19,7 @@ function haptic(kind: SecurityAlertKind) {
   fireHaptic(map[kind]);
 }
 
-const ALERT_COOLDOWN_MS = 900;
+const ALERT_COOLDOWN_MS = 700;
 
 const ALERT_COPY: Record<
   SecurityAlertKind,
@@ -92,7 +92,7 @@ export function ExamCameraPip({
   const lastAlertRef = useRef(0);
   const lastStateRef = useRef<FaceState>("unavailable");
   const pendingRef = useRef<{ state: FaceState; since: number } | null>(null);
-  const STABILITY_MS = 450;
+  const STABILITY_MS = 320;
   const ownStreamRef = useRef<MediaStream | null>(null);
   const acquiringRef = useRef(false);
   const dragState = useRef<{
@@ -124,6 +124,15 @@ export function ExamCameraPip({
       haptic(kind);
     } catch {
       /* ignore */
+    }
+    const copy = ALERT_COPY[kind];
+    if (copy) {
+      try {
+        if (copy.level === "error") toast.error(copy.message, { id: copy.toastId, duration: 3500 });
+        else toast.warning(copy.message, { id: copy.toastId, duration: 3200 });
+      } catch {
+        /* ignore */
+      }
     }
     onSecRef.current?.({
       kind,
@@ -462,8 +471,8 @@ export function ExamCameraPip({
       const dy = e.clientY - d.startY;
       const edge = 2;
       const el = document.querySelector("[data-exam-pip]") as HTMLElement | null;
-      const w = el?.offsetWidth || 132;
-      const h = el?.offsetHeight || 160;
+      const w = el?.offsetWidth || 96;
+      const h = el?.offsetHeight || 140;
       const maxL = Math.max(edge, window.innerWidth - w - edge);
       const maxT = Math.max(edge, window.innerHeight - h - edge);
       setPos({
@@ -520,7 +529,7 @@ export function ExamCameraPip({
   return (
     <div
       data-exam-pip
-      className="fixed z-[100] w-[120px] touch-none overflow-hidden rounded-xl border-2 border-white/80 bg-black shadow-2xl sm:w-[148px]"
+      className="fixed z-[100] w-[88px] touch-none overflow-hidden rounded-lg border-2 border-white/80 bg-black shadow-2xl sm:w-[104px]"
       style={{ left: pos.left, top: pos.top }}
       onPointerDown={(e) => {
         e.preventDefault();
@@ -536,10 +545,10 @@ export function ExamCameraPip({
         setDragging(true);
       }}
     >
-      <div className="flex cursor-grab items-center gap-1 bg-black/80 px-2 py-1.5 active:cursor-grabbing">
+      <div className="flex cursor-grab items-center gap-0.5 bg-black/80 px-1.5 py-1 active:cursor-grabbing">
         <span className={cn("h-2 w-2 shrink-0 rounded-full", statusDot)} aria-hidden />
         <GripVertical className="h-3.5 w-3.5 text-white/80" />
-        <span className="text-[10px] font-semibold text-white/90">
+        <span className="truncate text-[9px] font-semibold text-white/90">
           {camConn === "active"
             ? "Camera active"
             : camConn === "reconnecting"
@@ -550,19 +559,19 @@ export function ExamCameraPip({
       {stream ? (
         <video
           ref={setVideoNode}
-          className="aspect-[4/3] w-full scale-x-[-1] bg-black object-cover pointer-events-none"
+          className="aspect-[3/4] w-full scale-x-[-1] bg-black object-cover pointer-events-none"
           autoPlay
           playsInline
           muted
         />
       ) : (
-        <div className="flex aspect-[4/3] w-full items-center justify-center bg-slate-900 px-2 text-center text-[10px] font-semibold text-white/80">
+        <div className="flex aspect-[3/4] w-full items-center justify-center bg-slate-900 px-1 text-center text-[9px] font-semibold text-white/80">
           {camConn === "reconnecting" ? "Reconnecting camera…" : "Allow camera access"}
         </div>
       )}
       <div
         className={cn(
-          "px-2 py-1 text-center text-[10px] font-bold text-white",
+          "px-1 py-0.5 text-center text-[9px] font-bold leading-tight text-white",
           camConn === "reconnecting" && "bg-amber-600",
           camConn === "unavailable" && "bg-red-700",
           camConn === "active" && faceStatus === "multi" && "bg-red-600",
