@@ -311,6 +311,23 @@ export function CbtExamPage() {
     setPauseRemainingSec(null);
     setPaused(false);
     setPauseReason("");
+    const aid = attemptIdRef.current;
+    if (aid) {
+      void (async () => {
+        try {
+          const { data: prevRow } = await supabase.from("exam_attempts").select("metadata").eq("id", aid).maybeSingle();
+          const prevMeta =
+            prevRow?.metadata && typeof prevRow.metadata === "object" && !Array.isArray(prevRow.metadata)
+              ? (prevRow.metadata as Record<string, unknown>)
+              : {};
+          const { pauseUntil: _a, pauseReason: _b, ...rest } = prevMeta as Record<string, unknown>;
+          await supabase.from("exam_attempts").update({
+            metadata: { ...rest, lastSeenAt: new Date().toISOString() },
+            updated_at: new Date().toISOString(),
+          } as never).eq("id", aid);
+        } catch { /* ignore */ }
+      })();
+    }
     void reconnectCamera();
   }, [reconnectCamera]);
 
@@ -318,10 +335,36 @@ export function CbtExamPage() {
     const secs = Math.max(5, Number(security.pauseDurationSeconds) || 300);
     officerPauseRef.current = false;
     setIsOfficerPause(false);
-    pauseUntilRef.current = Date.now() + secs * 1000;
+    const until = Date.now() + secs * 1000;
+    pauseUntilRef.current = until;
     setPauseRemainingSec(secs);
     setPauseReason(reason);
     setPaused(true);
+    // Persist so leave/re-enter keeps the same pause clock
+    const aid = attemptIdRef.current;
+    if (aid) {
+      void (async () => {
+        try {
+          const { data: prevRow } = await supabase.from("exam_attempts").select("metadata").eq("id", aid).maybeSingle();
+          const prevMeta =
+            prevRow?.metadata && typeof prevRow.metadata === "object" && !Array.isArray(prevRow.metadata)
+              ? (prevRow.metadata as Record<string, unknown>)
+              : {};
+          await supabase.from("exam_attempts").update({
+            metadata: {
+              ...prevMeta,
+              pauseUntil: until,
+              pauseReason: reason,
+              tabSwitchCount: tabSwitchCountRef.current,
+              lastSeenAt: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+          } as never).eq("id", aid);
+        } catch (e) {
+          console.warn("[cbt] pause persist", e);
+        }
+      })();
+    }
   }, [security.pauseDurationSeconds]);
 
   useEffect(() => {
@@ -862,14 +905,7 @@ export function CbtExamPage() {
     if (!schoolId || !studentId || !id) return;
     const isViolation = ev.kind === "none" || ev.kind === "multi" || ev.kind === "camera_blocked";
     if (isViolation) faceWarnCountRef.current += 1;
-    // Vibration on every face integrity violation (native ExamImmersive on APK)
-    if (isViolation) {
-      try {
-        if (ev.kind === "multi") haptic("multi");
-        else if (ev.kind === "camera_blocked") haptic("camera_blocked");
-        else haptic("none"); // no face / unclear
-      } catch { /* ignore */ }
-    }
+    // Haptic already fired by ExamCameraPip — avoid double-buzz disturbance
     void logSecurityEvent({
       schoolId, examId: id, attemptId: attemptIdRef.current, studentId,
       eventType: mapped.eventType, severity: mapped.severity, description: mapped.description,
@@ -1006,6 +1042,9 @@ export function CbtExamPage() {
           return;
         }
       }
+      // Enter exam UI immediately — no navy/blank hold while remaining setup finishes
+      setStarted(true);
+      startedRef.current = true;
       const needScreen = Boolean(security.requireScreenShare) && !_opts.skipScreenShare;
       if (needScreen) {
         holdExamScreenShare(true);
@@ -1038,7 +1077,7 @@ export function CbtExamPage() {
         // Load existing attempt for stable question set
         const { data: existingFull } = await supabase
           .from("exam_attempts")
-          .select("id, status, question_order, tab_switch_count, fullscreen_exit_count, answers, ends_at, started_at")
+          .select("id, status, question_order, tab_switch_count, fullscreen_exit_count, answers, ends_at, started_at, metadata")
           .eq("exam_id", id)
           .eq("student_id", student.studentId)
           .maybeSingle();
@@ -1046,7 +1085,19 @@ export function CbtExamPage() {
           attemptIdRef.current = existingFull.id as string;
           setLiveAttemptId(existingFull.id as string);
           tabSwitchCountRef.current = Number(existingFull.tab_switch_count ?? 0);
+          setTabSwitchCount(tabSwitchCountRef.current);
           fullscreenExitCountRef.current = Number(existingFull.fullscreen_exit_count ?? 0);
+          // Restore timed pause if still active
+          try {
+            const meta = (existingFull as { metadata?: Record<string, unknown> }).metadata;
+            const pu = meta && typeof meta === "object" ? Number((meta as { pauseUntil?: unknown }).pauseUntil) : NaN;
+            if (Number.isFinite(pu) && pu > Date.now()) {
+              pauseUntilRef.current = pu;
+              setPauseRemainingSec(Math.max(0, Math.ceil((pu - Date.now()) / 1000)));
+              setPauseReason(String((meta as { pauseReason?: string }).pauseReason || "Exam paused"));
+              setPaused(true);
+            }
+          } catch { /* ignore */ }
           const qo = existingFull.question_order;
           if (Array.isArray(qo) && qo.length) {
             orderedIdsRef.current = qo.map(String);
@@ -1155,7 +1206,6 @@ export function CbtExamPage() {
           }
         }
       }
-      setStarted(true);
       if (!(orderedIdsRef.current && orderedIdsRef.current.length)) {
         setIndex(0);
       }
@@ -1322,11 +1372,17 @@ export function CbtExamPage() {
           OFFICER PREVIEW — answers are not saved
         </div>
       )}
-      <header className="d4-cbt-header z-40 shrink-0 border-b border-slate-200 bg-[#0b1b3a] text-white">
-        <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between gap-3 px-3 sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            <SchoolLogo logoUrl={resolvedLogoUrl} schoolName={resolvedSchoolName} size="md" className="bg-transparent" />
-            <p className="hidden truncate text-sm font-bold sm:block">{(exam as { courses?: { code?: string } }).courses?.code ?? "EXAM"} — {exam.title}</p>
+      <header
+        className="d4-cbt-header sticky top-0 z-40 shrink-0 border-b border-slate-200 bg-[#0b1b3a] text-white"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
+        <div className="mx-auto flex min-h-14 max-w-[1200px] items-center justify-between gap-2 px-3 py-2 sm:min-h-16 sm:gap-3 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <SchoolLogo logoUrl={resolvedLogoUrl} schoolName={resolvedSchoolName} size="md" className="shrink-0 bg-transparent" />
+            <p className="min-w-0 truncate text-xs font-bold leading-tight sm:text-sm">
+              {(exam as { courses?: { code?: string } }).courses?.code ?? "EXAM"}
+              <span className="font-semibold text-white/80"> — {exam.title}</span>
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <div

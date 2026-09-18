@@ -19,7 +19,7 @@ function haptic(kind: SecurityAlertKind) {
   fireHaptic(map[kind]);
 }
 
-const ALERT_COOLDOWN_MS = 700;
+const ALERT_COOLDOWN_MS = 2800;
 
 const ALERT_COPY: Record<
   SecurityAlertKind,
@@ -92,7 +92,7 @@ export function ExamCameraPip({
   const lastAlertRef = useRef(0);
   const lastStateRef = useRef<FaceState>("unavailable");
   const pendingRef = useRef<{ state: FaceState; since: number } | null>(null);
-  const STABILITY_MS = 320;
+  const STABILITY_MS = 500;
   const ownStreamRef = useRef<MediaStream | null>(null);
   const acquiringRef = useRef(false);
   const dragState = useRef<{
@@ -424,20 +424,24 @@ export function ExamCameraPip({
         }
         faceEngineRef.current = null;
         let engine: FaceEngine | null = null;
-        for (let i = 0; i < 3 && !cancelled; i++) {
+        for (let i = 0; i < 6 && !cancelled; i++) {
           engine = await createFaceEngine();
           if (engine) break;
-          await new Promise((r) => window.setTimeout(r, 200 * (i + 1)));
+          await new Promise((r) => window.setTimeout(r, 300 * (i + 1)));
         }
         if (cancelled) {
           engine?.close();
           return;
         }
         if (!engine) {
-          // Do not fake "ok" — detection failed to start
           setFaceStatus("unclear");
           lastStateRef.current = "unclear";
-          onSecRef.current?.({ kind: "unclear", faceCount: null, at: new Date().toISOString() });
+          // Retry boot shortly — do not stay stuck forever
+          if (!cancelled) {
+            timer = window.setTimeout(() => {
+              if (!cancelled) void bootEngine();
+            }, 2500);
+          }
           return;
         }
         faceEngineRef.current = engine;
@@ -459,6 +463,34 @@ export function ExamCameraPip({
       faceEngineRef.current = null;
     };
   }, [stream, faceDetection, maxFaceWarnings, enabled, fireAlert]);
+
+  // When user returns to the exam tab/app, force face engine + video back to life
+  useEffect(() => {
+    if (!enabled || !faceDetection) return;
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      const v = videoRef.current;
+      if (v && stream) {
+        try {
+          if (v.srcObject !== stream) v.srcObject = stream;
+          v.muted = true;
+          void v.play().catch(() => {});
+        } catch { /* ignore */ }
+      }
+      // Nudge status so UI is not stuck on "Detecting…" forever
+      setFaceStatus((s) => (s === "unavailable" ? "unclear" : s));
+      // Soft reconnect request if stream is dead
+      if (!streamIsLive(stream) && !streamIsLive(externalStream)) {
+        onNeedRef.current?.();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onVis);
+    };
+  }, [enabled, faceDetection, stream, externalStream]);
 
   useEffect(() => {
     if (!dragging) return;

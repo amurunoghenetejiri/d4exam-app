@@ -19,17 +19,17 @@ export type HapticKind =
   | "strong";
 
 const DURATION: Record<HapticKind, number> = {
-  start: 300,
-  none: 1500,
-  unclear: 1500,
-  light: 1500,
-  tab_switch: 1500,
-  multi: 2000,
-  strong: 2000,
-  camera_blocked: 2000,
-  officer_pause: 2000,
-  officer_submit: 2000,
-  officer_warning: 2500,
+  start: 220,
+  none: 320,       // gentle — no face (not disturbing)
+  unclear: 380,    // gentle
+  light: 320,
+  tab_switch: 450,
+  multi: 1100,     // strong — multiple faces
+  strong: 1100,
+  camera_blocked: 900,
+  officer_pause: 700,
+  officer_submit: 600,
+  officer_warning: 800,
 };
 
 type ExamImmersivePlugin = {
@@ -93,27 +93,23 @@ function webVibrate(pattern: number[] | number): boolean {
 }
 
 async function vibrateHard(ms: number): Promise<void> {
-  const duration = Math.max(80, Math.min(Math.floor(ms), 4000));
-  const pulses = pulsePattern(duration);
+  // Single clean pulse — strong enough to notice, not harsh double-buzz
+  const duration = Math.max(60, Math.min(Math.floor(ms), 1500));
   const solid: number[] = [0, duration];
+  // Multi / strong: short-gap double for emphasis without long disturbance
+  const multiPattern: number[] = duration >= 800 ? [0, Math.floor(duration * 0.55), 70, Math.floor(duration * 0.4)] : solid;
 
   if (useNative()) {
-    let ok = await nativeVibrate(duration, solid);
-    if (!ok) ok = await nativeVibrate(duration, pulses);
-    if (ok) {
-      window.setTimeout(() => {
-        void nativeVibrate(Math.min(duration, 1200), [0, Math.min(duration, 1200)]);
-      }, 80);
-      return;
-    }
+    const pattern = duration >= 800 ? multiPattern : solid;
+    let ok = await nativeVibrate(duration, pattern);
+    if (!ok) ok = await nativeVibrate(duration, solid);
+    if (ok) return;
   }
 
-  if (webVibrate(solid)) {
-    window.setTimeout(() => webVibrate(pulses), 60);
-    return;
+  if (duration >= 800) {
+    if (webVibrate(multiPattern)) return;
   }
-  webVibrate(pulses);
-  window.setTimeout(() => webVibrate([0, Math.min(duration, 800)]), 100);
+  webVibrate(solid);
 }
 
 export function canVibrate(): boolean {
@@ -138,7 +134,7 @@ export function refreshHapticUnlock() {
 export function haptic(kind: HapticKind) {
   if (typeof window === "undefined") return;
   const now = Date.now();
-  if (now - lastFireAt < 120) return;
+  if (now - lastFireAt < 280) return;
   lastFireAt = now;
   primed = true;
   const ms = DURATION[kind] ?? 1500;

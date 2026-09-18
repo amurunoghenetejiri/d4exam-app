@@ -287,9 +287,8 @@ export function FingerprintLockGate() {
       setLocked(false);
       return;
     }
-    // Always require unlock after leaving the app — including during exams (user policy).
-    if (isFingerprintLocked() || shouldLockAfterBackground() || hasAppPw) {
-      // Cold start / background: require unlock when app password or fingerprint is configured
+    // Lock only after real background / cold start — never on in-app navigation
+    if (isFingerprintLocked() || shouldLockAfterBackground()) {
       if (isSessionUnlocked() && !isFingerprintLocked() && !shouldLockAfterBackground()) {
         setLocked(false);
         return;
@@ -299,6 +298,9 @@ export function FingerprintLockGate() {
       setFailedMsg(null);
       setStatus("idle");
       promptedRef.current = false;
+      // Prefer fingerprint when enabled; password only as fallback
+      if (fpOn) setMode("fingerprint");
+      else if (hasAppPw) setMode("password");
       return;
     }
     setLocked(false);
@@ -310,9 +312,9 @@ export function FingerprintLockGate() {
   }, [native, evaluateLock, session?.userId, splashDone]);
   useEffect(() => {
     if (!locked) return;
-    if (!isFingerprintEnabledFor(userId) && !pref?.enabled) {
-      setMode("password");
-    }
+    const fpOn = isFingerprintEnabledFor(userId) || Boolean(pref?.enabled && pref.userId);
+    if (fpOn) setMode("fingerprint");
+    else setMode("password");
   }, [locked, userId, pref?.enabled]);
 
 
@@ -329,19 +331,19 @@ export function FingerprintLockGate() {
             markAppBackgrounded();
             return;
           }
-          // Always lock on return from background (including during exam)
           const uid = session?.userId ?? pref?.userId ?? lastUid;
-          const canLock = isFingerprintEnabledFor(uid) || hasAppPw;
+          const fpOn = isFingerprintEnabledFor(uid) || Boolean(pref?.enabled && pref.userId);
+          const canLock = fpOn || hasAppPw;
           if (!canLock) return;
-          if (shouldLockAfterBackground() || hasAppPw) {
-            setFingerprintLocked(true);
-            setLocked(true);
-            setFailedMsg(null);
-            setStatus("idle");
-            promptedRef.current = false;
-            runningRef.current = false;
-            setPageReady(false);
-          }
+          // Returning from background → lock (user must unlock to enter app)
+          setFingerprintLocked(true);
+          setLocked(true);
+          setFailedMsg(null);
+          setStatus("idle");
+          promptedRef.current = false;
+          runningRef.current = false;
+          setPageReady(false);
+          setMode(fpOn ? "fingerprint" : "password");
           clearBackgroundMark();
         });
       } catch {

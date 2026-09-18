@@ -23,6 +23,10 @@ import { resolveScreenShareMode } from "@/lib/exam-security";
 import type { ExamSecuritySettings } from "@/types";
 import { cn } from "@/lib/utils";
 import { primeHaptics } from "@/lib/haptic";
+import { authenticateWithFingerprint } from "@/native/fingerprintAuth";
+import { isFingerprintEnabledFor } from "@/lib/fingerprint-lock";
+import { isNativeShell } from "@/native/platform";
+import { useSessionUser } from "@/lib/session";
 import {
   ensureCameraPermission,
   ensureMicrophonePermission,
@@ -90,6 +94,7 @@ export function ExamSecurityGate({
   cancelTo = "/student/examinations",
   onStart,
 }: Props) {
+  const { data: session } = useSessionUser();
   const caps = useMemo(() => detectDeviceCapabilities(), []);
   const [acknowledgedNotice, setAcknowledgedNotice] = useState(false);
 
@@ -533,19 +538,37 @@ export function ExamSecurityGate({
             className="mt-6 w-full font-semibold"
             disabled={busy || hardBlock || cameraBlocked || micBlocked || !acknowledgedNotice}
             onClick={() => {
-              primeHaptics();
-              stopPreview();
-              {
-                const offlineMsg = assertOnlineActionSync();
-                if (offlineMsg) {
-                  toast.error(offlineMsg);
-                  return;
+              void (async () => {
+                primeHaptics();
+                stopPreview();
+                {
+                  const offlineMsg = assertOnlineActionSync();
+                  if (offlineMsg) {
+                    toast.error(offlineMsg);
+                    return;
+                  }
                 }
-              }
-              void onStart({
-                skipScreenShare: !willRequestScreen || (shareMode === "optional" && !screenSupported),
-                caps,
-              });
+                // Native: optional fingerprint prompt (system sheet only — no blank page)
+                try {
+                  if (isNativeShell() && session?.userId && isFingerprintEnabledFor(session.userId)) {
+                    const fp = await authenticateWithFingerprint({
+                      reason: "Confirm identity to start examination",
+                      title: "Start examination",
+                      subtitle: "Use your fingerprint to begin",
+                    });
+                    if (!fp.ok) {
+                      toast.error(fp.error || "Fingerprint required to start");
+                      return;
+                    }
+                  }
+                } catch {
+                  /* continue without FP if plugin fails */
+                }
+                await onStart({
+                  skipScreenShare: !willRequestScreen || (shareMode === "optional" && !screenSupported),
+                  caps,
+                });
+              })();
             }}
           >
             {busy ? (
