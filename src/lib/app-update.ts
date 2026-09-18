@@ -1,7 +1,7 @@
 /**
  * Sideloaded APK version check + install helpers.
- * Not Play Store — update downloads the APK from apkUrl (site or GitHub Release).
- * Version config is always fetched from production so native shell sees live minVersion.
+ * Not Play Store — update downloads the APK from apkUrl on THIS site.
+ * Never redirects users to GitHub for install.
  */
 import { isNativeShell } from "@/native/platform";
 
@@ -23,7 +23,7 @@ const DEFAULT_CONFIG: AppVersionConfig = {
   latestVersion: "1.0.0",
   minBuild: 1,
   latestBuild: 1,
-  apkUrl: "https://github.com/amurunoghenetejiri/d4exam-platform/releases/download/apk-latest/d4exam.apk",
+  apkUrl: "/downloads/d4exam.apk",
   forceUpdate: true,
   message: "A new version of D4EXAM is required. Please update to continue.",
   installMessage:
@@ -76,8 +76,8 @@ export async function fetchAppVersionConfig(): Promise<AppVersionConfig> {
   }
 
   const urls = [
-    `${PRODUCTION_ORIGIN}/app-version.json?t=${Date.now()}`,
     `/app-version.json?t=${Date.now()}`,
+    `${PRODUCTION_ORIGIN}/app-version.json?t=${Date.now()}`,
   ];
 
   for (const url of urls) {
@@ -91,7 +91,11 @@ export async function fetchAppVersionConfig(): Promise<AppVersionConfig> {
         minBuild: Number(data.minBuild ?? DEFAULT_CONFIG.minBuild) || 1,
         latestBuild: Number(data.latestBuild ?? DEFAULT_CONFIG.latestBuild) || 1,
         forceUpdate: data.forceUpdate !== false,
-        apkUrl: String(data.apkUrl || DEFAULT_CONFIG.apkUrl),
+        apkUrl: (() => {
+          const u = String(data.apkUrl || DEFAULT_CONFIG.apkUrl);
+          if (/github\.com/i.test(u)) return "/downloads/d4exam.apk";
+          return u || "/downloads/d4exam.apk";
+        })(),
       };
       cachedConfig = { at: Date.now(), value };
       return value;
@@ -138,27 +142,54 @@ export function needsForceUpdate(
 }
 
 export function resolveApkUrl(apkUrl: string): string {
-  if (!apkUrl) return DEFAULT_CONFIG.apkUrl;
-  if (/^https?:\/\//i.test(apkUrl)) return apkUrl;
-  if (typeof window !== "undefined") {
-    try {
-      return new URL(apkUrl, PRODUCTION_ORIGIN).href;
-    } catch {
-      /* fall through */
-    }
+  const raw = (apkUrl || DEFAULT_CONFIG.apkUrl || "/downloads/d4exam.apk").trim();
+  // Never send users to GitHub for APK install
+  if (/github\.com/i.test(raw)) {
+    const origin =
+      typeof window !== "undefined" && window.location?.origin
+        ? window.location.origin
+        : PRODUCTION_ORIGIN;
+    return `${origin.replace(/\/$/, "")}/downloads/d4exam.apk`;
   }
-  return apkUrl.startsWith("/") ? `${PRODUCTION_ORIGIN}${apkUrl}` : `${PRODUCTION_ORIGIN}/${apkUrl}`;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const origin =
+    typeof window !== "undefined" && window.location?.origin
+      ? window.location.origin
+      : PRODUCTION_ORIGIN;
+  if (raw.startsWith("/")) return `${origin.replace(/\/$/, "")}${raw}`;
+  return `${origin.replace(/\/$/, "")}/${raw}`;
 }
 
+/**
+ * Trigger a real file download of the APK from this site (same origin preferred).
+ * Never opens GitHub. Browser shows native "Downloading…" / install prompt.
+ */
 export function openApkDownload(apkUrl: string) {
   const url = resolveApkUrl(apkUrl);
   try {
-    window.location.href = url;
+    const a = document.createElement("a");
+    a.href = url;
+    a.setAttribute("download", "d4exam.apk");
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    window.setTimeout(() => {
+      try {
+        a.remove();
+      } catch {
+        /* ignore */
+      }
+    }, 2000);
   } catch {
     try {
-      window.open(url, "_blank", "noopener,noreferrer");
+      window.location.assign(url);
     } catch {
-      /* ignore */
+      try {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } catch {
+        /* ignore */
+      }
     }
   }
 }
@@ -174,7 +205,6 @@ export function isAndroidWebBrowser(): boolean {
     const ua = navigator.userAgent || "";
     if (/iPhone|iPad|iPod/i.test(ua)) return false;
     if (!/Android/i.test(ua)) return false;
-    // Capacitor WebView often includes "; wv)" — still treat as native if Capacitor object exists
     if (/; wv\)/i.test(ua) && isRealCapacitorNative()) return false;
     return true;
   } catch {
