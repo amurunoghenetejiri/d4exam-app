@@ -17,8 +17,7 @@ const FALLBACK_CFG: AppVersionConfig = {
   latestVersion: "1.0.0",
   minBuild: 1,
   latestBuild: 1,
-  apkUrl:
-    "https://github.com/amurunoghenetejiri/d4exam-platform/releases/download/apk-latest/d4exam.apk",
+  apkUrl: "/downloads/d4exam.apk",
   forceUpdate: true,
   message: "A new version of D4EXAM is required. Please update to continue.",
   installMessage:
@@ -33,7 +32,6 @@ function shouldShowInstallPrompt(): boolean {
   } catch {
     /* ignore */
   }
-  // Never inside Capacitor / native WebView
   try {
     const Cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
     if (Cap?.isNativePlatform?.()) return false;
@@ -42,7 +40,6 @@ function shouldShowInstallPrompt(): boolean {
   }
   if (isIosWebBrowser()) return false;
   if (isAndroidWebBrowser()) return true;
-  // Fallback: Android UA without requiring isAndroidWebBrowser edge cases
   try {
     const ua = navigator.userAgent || "";
     if (/Android/i.test(ua) && !/iPhone|iPad|iPod/i.test(ua)) return true;
@@ -55,7 +52,7 @@ function shouldShowInstallPrompt(): boolean {
 /**
  * Website only, Android phones: prompt to install the real APK (not PWA).
  * Hidden on iOS and inside the Capacitor shell.
- * Tip: open https://d4exam-platform.vercel.app/?install=1 to force-show.
+ * Tip: open https://your-site/?install=1 to force-show.
  */
 export function AndroidApkInstallBanner() {
   const [cfg, setCfg] = useState<AppVersionConfig>(FALLBACK_CFG);
@@ -63,11 +60,11 @@ export function AndroidApkInstallBanner() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (isNativeShell()) return;
     if (!shouldShowInstallPrompt()) return;
 
     try {
       if (localStorage.getItem(DISMISS_KEY) === "1") {
-        // still allow forced ?install=1
         const q = new URLSearchParams(window.location.search);
         if (q.get("install") !== "1" && q.get("apk") !== "1") return;
       }
@@ -75,7 +72,6 @@ export function AndroidApkInstallBanner() {
       /* ignore */
     }
 
-    // Show immediately (don't wait for network)
     setVisible(true);
 
     let cancelled = false;
