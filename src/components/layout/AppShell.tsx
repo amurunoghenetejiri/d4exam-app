@@ -96,7 +96,7 @@ function NavLinks({ config, onNavigate }: { config: RoleConfig; onNavigate?: () 
                 <li key={item.to}>
                   <Link
                     to={item.to}
-                    preload="intent"
+                    preload={false}
                     onClick={onNavigate}
                     className={cn(
                       "pressable flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
@@ -135,7 +135,7 @@ function PortalBrand({
     return (
       <Link
         to={homeTo}
-        preload="intent"
+        preload={false}
         className="pressable flex min-w-0 items-center gap-2.5 active:scale-[0.98]"
         aria-label={schoolName || "School home"}
       >
@@ -162,7 +162,7 @@ function PortalBrand({
     );
   }
   return (
-    <Link to="/" preload="intent" aria-label="D4EXAM home" className="pressable min-w-0 active:scale-[0.98]">
+    <Link to="/" preload={false} aria-label="D4EXAM home" className="pressable min-w-0 active:scale-[0.98]">
       <Logo size="md" />
     </Link>
   );
@@ -179,7 +179,7 @@ function NotificationBell({ to, unread }: { to: string; unread: number }) {
       aria-label={hasUnread ? `${unread} unread notifications` : "Notifications"}
       asChild
     >
-      <Link to={to as string} preload="intent" className="inline-flex h-11 w-11 items-center justify-center">
+      <Link to={to as string} preload={false} className="inline-flex h-11 w-11 items-center justify-center">
         <span className={cn("inline-flex items-center justify-center", hasUnread && "bell-ring")}>
           <Bell className="h-7 w-7 text-slate-700" strokeWidth={2.25} aria-hidden />
         </span>
@@ -362,7 +362,7 @@ export function AppShell({
 
             <Link
               to={config.home}
-              preload="intent"
+              preload={false}
               className="pressable flex min-w-0 max-w-[min(100%,13.5rem)] items-center gap-1.5 active:scale-[0.98] sm:max-w-[18rem] md:max-w-[22rem] lg:hidden"
               aria-label={isSchoolPortal ? schoolName || "Home" : "D4EXAM home"}
             >
@@ -496,7 +496,7 @@ export function AppShell({
                 <li key={item.to} className="flex">
                   <Link
                     to={item.to}
-                    preload="intent"
+                    preload={false}
                     className={cn(
                       "pressable flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors",
                       active ? "text-white" : "text-slate-400 hover:text-white",

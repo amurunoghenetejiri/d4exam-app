@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BrandLoader } from "@/components/brand/BrandLoader";
 
 export function PageHeader({
   title,
@@ -307,23 +306,36 @@ export function EmptyState({
   );
 }
 
-/** Identity-aware page loader (D4EXAM or school logo). Replaces generic spinner. */
+/**
+ * Lightweight page loader — no full-screen BrandLoader splash.
+ * Avoids the secondary "Preparing your examination environment…" screen
+ * after the app splash; keeps dashboard interactive while data hydrates.
+ */
 export function PageLoading({
   label,
-  schoolId,
-  forcePlatform,
+  schoolId: _schoolId,
+  forcePlatform: _forcePlatform,
 }: {
   label?: string;
   schoolId?: string | null;
   forcePlatform?: boolean;
 }) {
   return (
-    <BrandLoader
-      variant="full"
-      label={label}
-      schoolId={schoolId}
-      forcePlatform={forcePlatform}
-    />
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      className="flex flex-col gap-3 py-6"
+    >
+      <span className="sr-only">{label ?? "Loading"}</span>
+      <Skeleton className="h-8 w-48 rounded-lg" />
+      <Skeleton className="h-4 w-72 max-w-full rounded-md" />
+      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+        <Skeleton className="h-24 w-full rounded-xl" />
+        <Skeleton className="h-24 w-full rounded-xl" />
+      </div>
+      <Skeleton className="mt-2 h-40 w-full rounded-xl" />
+    </div>
   );
 }
 

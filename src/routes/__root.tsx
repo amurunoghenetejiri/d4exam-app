@@ -233,7 +233,7 @@ const BOOT_SPLASH_SCRIPT = `
     if (sessionStorage.getItem('d4exam_splash_shown_v6') === '1') return;
     var el = document.getElementById('d4-boot-splash');
     if (el) el.style.display = 'flex';
-    // Stay up until React signals ready — avoids white gap between boot + app splash / fingerprint
+    // Hide as soon as React signals (or short safety). Never leave overlay blocking clicks.
     var hidden = false;
     function hideBoot(){
       if (hidden) return;
@@ -244,12 +244,13 @@ const BOOT_SPLASH_SCRIPT = `
         if (!b) return;
         b.style.opacity = '0';
         b.style.pointerEvents = 'none';
-        setTimeout(function(){ try { b.remove(); } catch(e){} }, 180);
+        b.style.display = 'none';
+        setTimeout(function(){ try { b.remove(); } catch(e){} }, 80);
       } catch(e){}
     }
     window.addEventListener('d4-hide-boot-splash', hideBoot);
-    // Absolute safety only (never leave forever)
-    setTimeout(hideBoot, 4500);
+    // Short safety — React AnimatedSplash also fires hide immediately on mount
+    setTimeout(hideBoot, 1600);
   } catch(e){}
 })();
 `;
@@ -314,6 +315,21 @@ function RootComponent() {
   useEffect(() => {
     installGlobalErrorHandlers();
     startAccountVaultKeepAlive();
+    // Ensure no leftover full-screen locks block menu / navigation clicks
+    try {
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+      document.body.classList.remove("d4-setup-lock-active", "d4-fp-lock-active");
+      window.dispatchEvent(new Event("d4-hide-boot-splash"));
+      const boot = document.getElementById("d4-boot-splash");
+      if (boot) {
+        boot.style.pointerEvents = "none";
+        boot.style.display = "none";
+        boot.style.opacity = "0";
+      }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   return (

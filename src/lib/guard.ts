@@ -28,19 +28,48 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
     user = queryClient.getQueryData<SessionUser | null>(["session-user"]);
   }
 
-  let hasAuthSession = false;
-  try {
-    const { data: sess } = await supabase.auth.getSession();
-    hasAuthSession = Boolean(sess.session?.access_token && sess.session.user?.id);
-  } catch {
-    hasAuthSession = false;
-  }
-
   // Incomplete = school-bound role with no schoolId. NEVER trust that cache.
   const needsSchool = (u: SessionUser | null | undefined) =>
     Boolean(u?.role && u.role !== "super_admin" && !u.schoolId);
   const isIncomplete = (u: SessionUser | null | undefined) =>
     Boolean(u && (needsSchool(u) || (!u.fullName && !u.email)));
+
+  // Offline-first: prefer local session cache immediately so menu navigations never stall.
+  const online =
+    typeof navigator === "undefined" ? true : navigator.onLine !== false;
+  async function readOfflineSession(): Promise<SessionUser | null> {
+    try {
+      const last = readLastUserId();
+      if (!last) return null;
+      const env = await offlineGet<SessionUser>(last, OfflineKeys.sessionUser);
+      if (env?.data && !isIncomplete(env.data)) return env.data;
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+
+  if ((!user || isIncomplete(user)) && !online) {
+    const cached = await readOfflineSession();
+    if (cached) {
+      user = cached;
+      if (queryClient) queryClient.setQueryData(["session-user"], user);
+    }
+  }
+
+  let hasAuthSession = false;
+  try {
+    const sessPromise = supabase.auth.getSession();
+    const { data: sess } = await Promise.race([
+      sessPromise,
+      new Promise<{ data: { session: null } }>((resolve) =>
+        setTimeout(() => resolve({ data: { session: null } }), online ? 2_500 : 400),
+      ),
+    ]);
+    hasAuthSession = Boolean(sess.session?.access_token && sess.session.user?.id);
+  } catch {
+    hasAuthSession = false;
+  }
 
   const mustResolve =
     user === undefined ||
@@ -48,37 +77,38 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
     (hasAuthSession && isIncomplete(user));
 
   if (mustResolve) {
-    try {
-      user = await Promise.race([
-        fetchSessionUser(),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000)),
-      ]);
-    } catch {
-      user = null;
-    }
-    if ((!user || isIncomplete(user)) && hasAuthSession) {
-      try {
-        await new Promise((r) => setTimeout(r, 400));
-        const again = await Promise.race([
-          fetchSessionUser(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 4_000)),
-        ]);
-        if (again && (!user || !isIncomplete(again))) user = again;
-        else if (again && isIncomplete(user) && !isIncomplete(again)) user = again;
-        else if (again && !user) user = again;
-      } catch {
-        /* ignore */
+    // When offline, never wait on network — use cache only.
+    if (!online) {
+      if (!user || isIncomplete(user)) {
+        const cached = await readOfflineSession();
+        if (cached) user = cached;
       }
-    }
-    if (!user || isIncomplete(user)) {
+    } else {
       try {
-        const last = readLastUserId();
-        if (last) {
-          const env = await offlineGet<SessionUser>(last, OfflineKeys.sessionUser);
-          if (env?.data && !isIncomplete(env.data)) user = env.data;
-        }
+        user = await Promise.race([
+          fetchSessionUser(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_500)),
+        ]);
       } catch {
-        /* ignore */
+        user = null;
+      }
+      if ((!user || isIncomplete(user)) && hasAuthSession) {
+        try {
+          await new Promise((r) => setTimeout(r, 200));
+          const again = await Promise.race([
+            fetchSessionUser(),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+          ]);
+          if (again && (!user || !isIncomplete(again))) user = again;
+          else if (again && isIncomplete(user) && !isIncomplete(again)) user = again;
+          else if (again && !user) user = again;
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!user || isIncomplete(user)) {
+        const cached = await readOfflineSession();
+        if (cached) user = cached;
       }
     }
     if (queryClient && user && !isIncomplete(user)) {
