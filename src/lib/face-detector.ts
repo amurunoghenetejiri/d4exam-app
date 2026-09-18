@@ -5,11 +5,13 @@
  */
 
 const WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+const WASM_BASE_LOCAL = "/mediapipe/wasm";
+const MODEL_URL_LOCAL = "/mediapipe/models/blaze_face_short_range.tflite";
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
 
 const LOAD_TIMEOUT_MS = 18_000;
-const MIN_SCORE = 0.25;
+const MIN_SCORE = 0.22;
 const NMS_IOU = 0.5;
 
 export type FaceEngine = {
@@ -29,7 +31,6 @@ function iou(a: Box, b: Box): number {
   return ua > 0 ? inter / ua : 0;
 }
 
-/** Distinct faces only — never collapse real multi-face to 1. */
 function nmsCount(boxes: Box[]): number {
   if (!boxes.length) return 0;
   const sorted = [...boxes].sort((a, b) => b.score - a.score);
@@ -134,7 +135,12 @@ async function createMediapipe(): Promise<FaceEngine | null> {
       };
       FilesetResolver: { forVisionTasks: (base: string) => Promise<unknown> };
     };
-    const fileset = await FilesetResolver.forVisionTasks(WASM_BASE);
+    let fileset: unknown;
+    try {
+      fileset = await FilesetResolver.forVisionTasks(WASM_BASE);
+    } catch {
+      fileset = await FilesetResolver.forVisionTasks(WASM_BASE_LOCAL);
+    }
 
     let mode: "VIDEO" | "IMAGE" = "VIDEO";
     let detector: {
@@ -145,23 +151,27 @@ async function createMediapipe(): Promise<FaceEngine | null> {
     try {
       detector = await FaceDetector.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
-        runningMode: "VIDEO",
+        runningMode: mode,
         minDetectionConfidence: MIN_SCORE,
       });
-      mode = "VIDEO";
     } catch {
-      detector = await FaceDetector.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
-        runningMode: "IMAGE",
-        minDetectionConfidence: MIN_SCORE,
-      });
-      mode = "IMAGE";
+      try {
+        detector = await FaceDetector.createFromOptions(fileset, {
+          baseOptions: { modelAssetPath: MODEL_URL_LOCAL, delegate: "CPU" },
+          runningMode: mode,
+          minDetectionConfidence: MIN_SCORE,
+        });
+      } catch {
+        mode = "IMAGE";
+        detector = await FaceDetector.createFromOptions(fileset, {
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
+          runningMode: mode,
+          minDetectionConfidence: MIN_SCORE,
+        });
+      }
     }
 
-    const canvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
-    const ctx = canvas?.getContext("2d", { willReadFrequently: true }) ?? null;
     let lastTs = 0;
-
     return {
       count: async (video) => {
         if (!videoReady(video)) return null;
@@ -174,26 +184,8 @@ async function createMediapipe(): Promise<FaceEngine | null> {
             }
           }
           let faces: unknown[] = [];
-          if (mode === "VIDEO" && typeof detector.detectForVideo === "function") {
-            let ts = performance.now();
-            if (ts <= lastTs) ts = lastTs + 1;
-            lastTs = ts;
-            faces = detector.detectForVideo(video, ts)?.detections ?? [];
-          } else if (typeof detector.detect === "function") {
-            if (canvas && ctx) {
-              const maxW = 320;
-              const w = Math.min(video.videoWidth || maxW, maxW);
-              const h = Math.max(
-                16,
-                Math.round(((video.videoHeight || 240) / (video.videoWidth || 320)) * w),
-              );
-              canvas.width = w;
-              canvas.height = h;
-              ctx.drawImage(video, 0, 0, w, h);
-              faces = detector.detect(canvas)?.detections ?? [];
-            } else {
-              faces = detector.detect(video)?.detections ?? [];
-            }
+          if (mode === "IMAGE" && typeof detector.detect === "function") {
+            faces = detector.detect(video)?.detections ?? [];
           } else if (typeof detector.detectForVideo === "function") {
             let ts = performance.now();
             if (ts <= lastTs) ts = lastTs + 1;
@@ -205,7 +197,13 @@ async function createMediapipe(): Promise<FaceEngine | null> {
           return null;
         }
       },
-      close: () => {},
+      close: () => {
+        try {
+          detector.close?.();
+        } catch {
+          /* ignore */
+        }
+      },
     };
   } catch (e) {
     console.warn("[face-detector] MediaPipe failed", e);
