@@ -34,6 +34,7 @@ import {
   readFingerprintPref,
   setFingerprintLocked,
   shouldLockAfterBackground,
+  isActiveCbtExamPath,
 } from "@/lib/fingerprint-lock";
 import { readLastUserId } from "@/lib/offline-query";
 import { cn } from "@/lib/utils";
@@ -280,6 +281,11 @@ export function FingerprintLockGate() {
       setLocked(false);
       return;
     }
+    // Never lock / show fingerprint during an in-progress exam
+    if (isActiveCbtExamPath(pathname)) {
+      setLocked(false);
+      return;
+    }
     const uid = session?.userId ?? pref?.userId ?? lastUid;
     const fpOn = Boolean(uid && isFingerprintEnabledFor(uid)) || Boolean(pref?.enabled && pref.userId);
     const unlockConfigured = fpOn || hasAppPw;
@@ -347,6 +353,8 @@ export function FingerprintLockGate() {
           const fpOn = isFingerprintEnabledFor(uid) || Boolean(pref?.enabled && pref.userId);
           const canLock = fpOn || hasAppPw;
           if (!canLock) return;
+          // Do not interrupt an in-progress examination
+          if (isActiveCbtExamPath()) return;
           // Returning from background → lock (user must unlock to enter app)
           setFingerprintLocked(true);
           setLocked(true);

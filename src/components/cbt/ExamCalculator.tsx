@@ -1364,13 +1364,24 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[2147483000] flex flex-col overflow-hidden"
+      className="d4-exam-calc fixed z-[2147483000] flex flex-col overflow-hidden"
       style={{
-        background: "linear-gradient(180deg, #0a1628 0%, #0b1b3a 40%, #07101f 100%)",
-        paddingTop: "env(safe-area-inset-top, 0px)",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
-        paddingLeft: "env(safe-area-inset-left, 0px)",
-        paddingRight: "env(safe-area-inset-right, 0px)",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: "100vw",
+        height: "100dvh",
+        minHeight: "100dvh",
+        maxWidth: "100vw",
+        margin: 0,
+        inset: 0,
+        background: "linear-gradient(180deg, #071428 0%, #0b1b3a 42%, #050d1c 100%)",
+        paddingTop: "max(8px, env(safe-area-inset-top, 0px))",
+        paddingBottom: "max(8px, env(safe-area-inset-bottom, 0px))",
+        paddingLeft: "max(8px, env(safe-area-inset-left, 0px))",
+        paddingRight: "max(8px, env(safe-area-inset-right, 0px))",
+        boxSizing: "border-box",
       }}
       role="dialog"
       aria-modal
@@ -1421,7 +1432,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       {/* Display */}
       <div
         ref={scrollRef}
-        className="mx-3 shrink-0 overflow-x-auto rounded-2xl border border-[#1e4a8c] bg-[#06101f] px-3.5 py-3.5 shadow-[inset_0_2px_16px_rgba(0,0,0,0.65),0_0_0_1px_rgba(56,189,248,0.12),0_0_24px_rgba(30,64,140,0.35)]"
+        className="mx-1 shrink-0 overflow-x-auto rounded-2xl border border-[#2458a8] bg-[#06101f] px-3 py-3 shadow-[inset_0_2px_16px_rgba(0,0,0,0.65),0_0_0_1px_rgba(56,189,248,0.18),0_0_28px_rgba(30,64,140,0.4)]"
         style={{ minHeight: "6.75rem" }}
         onClick={() => setCursor(emptyCursor())}
       >
@@ -1453,7 +1464,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       )}
 
       {/* Keypad */}
-      <div className="flex min-h-0 flex-1 flex-col gap-[5px] overflow-y-auto px-2.5 pb-2.5 pt-0.5">
+      <div className="flex min-h-0 flex-1 flex-col gap-[6px] overflow-y-auto px-1 pb-1 pt-1">
         {rows.map((row, ri) => {
           const cols = row.reduce((a, k) => a + (k.span || 1), 0);
           return (
