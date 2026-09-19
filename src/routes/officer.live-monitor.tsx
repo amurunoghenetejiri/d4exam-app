@@ -226,6 +226,7 @@ function Page() {
   const qc = useQueryClient();
   const schoolId = user?.schoolId ?? null;
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [examFilter, setExamFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [feedMode, setFeedMode] = useState<"camera" | "screen" | "both">("both");
@@ -238,6 +239,7 @@ function Page() {
   selectedIdRef.current = selectedId;
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(new Set());
   const [showAlertsMobile, setShowAlertsMobile] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const [frames, setFrames] = useState<Record<string, FrameEntry>>({});
   const [screenFrames, setScreenFrames] = useState<Record<string, { src: string; ts: number }>>({});
   const [warningBusy, setWarningBusy] = useState(false);
@@ -890,15 +892,27 @@ function Page() {
     return { writing, online, warnings, violations, offline, completed: completedQ.data ?? 0 };
   }, [cards, completedQ.data]);
 
+  const examOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of cards) {
+      const id = String(c.a.exam_id || "");
+      if (!id) continue;
+      const label = [c.course, c.title].filter(Boolean).join(" · ") || "Exam";
+      if (!map.has(id)) map.set(id, label);
+    }
+    return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
+  }, [cards]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cards.filter((c) => {
+      if (examFilter !== "all" && String(c.a.exam_id || "") !== examFilter) return false;
       if (filter === "offline" && c.sev !== "offline" && !c.isDone) return false;
       if (filter !== "all" && filter !== "offline" && (c.sev !== filter || c.isDone)) return false;
       if (!q) return true;
       return c.name.toLowerCase().includes(q) || c.matric.toLowerCase().includes(q) || c.course.toLowerCase().includes(q);
     });
-  }, [cards, filter, search]);
+  }, [cards, filter, search, examFilter]);
 
   const selected = cards.find((c) => c.a.id === selectedId) ?? null;
   const studentNameById = useMemo(() => {
@@ -1214,6 +1228,34 @@ function Page() {
             className="h-8 pl-8 text-xs sm:h-9 sm:text-sm"
           />
         </div>
+        {examOptions.length > 1 ? (
+          <div className="flex w-full flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setExamFilter("all")}
+              className={cn(
+                "rounded-full px-2.5 py-1 text-[10px] font-bold sm:text-[11px]",
+                examFilter === "all" ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+              )}
+            >
+              All exams
+            </button>
+            {examOptions.map((ex) => (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => setExamFilter(ex.id)}
+                className={cn(
+                  "max-w-[14rem] truncate rounded-full px-2.5 py-1 text-[10px] font-bold sm:text-[11px]",
+                  examFilter === ex.id ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                )}
+                title={ex.label}
+              >
+                {ex.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="flex min-w-0 flex-1 flex-wrap gap-1">
             {FILTERS.map(([k, label]) => (
@@ -1262,7 +1304,54 @@ function Page() {
           </Button>
         </div>
       </div>
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(240px,280px)] lg:gap-4">
+      {/* Collapsible alerts — does not steal grid space */}
+          <div className="mb-3 rounded-xl border border-slate-200 bg-white shadow-sm">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+              onClick={() => setAlertsOpen((o) => !o)}
+            >
+              <span className="inline-flex items-center gap-2 text-sm font-extrabold text-slate-900">
+                <ShieldAlert className="h-4 w-4 text-slate-500" />
+                Alerts
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+                  {alerts.length}
+                </span>
+                {unreadAlerts.length > 0 ? (
+                  <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                    {unreadAlerts.length} new
+                  </span>
+                ) : null}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                {alerts.some((a) => a.severity === "high") ? (
+                  <span className="h-2.5 w-2.5 rounded-full bg-red-500" title="High severity" />
+                ) : alerts.some((a) => a.severity === "medium") ? (
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" title="Medium severity" />
+                ) : alerts.length > 0 ? (
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" title="OK" />
+                ) : (
+                  <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
+                )}
+                <ChevronLeft className={cn("h-4 w-4 text-slate-400 transition", alertsOpen ? "rotate-[-90deg]" : "rotate-[-270deg]")} />
+              </span>
+            </button>
+            {alertsOpen ? (
+              <div className="border-t border-slate-100 px-1 pb-2">
+                <AlertsPanel
+                  alerts={alerts}
+                  readIds={readAlertIds}
+                  studentNameById={studentNameById}
+                  onOpen={(sid) => {
+                    const card = cards.find((c) => c.a.student_id === sid);
+                    if (card) setSelectedId(card.a.id);
+                  }}
+                  onMarkAll={() => setReadAlertIds(new Set(alerts.map((a) => a.id)))}
+                />
+              </div>
+            ) : null}
+          </div>
+      <div className="grid gap-3 lg:grid-cols-1 lg:gap-4">
         <div>
           {attemptsQ.isLoading ? (
             <p className="text-sm text-slate-500">Loading live sessions…</p>
@@ -1297,7 +1386,7 @@ function Page() {
             
               <Button type="button" variant={audioMuted ? "outline" : "default"} size="sm" className={cn("h-7 shrink-0 px-2 text-[10px] font-semibold sm:h-8 sm:text-xs", !audioMuted && "bg-emerald-600 text-white hover:bg-emerald-700")} onClick={() => { setAudioMuted((m) => { const next = !m; if (!next) { try { if (!audioCtxRef.current) { const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext; audioCtxRef.current = new AC(); } void audioCtxRef.current?.resume(); } catch { /* ignore */ } } return next; }); }} title={audioMuted ? "Unmute student microphones" : "Mute all"}>{audioMuted ? (<><MicOff className="mr-1 h-3.5 w-3.5" /> Muted</>) : (<><Mic className="mr-1 h-3.5 w-3.5" /> Listening</>)}</Button>
 {view === "grid" ? (
-            <div className="grid grid-cols-2 gap-1.5 sm:gap-2 md:grid-cols-3 xl:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3">
               {filtered.map((c) => (
                 <StudentCard
                   key={c.a.id}
@@ -1379,18 +1468,7 @@ function Page() {
             </>
           )}
         </div>
-        <aside className="hidden lg:block">
-          <AlertsPanel
-            alerts={alerts}
-            readIds={readAlertIds}
-            studentNameById={studentNameById}
-            onOpen={(sid) => {
-              const card = cards.find((c) => c.a.student_id === sid);
-              if (card) setSelectedId(card.a.id);
-            }}
-            onMarkAll={() => setReadAlertIds(new Set(alerts.map((a) => a.id)))}
-          />
-        </aside>
+        
       </div>
       {showAlertsMobile && (
         <div className="fixed inset-0 z-[60] bg-black/40 lg:hidden" onClick={() => setShowAlertsMobile(false)}>
@@ -1421,12 +1499,18 @@ function Page() {
         </div>
       )}
       {selected && (
-        <div className="fixed inset-0 z-[70] flex justify-end bg-black/40" onClick={() => setSelectedId(null)}>
+        <div
+          className="fixed inset-0 z-[70] flex flex-col bg-black/40 lg:left-64"
+          style={{ paddingTop: "max(0px, env(safe-area-inset-top, 0px))" }}
+          onClick={() => setSelectedId(null)}
+        >
+          {/* Spacer for top app bar so header is never covered */}
+          <div className="h-12 shrink-0 sm:h-16" aria-hidden />
           <div
-            className="flex h-full w-full max-w-3xl flex-col overflow-hidden bg-white shadow-2xl sm:max-w-4xl"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2.5 sm:px-4 sm:py-3">
+            <div className="flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2.5 sm:px-4 sm:py-3">
               <button
                 type="button"
                 className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
@@ -1490,7 +1574,7 @@ function Page() {
                     "shrink-0 bg-slate-100 p-1.5 sm:p-2",
                     // Only mount visible panes — no reserved empty column
                     dual
-                      ? "grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-2"
+                      ? "grid grid-cols-2 gap-1.5 sm:gap-3"
                       : "flex flex-col gap-1.5",
                   )}
                 >
@@ -1499,8 +1583,8 @@ function Page() {
                       className={cn(
                         "relative w-full overflow-hidden rounded-xl bg-slate-900 shadow-inner ring-1 ring-black/10",
                         dual
-                          ? "aspect-[4/3] max-h-[min(38vh,22rem)]"
-                          : "aspect-[4/3] max-h-[min(52vh,30rem)]",
+                          ? "min-h-[10rem] sm:min-h-[14rem] lg:min-h-[min(42vh,28rem)] xl:min-h-[min(48vh,34rem)]"
+                          : "min-h-[12rem] sm:min-h-[18rem] lg:min-h-[min(58vh,40rem)] xl:min-h-[min(65vh,48rem)]",
                       )}
                     >
                       {showCamFrame ? (
@@ -1556,14 +1640,14 @@ function Page() {
                           <img
                             src={sf!.src}
                             alt={`${selected.name} screen`}
-                            className="mx-auto block h-auto w-full max-w-full bg-black object-contain"
+                            className="mx-auto block h-auto max-h-[min(70vh,52rem)] w-full max-w-full bg-black object-contain lg:max-h-[min(75vh,56rem)]"
                           />
                         </div>
                       ) : (
                         <div
                           className={cn(
                             "flex flex-col items-center justify-center gap-1.5 px-4 text-center text-white/60",
-                            dual ? "min-h-[12rem]" : "min-h-[16rem]",
+                            dual ? "min-h-[10rem] sm:min-h-[14rem]" : "min-h-[14rem] sm:min-h-[20rem] lg:min-h-[28rem]",
                           )}
                         >
                           <Monitor className="h-10 w-10 opacity-30" />
@@ -1814,7 +1898,7 @@ function StudentCard({
     >
       <div
         className={cn(
-          "relative aspect-[5/4] sm:aspect-[4/3]",
+          "relative aspect-[4/3] min-h-[11rem] sm:min-h-[14rem] lg:min-h-[16rem] xl:min-h-[18rem]",
           isDone
             ? "bg-gradient-to-br from-sky-800 via-slate-800 to-slate-900"
             : "bg-gradient-to-br from-slate-800 to-slate-900",
@@ -1894,8 +1978,8 @@ function StudentCard({
               </span>
             )}
           </div>
-          <p className="truncate text-[11px] font-extrabold leading-tight text-white drop-shadow sm:text-xs">{name}</p>
-          <p className="truncate text-[9px] font-medium leading-tight text-white/85 sm:text-[10px]">{matric}</p>
+          <p className="truncate text-xs font-extrabold leading-tight text-white drop-shadow sm:text-sm lg:text-base">{name}</p>
+          <p className="truncate text-[10px] font-medium leading-tight text-white/85 sm:text-xs">{matric}</p>
           <p className="truncate text-[9px] leading-tight text-white/65 sm:text-[10px]">{course}</p>
         </div>
       </div>
