@@ -598,7 +598,7 @@ function SlotBox({
   atoms,
   active,
   onFocus,
-  minW = "0.85em",
+  minW = "1.35em",
 }: {
   atoms: Atom[];
   active: boolean;
@@ -613,16 +613,15 @@ function SlotBox({
         onFocus();
       }}
       className={cn(
-        "inline-flex min-h-[1.1em] items-center justify-center rounded-[3px] border border-dashed px-0.5 align-middle leading-none",
-        active ? "border-sky-400 bg-sky-500/20" : "border-white/30 bg-transparent",
+        "inline-flex min-h-[1.25em] items-center justify-center rounded-md border align-middle leading-none transition-colors",
+        active
+          ? "border-[#38bdf8] bg-[#1d4ed8]/45 shadow-[0_0_0_1px_rgba(56,189,248,0.45),inset_0_1px_0_rgba(255,255,255,0.12)]"
+          : "border-[#3b82f6]/55 bg-[#1e3a8a]/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
       )}
-      style={{ minWidth: minW }}
+      style={{ minWidth: minW, minHeight: "1.35em", padding: "0.12em 0.35em" }}
     >
       {atoms.length === 0 ? (
-        <>
-          <Caret on={active} />
-          <span className="text-white/25">□</span>
-        </>
+        <Caret on={active} />
       ) : (
         <>
           <AtomRow atoms={atoms} cursor={null} onCursor={() => onFocus()} />
@@ -1508,7 +1507,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       {/* Display */}
       <div
         ref={scrollRef}
-        className="mx-2 shrink-0 overflow-x-auto rounded-2xl border border-[#2458a8] bg-[#06101f] px-3 py-3 shadow-[inset_0_2px_16px_rgba(0,0,0,0.65),0_0_0_1px_rgba(56,189,248,0.18),0_0_28px_rgba(30,64,140,0.4)]"
+        className="mx-2 shrink-0 overflow-x-auto rounded-2xl border border-[#1e4a8c] bg-[#050d1c] px-3.5 py-3.5 shadow-[inset_0_2px_18px_rgba(0,0,0,0.7),0_0_0_1px_rgba(56,189,248,0.2),0_0_32px_rgba(30,64,140,0.45)]"
         style={{ minHeight: "6.75rem" }}
         onClick={() => setCursor(emptyCursor())}
       >
@@ -1595,13 +1594,13 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       ) : null}
 
       {/* Keypad */}
-      <div className="flex min-h-0 flex-1 flex-col gap-[6px] overflow-y-auto px-2 pb-2 pt-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-[5px] overflow-y-auto px-2 pb-2 pt-1">
         {rows.map((row, ri) => {
           const cols = row.reduce((a, k) => a + (k.span || 1), 0);
           return (
             <div
               key={ri}
-              className="grid flex-1 gap-[5px]"
+              className="grid flex-1 gap-[4px]"
               style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
             >
               {row.map((k, ki) => {
@@ -1614,7 +1613,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
                     type="button"
                     onClick={() => apply(act)}
                     className={cn(
-                      "relative flex min-h-[2.4rem] flex-col items-center justify-center rounded-[12px] text-[13px] font-semibold transition-transform duration-75 select-none sm:text-[14px]",
+                      "relative flex min-h-[2.55rem] flex-col items-center justify-center rounded-[14px] text-[13px] font-bold tracking-tight transition-transform duration-75 select-none sm:min-h-[2.7rem] sm:text-[14px]",
                       TONE[k.tone],
                       k.tone === "shift" && shift && "from-emerald-300 to-emerald-500 ring-2 ring-emerald-200/50",
                       isPressed && "scale-[0.96] brightness-110",
@@ -1623,7 +1622,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
                   >
                     <span className="leading-none">{useShift && k.sub ? k.sub : k.label}</span>
                     {!useShift && k.sub ? (
-                      <span className="mt-0.5 text-[8px] font-medium leading-none text-sky-200/70">{k.sub}</span>
+                      <span className="mt-0.5 text-[7.5px] font-medium leading-none text-sky-200/55">{k.sub}</span>
                     ) : null}
                   </button>
                 );
