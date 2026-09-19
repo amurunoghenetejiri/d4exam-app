@@ -188,12 +188,8 @@ for (const name of fs.readdirSync(distCap)) {
 
 const publicDir = path.join(root, "public");
 if (fs.existsSync(publicDir)) {
-  for (const name of fs.readdirSync(publicDir)) {
-    const s = path.join(publicDir, name);
-    if (fs.statSync(s).isFile()) {
-      fs.copyFileSync(s, path.join(dist, name));
-    }
-  }
+  // Recursive: sub-folders (e.g. public/mediapipe) must reach the Android bundle
+  fs.cpSync(publicDir, dist, { recursive: true, force: true });
 }
 
 const cssFile = fs.readdirSync(path.join(dist, "assets")).find((f) => f.endsWith(".css"));

@@ -52,6 +52,7 @@ import { Route as OfficerAuditLogsRouteImport } from './routes/officer.audit-log
 import { Route as OfficerIntegrityRouteImport } from './routes/officer.integrity'
 import { Route as OfficerLiveMonitorRouteImport } from './routes/officer.live-monitor'
 import { Route as OfficerNotificationsRouteImport } from './routes/officer.notifications'
+import { Route as OfficerPostToStudentsRouteImport } from './routes/officer.post-to-students'
 import { Route as OfficerProfileRouteImport } from './routes/officer.profile'
 import { Route as OfficerReportsRouteImport } from './routes/officer.reports'
 import { Route as OfficerResultsRouteImport } from './routes/officer.results'
@@ -311,6 +312,11 @@ const OfficerLiveMonitorRoute = OfficerLiveMonitorRouteImport.update({
 const OfficerNotificationsRoute = OfficerNotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
+  getParentRoute: () => OfficerRoute,
+} as any)
+const OfficerPostToStudentsRoute = OfficerPostToStudentsRouteImport.update({
+  id: '/post-to-students',
+  path: '/post-to-students',
   getParentRoute: () => OfficerRoute,
 } as any)
 const OfficerProfileRoute = OfficerProfileRouteImport.update({
@@ -581,6 +587,7 @@ export interface FileRoutesByFullPath {
   '/officer/integrity': typeof OfficerIntegrityRoute
   '/officer/live-monitor': typeof OfficerLiveMonitorRoute
   '/officer/notifications': typeof OfficerNotificationsRoute
+  '/officer/post-to-students': typeof OfficerPostToStudentsRoute
   '/officer/profile': typeof OfficerProfileRoute
   '/officer/reports': typeof OfficerReportsRoute
   '/officer/results': typeof OfficerResultsRoute
@@ -666,6 +673,7 @@ export interface FileRoutesByTo {
   '/officer/integrity': typeof OfficerIntegrityRoute
   '/officer/live-monitor': typeof OfficerLiveMonitorRoute
   '/officer/notifications': typeof OfficerNotificationsRoute
+  '/officer/post-to-students': typeof OfficerPostToStudentsRoute
   '/officer/profile': typeof OfficerProfileRoute
   '/officer/reports': typeof OfficerReportsRoute
   '/officer/results': typeof OfficerResultsRoute
@@ -756,6 +764,7 @@ export interface FileRoutesById {
   '/officer/integrity': typeof OfficerIntegrityRoute
   '/officer/live-monitor': typeof OfficerLiveMonitorRoute
   '/officer/notifications': typeof OfficerNotificationsRoute
+  '/officer/post-to-students': typeof OfficerPostToStudentsRoute
   '/officer/profile': typeof OfficerProfileRoute
   '/officer/reports': typeof OfficerReportsRoute
   '/officer/results': typeof OfficerResultsRoute
@@ -848,6 +857,7 @@ export interface FileRouteTypes {
     | '/officer/integrity'
     | '/officer/live-monitor'
     | '/officer/notifications'
+    | '/officer/post-to-students'
     | '/officer/profile'
     | '/officer/reports'
     | '/officer/results'
@@ -933,6 +943,7 @@ export interface FileRouteTypes {
     | '/officer/integrity'
     | '/officer/live-monitor'
     | '/officer/notifications'
+    | '/officer/post-to-students'
     | '/officer/profile'
     | '/officer/reports'
     | '/officer/results'
@@ -1022,6 +1033,7 @@ export interface FileRouteTypes {
     | '/officer/integrity'
     | '/officer/live-monitor'
     | '/officer/notifications'
+    | '/officer/post-to-students'
     | '/officer/profile'
     | '/officer/reports'
     | '/officer/results'
@@ -1393,6 +1405,13 @@ declare module '@tanstack/react-router' {
       path: '/notifications'
       fullPath: '/officer/notifications'
       preLoaderRoute: typeof OfficerNotificationsRouteImport
+      parentRoute: typeof OfficerRoute
+    }
+    '/officer/post-to-students': {
+      id: '/officer/post-to-students'
+      path: '/post-to-students'
+      fullPath: '/officer/post-to-students'
+      preLoaderRoute: typeof OfficerPostToStudentsRouteImport
       parentRoute: typeof OfficerRoute
     }
     '/officer/profile': {
@@ -1767,6 +1786,7 @@ interface OfficerRouteChildren {
   OfficerIntegrityRoute: typeof OfficerIntegrityRoute
   OfficerLiveMonitorRoute: typeof OfficerLiveMonitorRoute
   OfficerNotificationsRoute: typeof OfficerNotificationsRoute
+  OfficerPostToStudentsRoute: typeof OfficerPostToStudentsRoute
   OfficerProfileRoute: typeof OfficerProfileRoute
   OfficerReportsRoute: typeof OfficerReportsRoute
   OfficerResultsRoute: typeof OfficerResultsRoute
@@ -1781,6 +1801,7 @@ const OfficerRouteChildren: OfficerRouteChildren = {
   OfficerIntegrityRoute: OfficerIntegrityRoute,
   OfficerLiveMonitorRoute: OfficerLiveMonitorRoute,
   OfficerNotificationsRoute: OfficerNotificationsRoute,
+  OfficerPostToStudentsRoute: OfficerPostToStudentsRoute,
   OfficerProfileRoute: OfficerProfileRoute,
   OfficerReportsRoute: OfficerReportsRoute,
   OfficerResultsRoute: OfficerResultsRoute,

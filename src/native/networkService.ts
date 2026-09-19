@@ -41,19 +41,36 @@ export async function probeConnectivity(timeoutMs = 4000): Promise<boolean> {
   const now = Date.now();
   if (now - lastProbeAt < 3000) return lastProbeOk;
 
+  // The bundled Android shell is served from https://localhost, so a same-origin
+  // asset would always "succeed" and falsely report the device as online.
+  // Probe the real remote backend origin in that case.
+  const remoteBase =
+    (import.meta as unknown as { env?: Record<string, string | undefined> }).env
+      ?.VITE_SUPABASE_URL ?? "";
+  let localShell = false;
+  try {
+    localShell = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(window.location.origin);
+  } catch {
+    localShell = false;
+  }
+  const useRemoteProbe = localShell && Boolean(remoteBase);
+  const url = useRemoteProbe
+    ? `${remoteBase}/auth/v1/health?_ping=${now}`
+    : `${window.location.origin}/site.webmanifest?_ping=${now}`;
+
   try {
     const ctrl = new AbortController();
     const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
-    const url = `${window.location.origin}/site.webmanifest?_ping=${now}`;
     const res = await fetch(url, {
       method: "GET",
       cache: "no-store",
+      mode: useRemoteProbe ? "cors" : "same-origin",
       signal: ctrl.signal,
     });
     window.clearTimeout(t);
-    lastProbeOk = res.ok || res.status === 304 || res.type === "opaque";
+    lastProbeOk = res.ok || res.status === 304 || res.status === 401 || res.type === "opaque";
   } catch {
-    lastProbeOk = typeof navigator !== "undefined" ? navigator.onLine : false;
+    lastProbeOk = false;
   }
   lastProbeAt = Date.now();
   return lastProbeOk;
