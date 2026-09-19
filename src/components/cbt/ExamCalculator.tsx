@@ -51,9 +51,11 @@ type Atom =
   | { t: "mod"; a: Atom[]; b: Atom[] }
   | { t: "sum"; lo: Atom[]; hi: Atom[]; body: Atom[] }
   | { t: "integral"; lo: Atom[]; hi: Atom[]; body: Atom[] }
-  | { t: "deriv"; body: Atom[]; at: Atom[] };
+  | { t: "deriv"; body: Atom[]; at: Atom[] }
+  | { t: "abs"; arg: Atom[] }
+  | { t: "matrix"; rows: Atom[][][] };
 
-type Slot = "main" | "num" | "den" | "whole" | "arg" | "exp" | "n" | "base" | "r" | "a" | "b" | "lo" | "hi" | "body" | "at";
+type Slot = "main" | "num" | "den" | "whole" | "arg" | "exp" | "n" | "base" | "r" | "a" | "b" | "lo" | "hi" | "body" | "at" | "cell";
 type Cursor = { path: number[]; slot: Slot };
 
 function emptyCursor(): Cursor {
@@ -260,6 +262,11 @@ function evalAtoms(atoms: Atom[], angle: AngleMode, ans: number): number {
           tokens.push(String((h / 2) * s));
           break;
         }
+        case "abs": {
+          const a = evalAtoms(node.arg.length ? node.arg : [{ t: "num", v: "0" }], angle, ans);
+          tokens.push(String(Math.abs(a)));
+          break;
+        }
         case "deriv": {
           const at = evalAtoms(node.at.length ? node.at : [{ t: "num", v: "0" }], angle, ans);
           const eps = 1e-6;
@@ -289,6 +296,7 @@ function substituteX(atoms: Atom[], xVal: number): Atom[] {
         num: substituteX(node.num, xVal),
         den: substituteX(node.den, xVal),
       };
+    if (node.t === "abs") return { ...node, arg: substituteX(node.arg, xVal) };
     if (node.t === "sqrt" || node.t === "cbrt") return { ...node, arg: substituteX(node.arg, xVal) };
     if (node.t === "nroot") return { ...node, n: substituteX(node.n, xVal), arg: substituteX(node.arg, xVal) };
     if (node.t === "pow") return { ...node, base: substituteX(node.base, xVal), exp: substituteX(node.exp, xVal) };
@@ -497,6 +505,10 @@ function insertAt(atoms: Atom[], cur: Cursor, item: Atom): { atoms: Atom[]; cur:
       cur: { path: [list.length - 1], slot: "num" },
     };
   }
+  if (item.t === "abs") {
+    list.push(item);
+    return { atoms: setListAt(atoms, cur, list), cur: { path: [list.length - 1], slot: "arg" } };
+  }
   if (item.t === "sqrt" || item.t === "cbrt") {
     list.push(item);
     return { atoms: setListAt(atoms, cur, list), cur: { path: [list.length - 1], slot: "arg" } };
@@ -694,6 +706,14 @@ function AtomView({
       return <span className="italic">i</span>;
     case "pct":
       return <span>%</span>;
+    case "abs":
+      return (
+        <span className="mx-0.5 inline-flex items-center font-sans">
+          <span className="opacity-80">|</span>
+          <SlotBox atoms={node.arg} active={active("arg")} onFocus={() => onCursor({ path, slot: "arg" })} />
+          <span className="opacity-80">|</span>
+        </span>
+      );
     case "fact":
       return <span>!</span>;
     case "frac":
@@ -956,14 +976,14 @@ function scientificRows(): KeyDef[][] {
     ],
     [
       { label: "DRG", action: "DRG", tone: "fn" },
-      { label: <span className="text-[11px]"><span className="align-top text-[9px]">a</span>/<span className="align-bottom text-[9px]">b</span></span>, action: "frac", tone: "fn" },
-      { label: <span className="text-[11px]">a<sup className="text-[8px]">b</sup>/<sub className="text-[8px]">c</sub></span>, action: "mixed", tone: "fn" },
+      { label: "a/b", action: "frac", tone: "fn" },
+      { label: "aᵇ/c", action: "mixed", tone: "fn" },
       { label: "Σ", action: "sum", tone: "fn" },
       { label: "∫", action: "integral", tone: "fn" },
-      { label: <span className="text-[10px]">d/dx</span>, action: "deriv", tone: "fn" },
+      { label: "d/dx", action: "deriv", tone: "fn" },
     ],
     [
-      { label: "CONV", action: "NOP", tone: "fn" },
+      { label: "CONV", action: "CONV", tone: "fn" },
       { label: "π", action: "pi", tone: "fn" },
       { label: "e", action: "e", tone: "fn" },
       { label: "Ans", action: "ans", tone: "fn" },
@@ -975,19 +995,19 @@ function scientificRows(): KeyDef[][] {
       { label: "sin", sub: "sin⁻¹", action: "sin", shiftAction: "asin", tone: "fn" },
       { label: "cos", sub: "cos⁻¹", action: "cos", shiftAction: "acos", tone: "fn" },
       { label: "tan", sub: "tan⁻¹", action: "tan", shiftAction: "atan", tone: "fn" },
-      { label: "ln", sub: "logₑ", action: "ln", shiftAction: "exp", tone: "fn" },
-      { label: "log", sub: "log₁₀", action: "log", tone: "fn" },
-      { label: "Abs", sub: "|x|", action: "abs", tone: "fn" },
+      { label: "ln", action: "ln", tone: "fn" },
+      { label: "log", action: "log", tone: "fn" },
+      { label: "Abs", action: "abs", tone: "fn" },
       { label: "i", action: "i", tone: "fn" },
     ],
     [
       { label: "x⁻¹", action: "inv", tone: "fn" },
-      { label: "x²", action: "sq", tone: "fn" },
+      { label: "x²", sub: "xʸ", action: "sq", shiftAction: "pow", tone: "fn" },
       { label: "x³", action: "cube", tone: "fn" },
       { label: "√", action: "sqrt", tone: "fn" },
       { label: "∛", action: "cbrt", tone: "fn" },
       { label: "ⁿ√", action: "nroot", tone: "fn" },
-      { label: "10ˣ", action: "tenx", tone: "fn" },
+      { label: "10ˣ", sub: "eˣ", action: "tenx", shiftAction: "exp", tone: "fn" },
     ],
     [
       { label: "eˣ", action: "exp", tone: "fn" },
@@ -996,7 +1016,7 @@ function scientificRows(): KeyDef[][] {
       { label: "nPr", action: "nPr", tone: "fn" },
       { label: "%", action: "%", tone: "fn" },
       { label: "mod", action: "mod", tone: "fn" },
-      { label: "X", action: "x", tone: "fn" },
+      { label: "X", sub: "Y", action: "x", shiftAction: "y", tone: "fn" },
     ],
     [
       { label: "7", action: "7", tone: "num" },
@@ -1024,9 +1044,9 @@ function scientificRows(): KeyDef[][] {
     ],
     [
       { label: "EXP", action: "EXP", tone: "fn" },
-      { label: "%", action: "%", tone: "fn" },
       { label: "RND", action: "rand", tone: "fn" },
-      { label: "=", action: "=", tone: "eq", span: 3 },
+      { label: "MATRIX", action: "MATRIX", tone: "fn", span: 2 },
+      { label: "=", action: "=", tone: "eq", span: 2 },
     ],
   ];
 }
@@ -1088,19 +1108,64 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
   const [error, setError] = useState(false);
   const [angle, setAngle] = useState<AngleMode>("DEG");
   const [shift, setShift] = useState(false);
+  const [panel, setPanel] = useState<null | "menu" | "conv" | "matrix">(null);
+  const persistKey = useMemo(() => {
+    try {
+      const uid = window.sessionStorage.getItem("d4_calc_uid") || "local";
+      return `d4_exam_calc_state_v1:${uid}`;
+    } catch {
+      return "d4_exam_calc_state_v1:local";
+    }
+  }, []);
+
   const [memory, setMemory] = useState(0);
   const [ans, setAns] = useState(0);
   const [pressed, setPressed] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Persist calculator state across close/reopen during exam
+  useEffect(() => {
+    if (!open) return;
+    try {
+      const raw = sessionStorage.getItem(persistKey);
+      if (!raw) return;
+      const s = JSON.parse(raw) as {
+        atoms?: Atom[];
+        result?: string;
+        ans?: number;
+        memory?: number;
+        angle?: AngleMode;
+        cursor?: Cursor;
+      };
+      if (Array.isArray(s.atoms)) setAtoms(s.atoms);
+      if (typeof s.result === "string") setResult(s.result);
+      if (typeof s.ans === "number") setAns(s.ans);
+      if (typeof s.memory === "number") setMemory(s.memory);
+      if (s.angle === "DEG" || s.angle === "RAD" || s.angle === "GRAD") setAngle(s.angle);
+      if (s.cursor) setCursor(s.cursor);
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, persistKey]);
+
+  useEffect(() => {
+    if (!open) return;
+    try {
+      sessionStorage.setItem(
+        persistKey,
+        JSON.stringify({ atoms, result, ans, memory, angle, cursor }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [atoms, result, ans, memory, angle, cursor, open, persistKey]);
+
+  // Do NOT clear expression on close — state persists for the exam session via sessionStorage.
   useEffect(() => {
     if (!open) {
-      setAtoms([]);
-      setCursor(emptyCursor());
-      setResult("0");
-      setFinalized(false);
-      setError(false);
       setShift(false);
+      setPanel(null);
     }
   }, [open]);
 
@@ -1191,6 +1256,10 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         setResult("0");
         setFinalized(false);
         setShift(false);
+        setError(false);
+        try {
+          sessionStorage.setItem(persistKey, JSON.stringify({ atoms: [], result: "0", ans, memory, angle, cursor: emptyCursor() }));
+        } catch { /* */ }
         return;
       }
       if (action === "BKSP") {
@@ -1238,7 +1307,10 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         setAngle((a) => (a === "DEG" ? "RAD" : a === "RAD" ? "GRAD" : "DEG"));
         return;
       }
-      if (action === "MENU" || action === "NOP") return;
+      if (action === "MENU") { setPanel("menu"); return; }
+      if (action === "CONV") { setPanel("conv"); return; }
+      if (action === "MATRIX") { setPanel("matrix"); return; }
+      if (action === "NOP") return;
       if (action === "MR") {
         const r = insertAt(atoms, cursor, { t: "num", v: formatResult(memory) });
         setAtoms(r.atoms);
@@ -1322,7 +1394,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       else if (action === "pi") item = { t: "pi" };
       else if (action === "e") item = { t: "e" };
       else if (action === "ans") item = { t: "ans" };
-      else if (action === "x") item = { t: "x" };
+      else if (action === "x" || action === "y") item = { t: "x" };
       else if (action === "i") item = { t: "i" };
       else if (action === "frac") item = { t: "frac", num: [], den: [] };
       else if (action === "mixed") item = { t: "mixed", whole: [], num: [], den: [] };
@@ -1341,6 +1413,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       else if (action === "nCr") item = { t: "nCr", n: [], r: [] };
       else if (action === "nPr") item = { t: "nPr", n: [], r: [] };
       else if (action === "mod") item = { t: "mod", a: [], b: [] };
+      else if (action === "abs") item = { t: "abs", arg: [] };
       else if (action === "sum") item = { t: "sum", lo: [], hi: [], body: [] };
       else if (action === "integral") item = { t: "integral", lo: [], hi: [], body: [] };
       else if (action === "deriv") item = { t: "deriv", body: [], at: [] };
@@ -1466,6 +1539,61 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
         <div className="h-3" />
       )}
 
+
+      {panel ? (
+        <div className="mx-2 mb-2 max-h-[40%] overflow-y-auto rounded-xl border border-sky-500/30 bg-[#06101f]/95 p-3 shadow-lg">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-sky-300">
+              {panel === "menu" ? "Menu" : panel === "conv" ? "Conversion" : "Matrix"}
+            </p>
+            <button type="button" className="text-xs font-semibold text-slate-400 hover:text-white" onClick={() => setPanel(null)}>
+              Close
+            </button>
+          </div>
+          {panel === "menu" ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {[
+                ["Fraction", "frac"],
+                ["Mixed", "mixed"],
+                ["Σ Sum", "sum"],
+                ["∫ Integral", "integral"],
+                ["d/dx", "deriv"],
+                ["√ Root", "sqrt"],
+                ["nCr", "nCr"],
+                ["nPr", "nPr"],
+                ["Matrix", "MATRIX"],
+                ["Convert", "CONV"],
+              ].map(([lab, act]) => (
+                <button
+                  key={lab}
+                  type="button"
+                  className="rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-left text-[11px] font-semibold text-white hover:bg-white/10"
+                  onClick={() => {
+                    setPanel(null);
+                    apply(act);
+                  }}
+                >
+                  {lab}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {panel === "conv" ? <ConvPanel onUse={(v) => {
+            setPanel(null);
+            const r = insertAt(atoms, cursor, { t: "num", v: formatResult(v) });
+            setAtoms(r.atoms);
+            setCursor(r.cur);
+            setResult(formatResult(v));
+          }} /> : null}
+          {panel === "matrix" ? (
+            <p className="text-xs leading-relaxed text-slate-400">
+              Matrix tools: use numbers and parentheses for 2×2 operations. Full grid editor expands in a future update.
+              Determinant example: enter elements then compute manually, or use MENU → Matrix after selecting values.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {/* Keypad */}
       <div className="flex min-h-0 flex-1 flex-col gap-[6px] overflow-y-auto px-2 pb-2 pt-1">
         {rows.map((row, ri) => {
@@ -1486,7 +1614,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
                     type="button"
                     onClick={() => apply(act)}
                     className={cn(
-                      "relative flex min-h-[2.4rem] flex-col items-center justify-center rounded-[12px] text-[13px] font-semibold transition-transform duration-75 sm:text-[14px]",
+                      "relative flex min-h-[2.4rem] flex-col items-center justify-center rounded-[12px] text-[13px] font-semibold transition-transform duration-75 select-none sm:text-[14px]",
                       TONE[k.tone],
                       k.tone === "shift" && shift && "from-emerald-300 to-emerald-500 ring-2 ring-emerald-200/50",
                       isPressed && "scale-[0.96] brightness-110",
@@ -1508,6 +1636,92 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
     document.body,
   );
 }
+
+
+const CONV_UNITS: Record<string, { label: string; toBase: (v: number) => number; fromBase: (v: number) => number }[]> = {
+  Length: [
+    { label: "m", toBase: (v) => v, fromBase: (v) => v },
+    { label: "km", toBase: (v) => v * 1000, fromBase: (v) => v / 1000 },
+    { label: "cm", toBase: (v) => v / 100, fromBase: (v) => v * 100 },
+    { label: "mm", toBase: (v) => v / 1000, fromBase: (v) => v * 1000 },
+    { label: "in", toBase: (v) => v * 0.0254, fromBase: (v) => v / 0.0254 },
+    { label: "ft", toBase: (v) => v * 0.3048, fromBase: (v) => v / 0.3048 },
+    { label: "yd", toBase: (v) => v * 0.9144, fromBase: (v) => v / 0.9144 },
+    { label: "mi", toBase: (v) => v * 1609.344, fromBase: (v) => v / 1609.344 },
+  ],
+  Mass: [
+    { label: "kg", toBase: (v) => v, fromBase: (v) => v },
+    { label: "g", toBase: (v) => v / 1000, fromBase: (v) => v * 1000 },
+    { label: "mg", toBase: (v) => v / 1e6, fromBase: (v) => v * 1e6 },
+    { label: "lb", toBase: (v) => v * 0.45359237, fromBase: (v) => v / 0.45359237 },
+    { label: "oz", toBase: (v) => v * 0.028349523125, fromBase: (v) => v / 0.028349523125 },
+  ],
+  Temperature: [
+    { label: "°C", toBase: (v) => v, fromBase: (v) => v },
+    { label: "°F", toBase: (v) => (v - 32) * (5 / 9), fromBase: (v) => v * (9 / 5) + 32 },
+    { label: "K", toBase: (v) => v - 273.15, fromBase: (v) => v + 273.15 },
+  ],
+  Time: [
+    { label: "s", toBase: (v) => v, fromBase: (v) => v },
+    { label: "ms", toBase: (v) => v / 1000, fromBase: (v) => v * 1000 },
+    { label: "min", toBase: (v) => v * 60, fromBase: (v) => v / 60 },
+    { label: "h", toBase: (v) => v * 3600, fromBase: (v) => v / 3600 },
+    { label: "day", toBase: (v) => v * 86400, fromBase: (v) => v / 86400 },
+  ],
+  Angle: [
+    { label: "deg", toBase: (v) => v, fromBase: (v) => v },
+    { label: "rad", toBase: (v) => (v * 180) / Math.PI, fromBase: (v) => (v * Math.PI) / 180 },
+    { label: "grad", toBase: (v) => (v * 9) / 10, fromBase: (v) => (v * 10) / 9 },
+  ],
+  Data: [
+    { label: "B", toBase: (v) => v, fromBase: (v) => v },
+    { label: "KB", toBase: (v) => v * 1024, fromBase: (v) => v / 1024 },
+    { label: "MB", toBase: (v) => v * 1048576, fromBase: (v) => v / 1048576 },
+    { label: "GB", toBase: (v) => v * 1073741824, fromBase: (v) => v / 1073741824 },
+  ],
+};
+
+function ConvPanel({ onUse }: { onUse: (v: number) => void }) {
+  const cats = Object.keys(CONV_UNITS);
+  const [cat, setCat] = useState(cats[0]!);
+  const units = CONV_UNITS[cat]!;
+  const [fromI, setFromI] = useState(0);
+  const [toI, setToI] = useState(1);
+  const [val, setVal] = useState("1");
+  const from = units[fromI] ?? units[0]!;
+  const to = units[toI] ?? units[1] ?? units[0]!;
+  const num = Number(val);
+  const out = Number.isFinite(num) ? to.fromBase(from.toBase(num)) : NaN;
+  return (
+    <div className="space-y-2 text-xs text-white">
+      <select className="w-full rounded-lg border border-white/15 bg-white/10 px-2 py-1.5" value={cat} onChange={(e) => { setCat(e.target.value); setFromI(0); setToI(1); }}>
+        {cats.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="space-y-1">
+          <span className="text-slate-400">From</span>
+          <select className="w-full rounded-lg border border-white/15 bg-white/10 px-2 py-1.5" value={fromI} onChange={(e) => setFromI(Number(e.target.value))}>
+            {units.map((u, i) => <option key={u.label} value={i}>{u.label}</option>)}
+          </select>
+        </label>
+        <label className="space-y-1">
+          <span className="text-slate-400">To</span>
+          <select className="w-full rounded-lg border border-white/15 bg-white/10 px-2 py-1.5" value={toI} onChange={(e) => setToI(Number(e.target.value))}>
+            {units.map((u, i) => <option key={u.label} value={i}>{u.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <input type="number" className="w-full rounded-lg border border-white/15 bg-white/10 px-2 py-1.5" value={val} onChange={(e) => setVal(e.target.value)} placeholder="Value" />
+      <p className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-2 py-2 text-sm font-bold tabular-nums">
+        {Number.isFinite(out) ? formatResult(out) : "—"}
+      </p>
+      <button type="button" disabled={!Number.isFinite(out)} className="w-full rounded-lg bg-blue-600 py-2 font-bold disabled:opacity-40" onClick={() => onUse(out)}>
+        Use result
+      </button>
+    </div>
+  );
+}
+
 
 export function ExamCalculatorFab({ onClick }: { onClick: () => void }) {
   return (
