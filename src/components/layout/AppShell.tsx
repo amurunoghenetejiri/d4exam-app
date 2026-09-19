@@ -296,7 +296,7 @@ export function AppShell({
         )}
         style={{ position: "fixed", paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
-        <div className="mx-auto grid h-12 max-w-[1400px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-6 lg:px-8">
+        <div className="mx-auto grid h-12 max-w-[1400px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 sm:h-16 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
@@ -357,7 +357,7 @@ export function AppShell({
               </SheetContent>
             </Sheet>
 
-            <span className="hidden text-[15px] font-extrabold tracking-tight text-white lg:inline">
+            <span className="hidden text-sm font-bold tracking-tight text-white lg:inline">
               {config.label} Portal
             </span>
 

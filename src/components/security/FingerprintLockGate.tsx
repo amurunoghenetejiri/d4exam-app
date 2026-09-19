@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   UserRound,
   Building2,
+  LogOut,
 } from "lucide-react";
 import { useRouterState } from "@tanstack/react-router";
 import { App as CapApp } from "@capacitor/app";
@@ -345,6 +346,9 @@ export function FingerprintLockGate() {
   // Never leave the user on a blank navy screen
   useEffect(() => {
     if (!locked) return;
+    // Never keep a typed password across lock cycles / tab returns
+    setAppPw("");
+    setPwError(null);
     setSplashDone(true);
     const t = window.setTimeout(() => setPageReady(true), 150);
     return () => window.clearTimeout(t);
@@ -385,6 +389,8 @@ export function FingerprintLockGate() {
           if (isActiveCbtExamPath()) return;
           setFingerprintLocked(true);
           setLocked(true);
+          setAppPw("");
+          setPwError(null);
           setFailedMsg(null);
           setStatus("idle");
           promptedRef.current = false;
@@ -420,6 +426,8 @@ export function FingerprintLockGate() {
       setFingerprintLocked(true);
       setLocked(true);
       setMode("password");
+      setAppPw("");
+      setPwError(null);
       setFailedMsg(null);
       setStatus("idle");
       setPageReady(true);
@@ -611,11 +619,13 @@ export function FingerprintLockGate() {
         background: THEME_NAVY,
         WebkitBackfaceVisibility: "hidden",
         boxSizing: "border-box",
-        overflow: "hidden",
+        overflowY: "auto",
+        overflowX: "hidden",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
+        WebkitOverflowScrolling: "touch",
       }}
       role="dialog"
       aria-modal="true"
@@ -630,11 +640,11 @@ export function FingerprintLockGate() {
       />
 
       <div
-        className="relative z-10 flex w-full flex-col items-center justify-between"
+        className="relative z-10 flex w-full max-w-lg flex-col items-center justify-between md:max-w-xl lg:max-w-2xl"
         style={{
           flex: 1,
           width: "100%",
-          maxWidth: "100%",
+          minHeight: "100%",
           paddingTop: "max(1.25rem, env(safe-area-inset-top, 0px))",
           paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))",
           paddingLeft: "max(1.25rem, env(safe-area-inset-left, 0px))",
@@ -642,20 +652,20 @@ export function FingerprintLockGate() {
           boxSizing: "border-box",
         }}
       >
-        <div className="flex w-full flex-col items-center pt-6">
+        <div className="flex w-full flex-col items-center pt-4 md:pt-8">
           {/* Logo — no white plate */}
           <div className="flex shrink-0 justify-center">
             {schoolLogo ? (
               <img
                 src={schoolLogo}
                 alt={schoolName || "School"}
-                className="h-[min(22vw,92px)] w-[min(22vw,92px)] object-contain"
+                className="h-[min(22vw,92px)] w-[min(22vw,92px)] object-contain md:h-28 md:w-28 lg:h-32 lg:w-32"
                 style={{ background: "transparent" }}
                 onError={() => setLogoBroken(true)}
               />
             ) : (
               <div
-                className="grid h-[min(22vw,92px)] w-[min(22vw,92px)] place-items-center rounded-full border border-[#2563eb]/40"
+                className="grid h-[min(22vw,92px)] w-[min(22vw,92px)] place-items-center rounded-full border border-[#2563eb]/40 md:h-28 md:w-28 lg:h-32 lg:w-32"
                 style={{ backgroundColor: "transparent" }}
               >
                 <img src="/logo.png" alt="D4EXAM" className="h-[70%] w-[70%] object-contain" />
@@ -665,44 +675,48 @@ export function FingerprintLockGate() {
 
           {/* School name directly under logo */}
           {!isSuperAdmin && schoolName ? (
-            <p className="mt-3 max-w-[18rem] text-center text-sm font-medium leading-snug text-slate-300">
+            <p className="mt-3 max-w-[18rem] text-center text-sm font-medium leading-snug text-slate-300 md:max-w-md md:text-base">
               {schoolName}
             </p>
           ) : null}
 
           {/* Role badge */}
-          <div className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-slate-100 backdrop-blur-sm">
-            <RoleIcon className="h-3.5 w-3.5 text-blue-300" aria-hidden />
+          <div className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-1.5 text-xs font-semibold text-slate-100 backdrop-blur-sm md:px-4 md:py-2 md:text-sm">
+            <RoleIcon className="h-3.5 w-3.5 text-blue-300 md:h-4 md:w-4" aria-hidden />
             {label}
           </div>
 
           {/* User name */}
-          <h1 className="mt-2 max-w-[90vw] text-center text-[clamp(1rem,4.2vw,1.5rem)] font-bold leading-snug tracking-tight text-white">
+          <h1 className="mt-2 max-w-[90vw] text-center text-[clamp(1rem,4.2vw,1.5rem)] font-bold leading-snug tracking-tight text-white md:text-2xl lg:text-3xl">
             {name}
           </h1>
         </div>
 
         {mode === "password" ? (
-          <div className="flex w-full max-w-sm flex-col items-center px-2 py-4">
-            <h2 className="text-lg font-bold text-white sm:text-xl">Unlock D4EXAM</h2>
-            <p className="mt-1 text-center text-sm text-slate-400">Enter your app password</p>
+          <div className="flex w-full max-w-sm flex-col items-center px-2 py-4 md:max-w-md md:py-6">
+            <h2 className="text-lg font-bold text-white sm:text-xl md:text-2xl">Unlock D4EXAM</h2>
+            <p className="mt-1 text-center text-sm text-slate-400 md:text-base">Enter your app password</p>
             <input
               type="password"
-              autoComplete="current-password"
+              name="d4-app-unlock"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               value={appPw}
               onChange={(e) => setAppPw(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void unlockWithAppPassword();
               }}
-              className="mt-5 w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none focus:border-blue-400"
+              className="mt-5 w-full rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none focus:border-blue-400 md:py-3.5 md:text-base"
               placeholder="App password"
             />
-            {pwError ? <p className="mt-2 text-center text-xs font-semibold text-amber-300">{pwError}</p> : null}
+            {pwError ? <p className="mt-2 text-center text-xs font-semibold text-amber-300 md:text-sm">{pwError}</p> : null}
             <button
               type="button"
               disabled={pwBusy || !appPw}
               onClick={() => void unlockWithAppPassword()}
-              className="mt-4 w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white disabled:opacity-50"
+              className="mt-4 w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white disabled:opacity-50 md:py-3.5 md:text-base"
             >
               {pwBusy ? "Unlocking…" : "Unlock"}
             </button>
@@ -802,8 +816,9 @@ export function FingerprintLockGate() {
           <button
             type="button"
             onClick={() => setLogoutConfirm(true)}
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-slate-400 transition hover:bg-white/5 hover:text-slate-200 sm:text-sm"
+            className="inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white md:px-4 md:py-2.5 md:text-base"
           >
+            <LogOut className="h-4 w-4 md:h-5 md:w-5" aria-hidden />
             Log out
           </button>
           {mode === "fingerprint" ? (

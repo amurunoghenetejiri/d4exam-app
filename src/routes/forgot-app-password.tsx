@@ -7,6 +7,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowLeft, Mail, Shield } from "lucide-react";
 import { useSessionUser } from "@/lib/session";
+import { setFingerprintLocked } from "@/lib/fingerprint-lock";
 
 export const Route = createFileRoute("/forgot-app-password")({
   head: () => ({
@@ -82,13 +83,25 @@ function ForgotAppPasswordPage() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_20%,rgba(37,99,235,0.22),transparent_55%)]" />
 
       <div className="relative z-10 w-full max-w-md">
-        <Link
-          to="/login"
+        <button
+          type="button"
+          onClick={() => {
+            try {
+              setFingerprintLocked(true);
+            } catch {
+              /* ignore */
+            }
+            if (typeof window !== "undefined" && window.history.length > 1) {
+              window.history.back();
+            } else {
+              window.location.assign("/");
+            }
+          }}
           className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 transition hover:text-white"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
-        </Link>
+        </button>
 
         <div className="rounded-2xl border border-white/12 bg-white/[0.06] p-6 shadow-2xl backdrop-blur-md sm:p-8">
           <div className="mb-5 flex items-center gap-3">
@@ -117,12 +130,24 @@ function ForgotAppPasswordPage() {
                 Email delivery will activate when Resend is connected. For now, sign in with your
                 school account and set a new app password in Settings → Security.
               </p>
-              <Link
-                to="/login"
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    setFingerprintLocked(true);
+                  } catch {
+                    /* ignore */
+                  }
+                  if (typeof window !== "undefined" && window.history.length > 1) {
+                    window.history.back();
+                  } else {
+                    window.location.assign("/");
+                  }
+                }}
                 className="mt-2 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 py-3 text-sm font-bold text-white transition hover:bg-blue-500"
               >
-                Back to login
-              </Link>
+                Back to unlock
+              </button>
             </div>
           ) : (
             <form className="space-y-3.5" onSubmit={(e) => void onSubmit(e)}>
