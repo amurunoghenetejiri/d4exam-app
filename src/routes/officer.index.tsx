@@ -31,7 +31,8 @@ type Audit = {
 };
 
 /** Keep writers visible for the full exam window; heartbeat refreshes updated_at. */
-const ACTIVE_WRITER_MS = 4 * 60 * 60 * 1000;
+/** Only count writers seen recently (matches live-monitor offline hide window). */
+const ACTIVE_WRITER_MS = 3 * 60 * 1000;
 
 function isAttemptActiveNow(
   row: {
@@ -126,26 +127,13 @@ function Page() {
           now,
         ),
       );
+      // Only exams that currently have active writers (not offline / done / stale)
       const examIds = new Set<string>();
       for (const a of active) {
         const eid = (a as { exam_id: string | null }).exam_id;
         if (eid) examIds.add(eid);
       }
-      let ongoingCount = 0;
-      try {
-        const { count } = await supabase
-          .from("examinations")
-          .select("id", { count: "exact", head: true })
-          .eq("school_id", schoolId)
-          .eq("status", "ongoing");
-        ongoingCount = count ?? 0;
-      } catch {
-        /* ignore */
-      }
-      let liveExams = examIds.size;
-      if (liveExams === 0 && active.length > 0) liveExams = Math.max(1, ongoingCount);
-      else if (ongoingCount > liveExams && active.length > 0) liveExams = Math.max(liveExams, ongoingCount);
-      return { liveExams, writers: active.length };
+      return { liveExams: examIds.size, writers: active.length };
     },
   });
 

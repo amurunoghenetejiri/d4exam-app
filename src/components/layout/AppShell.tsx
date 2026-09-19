@@ -123,16 +123,10 @@ function NavLinks({
                       <item.icon
                         className={cn(
                           "h-4 w-4",
-                          isLive && "text-emerald-400",
+                          isLive && "animate-pulse text-emerald-400",
                         )}
                         aria-hidden
                       />
-                      {isLive ? (
-                        <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-2 w-2">
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                        </span>
-                      ) : null}
                     </span>
                     <span className="truncate">{item.label}</span>
                     {!isLive && badge?.dot ? (
@@ -606,13 +600,11 @@ export function AppShell({
                     aria-current={active ? "page" : undefined}
                   >
                     <span className="relative">
-                      <item.icon className={cn("h-5 w-5", isLive && "text-emerald-400")} aria-hidden />
-                      {isLive ? (
-                        <span className="pointer-events-none absolute -right-1 -top-0.5 flex h-2 w-2">
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                        </span>
-                      ) : badge?.dot ? (
+                      <item.icon
+                        className={cn("h-5 w-5", isLive && "animate-pulse text-emerald-400")}
+                        aria-hidden
+                      />
+                      {!isLive && badge?.dot ? (
                         <span
                           className={cn(
                             "absolute -right-1 -top-0.5 h-2 w-2 rounded-full",

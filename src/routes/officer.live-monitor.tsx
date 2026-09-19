@@ -245,6 +245,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
   const [levelFilter, setLevelFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [desktopView, setDesktopView] = useState(false);
   const [feedMode, setFeedMode] = useState<"camera" | "screen" | "both">("both");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [audioMuted, setAudioMuted] = useState(true);
@@ -1372,6 +1373,21 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
               <List className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> List
             </button>
           </div>
+          <button
+            type="button"
+            onClick={() => setDesktopView((v) => !v)}
+            title={desktopView ? "Exit desktop view" : "Desktop view"}
+            aria-pressed={desktopView}
+            className={cn(
+              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition sm:h-8 sm:w-8",
+              desktopView
+                ? "border-primary bg-primary text-white shadow-sm"
+                : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50",
+            )}
+          >
+            <Monitor className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden />
+            <span className="sr-only">{desktopView ? "Exit desktop view" : "Desktop view"}</span>
+          </button>
         </div>
       </div>
       <div className="grid gap-3 lg:grid-cols-1 lg:gap-4">
@@ -1409,7 +1425,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
             
               <Button type="button" variant={audioMuted ? "outline" : "default"} size="sm" className={cn("h-7 shrink-0 px-2 text-[10px] font-semibold sm:h-8 sm:text-xs", !audioMuted && "bg-emerald-600 text-white hover:bg-emerald-700")} onClick={() => { setAudioMuted((m) => { const next = !m; if (!next) { try { if (!audioCtxRef.current) { const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext; audioCtxRef.current = new AC(); } void audioCtxRef.current?.resume(); } catch { /* ignore */ } } return next; }); }} title={audioMuted ? "Unmute student microphones" : "Mute all"}>{audioMuted ? (<><MicOff className="mr-1 h-3.5 w-3.5" /> Muted</>) : (<><Mic className="mr-1 h-3.5 w-3.5" /> Listening</>)}</Button>
 {view === "grid" ? (
-            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            <div className={cn("grid gap-2 sm:gap-3", desktopView ? "grid-cols-3 md:grid-cols-4" : "grid-cols-2 lg:grid-cols-2 xl:grid-cols-3")}>
               {filtered.map((c) => (
                 <StudentCard
                   key={c.a.id}
@@ -1578,7 +1594,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
                       className={cn(
                         "relative w-full overflow-hidden rounded-xl bg-slate-900 shadow-inner ring-1 ring-black/10",
                         dual
-                          ? "h-full min-h-[11rem] sm:min-h-[16rem] lg:min-h-[min(40vh,26rem)] xl:min-h-[min(46vh,32rem)]"
+                          ? "h-[13.5rem] sm:h-[18rem] lg:h-[min(42vh,28rem)] xl:h-[min(48vh,34rem)]"
                           : "min-h-[12rem] sm:min-h-[18rem] lg:min-h-[min(58vh,40rem)] xl:min-h-[min(65vh,48rem)]",
                       )}
                     >
@@ -1622,27 +1638,26 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
                   {showScr && (
                     <div
                       className={cn(
-                        "relative w-full rounded-xl bg-slate-950 shadow-inner ring-1 ring-black/10",
-                        // Fixed frame; scroll INSIDE when student screen is taller
+                        "relative w-full overflow-hidden rounded-xl bg-slate-950 shadow-inner ring-1 ring-black/10",
+                        // Match camera card height exactly in dual mode
                         dual
-                          ? "max-h-[min(38vh,22rem)] overflow-y-auto overflow-x-hidden overscroll-contain"
-                          : "max-h-[min(58vh,34rem)] overflow-y-auto overflow-x-hidden overscroll-contain",
+                          ? "h-[13.5rem] sm:h-[18rem] lg:h-[min(42vh,28rem)] xl:h-[min(48vh,34rem)]"
+                          : "min-h-[12rem] sm:min-h-[18rem] lg:min-h-[min(58vh,40rem)] xl:min-h-[min(65vh,48rem)]",
                       )}
                     >
                       {showScrFrame ? (
-                        <div className="relative w-full">
-                          {/* Natural height preserves device aspect; outer scrolls if taller */}
+                        <div className="h-full w-full overflow-y-auto overflow-x-hidden overscroll-contain">
                           <img
                             src={sf!.src}
                             alt={`${selected.name} screen`}
-                            className="mx-auto block h-auto max-h-[min(70vh,52rem)] w-full max-w-full bg-black object-contain lg:max-h-[min(75vh,56rem)]"
+                            className="mx-auto block min-h-full w-full bg-black object-contain object-top"
                           />
                         </div>
                       ) : (
                         <div
                           className={cn(
                             "flex flex-col items-center justify-center gap-1.5 px-4 text-center text-white/60",
-                            dual ? "h-full min-h-[11rem] sm:min-h-[16rem] lg:min-h-[min(40vh,26rem)]" : "min-h-[14rem] sm:min-h-[20rem] lg:min-h-[28rem]",
+                            dual ? "h-[13.5rem] sm:h-[18rem] lg:h-[min(42vh,28rem)] xl:h-[min(48vh,34rem)]" : "min-h-[14rem] sm:min-h-[20rem] lg:min-h-[28rem]",
                           )}
                         >
                           <Monitor className="h-10 w-10 opacity-30" />
@@ -1893,7 +1908,7 @@ function StudentCard({
     >
       <div
         className={cn(
-          "relative aspect-[4/3] min-h-[7.5rem] sm:min-h-[12rem] lg:min-h-[15rem] xl:min-h-[17rem]",
+          "relative aspect-[4/3] min-h-[6.5rem] sm:min-h-[11rem] lg:min-h-[15rem] xl:min-h-[17rem]",
           isDone
             ? "bg-gradient-to-br from-sky-800 via-slate-800 to-slate-900"
             : "bg-gradient-to-br from-slate-800 to-slate-900",
@@ -1973,9 +1988,9 @@ function StudentCard({
               </span>
             )}
           </div>
-          <p className="truncate text-xs font-extrabold leading-tight text-white drop-shadow sm:text-sm lg:text-base">{name}</p>
-          <p className="truncate text-[10px] font-medium leading-tight text-white/85 sm:text-xs">{matric}</p>
-          <p className="truncate text-[9px] leading-tight text-white/65 sm:text-[10px]">{course}</p>
+          <p className="truncate text-[10px] font-bold leading-tight text-white drop-shadow sm:text-xs lg:text-sm">{name}</p>
+          <p className="truncate text-[8px] font-medium leading-tight text-white/85 sm:text-[10px]">{matric}</p>
+          <p className="truncate text-[8px] leading-tight text-white/65 sm:text-[9px]">{course}</p>
         </div>
       </div>
     </button>
