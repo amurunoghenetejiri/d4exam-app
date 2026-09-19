@@ -780,14 +780,22 @@ export function CbtExamPage() {
           setSeconds(Math.max(0, Math.ceil((ends - Date.now()) / 1000)));
         }
       } catch { /* ignore */ }
-      // Native never uses browser fullscreen — clear any stuck gate
+      // Never leave the exam UI blocked after background/return
       try {
-        if (typeof window !== "undefined" && (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()) {
-          setFsGate(false);
-        }
+        setFsGate(false);
       } catch { /* ignore */ }
       void flushAttemptProgress();
-      void reconnectCamera();
+      // Restart camera / face monitoring promptly (retry once if first fails)
+      void (async () => {
+        try {
+          await reconnectCamera();
+        } catch {
+          try {
+            await new Promise((r) => setTimeout(r, 400));
+            await reconnectCamera();
+          } catch { /* ignore */ }
+        }
+      })();
     };
 
     const onFsChange = () => {

@@ -1,4 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import {
   Bell,
@@ -32,6 +33,7 @@ import { cn, shortLabel, shortDisplayName } from "@/lib/utils";
 import { initials, signOut, useSessionUser, type AppRole } from "@/lib/session";
 import { useSchoolIdentity } from "@/lib/school-identity";
 import { useUnreadNotificationCount } from "@/lib/queries";
+import { supabase } from "@/lib/supabase";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import type { RoleConfig } from "@/components/navigation/navConfig";
 import { GlobalSearchPage } from "@/components/search/GlobalSearchPage";
@@ -77,7 +79,15 @@ function AccountRoleBadge({
   );
 }
 
-function NavLinks({ config, onNavigate }: { config: RoleConfig; onNavigate?: () => void }) {
+function NavLinks({
+  config,
+  onNavigate,
+  badges,
+}: {
+  config: RoleConfig;
+  onNavigate?: () => void;
+  badges?: Record<string, { dot?: "green" | "blue" | "red"; live?: boolean }>;
+}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
     <nav className="flex flex-col gap-5 px-3 py-4" aria-label={`${config.label} navigation`}>
@@ -92,6 +102,8 @@ function NavLinks({ config, onNavigate }: { config: RoleConfig; onNavigate?: () 
             {group.items.map((item) => {
               const active =
                 item.to === config.home ? pathname === item.to : pathname.startsWith(item.to);
+              const badge = badges?.[item.to];
+              const isLive = Boolean(badge?.live);
               return (
                 <li key={item.to}>
                   <Link
@@ -99,7 +111,7 @@ function NavLinks({ config, onNavigate }: { config: RoleConfig; onNavigate?: () 
                     preload={false}
                     onClick={onNavigate}
                     className={cn(
-                      "pressable flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
+                      "pressable relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
                       "active:scale-[0.98] active:bg-white/10",
                       active
                         ? "bg-blue-500/20 text-white"
@@ -107,8 +119,33 @@ function NavLinks({ config, onNavigate }: { config: RoleConfig; onNavigate?: () 
                     )}
                     aria-current={active ? "page" : undefined}
                   >
-                    <item.icon className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="relative shrink-0">
+                      <item.icon
+                        className={cn(
+                          "h-4 w-4",
+                          isLive && "text-emerald-400",
+                        )}
+                        aria-hidden
+                      />
+                      {isLive ? (
+                        <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-2 w-2">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                        </span>
+                      ) : null}
+                    </span>
                     <span className="truncate">{item.label}</span>
+                    {!isLive && badge?.dot ? (
+                      <span
+                        className={cn(
+                          "ml-auto h-2 w-2 shrink-0 rounded-full",
+                          badge.dot === "green" && "bg-emerald-400",
+                          badge.dot === "blue" && "bg-sky-400",
+                          badge.dot === "red" && "bg-red-400",
+                        )}
+                        aria-hidden
+                      />
+                    ) : null}
                   </Link>
                 </li>
               );
@@ -246,6 +283,59 @@ export function AppShell({
 
   const unreadQ = useUnreadNotificationCount(session?.userId);
   const unreadCount = unreadQ.data ?? 0;
+
+  // Nav activity indicators (live + pending)
+  const liveMonQ = useQuery({
+    queryKey: ["nav-live-monitor", session?.schoolId, session?.role],
+    enabled: Boolean(session?.schoolId) && (session?.role === "examination_officer" || session?.role === "school_admin"),
+    staleTime: 8_000,
+    refetchInterval: 12_000,
+    queryFn: async () => {
+      const sid = session?.schoolId;
+      if (!sid) return 0;
+      const { count } = await supabase
+        .from("exam_attempts")
+        .select("id", { count: "exact", head: true })
+        .eq("school_id", sid)
+        .eq("status", "in_progress");
+      return count ?? 0;
+    },
+  });
+  const pendingApprovalQ = useQuery({
+    queryKey: ["nav-pending-approvals", session?.schoolId, session?.role],
+    enabled: Boolean(session?.schoolId) && (session?.role === "examination_officer" || session?.role === "school_admin"),
+    staleTime: 10_000,
+    refetchInterval: 20_000,
+    queryFn: async () => {
+      const sid = session?.schoolId;
+      if (!sid) return 0;
+      const { count } = await supabase
+        .from("examinations")
+        .select("id", { count: "exact", head: true })
+        .eq("school_id", sid)
+        .in("status", ["pending_approval", "changes_requested"]);
+      return count ?? 0;
+    },
+  });
+
+  const navBadges = (() => {
+    const b: Record<string, { dot?: "green" | "blue" | "red"; live?: boolean }> = {};
+    if ((liveMonQ.data ?? 0) > 0) {
+      b["/officer/live-monitor"] = { live: true, dot: "green" };
+    }
+    if ((pendingApprovalQ.data ?? 0) > 0) {
+      b["/officer/approvals"] = { dot: "blue" };
+    }
+    if (unreadCount > 0) {
+      b[`${config.home}/notifications`] = { dot: "blue" };
+      // also common paths
+      b["/officer/notifications"] = { dot: "blue" };
+      b["/admin/notifications"] = { dot: "blue" };
+      b["/teacher/notifications"] = { dot: "blue" };
+      b["/student/notifications"] = { dot: "blue" };
+    }
+    return b;
+  })();
   const notifPath = `${config.home}/notifications`;
   const isSuperAdmin = session?.role === "super_admin";
   const isSchoolPortal = Boolean(session?.schoolId) && !isSuperAdmin;
@@ -273,7 +363,7 @@ export function AppShell({
           />
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain hide-scrollbar">
-          <NavLinks config={config} />
+          <NavLinks config={config} badges={navBadges} />
         </div>
         <div className="shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
           <button
@@ -339,7 +429,7 @@ export function AppShell({
                   </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                  <NavLinks config={config} onNavigate={() => setOpen(false)} />
+                  <NavLinks config={config} onNavigate={() => setOpen(false)} badges={navBadges} />
                 </div>
                 <div className="mt-auto shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
                   <button
@@ -496,18 +586,38 @@ export function AppShell({
                 item.to === config.home
                   ? pathname === item.to || pathname === `${item.to}/`
                   : pathname === item.to || pathname.startsWith(`${item.to}/`);
+              const badge = navBadges[item.to];
+              const isLive = Boolean(badge?.live);
               return (
                 <li key={item.to} className="flex">
                   <Link
                     to={item.to}
                     preload={false}
                     className={cn(
-                      "pressable flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors",
+                      "pressable relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors",
                       active ? "text-white" : "text-slate-400 hover:text-white",
+                      isLive && "text-emerald-400",
                     )}
                     aria-current={active ? "page" : undefined}
                   >
-                    <item.icon className="h-5 w-5" aria-hidden />
+                    <span className="relative">
+                      <item.icon className={cn("h-5 w-5", isLive && "text-emerald-400")} aria-hidden />
+                      {isLive ? (
+                        <span className="pointer-events-none absolute -right-1 -top-0.5 flex h-2 w-2">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                        </span>
+                      ) : badge?.dot ? (
+                        <span
+                          className={cn(
+                            "absolute -right-1 -top-0.5 h-2 w-2 rounded-full",
+                            badge.dot === "green" && "bg-emerald-400",
+                            badge.dot === "blue" && "bg-sky-400",
+                            badge.dot === "red" && "bg-red-400",
+                          )}
+                        />
+                      ) : null}
+                    </span>
                     <span className="truncate px-1">{item.label}</span>
                   </Link>
                 </li>

@@ -227,6 +227,7 @@ function Page() {
   const schoolId = user?.schoolId ?? null;
   const [filter, setFilter] = useState<FilterKey>("all");
   const [examFilter, setExamFilter] = useState<string>("all");
+  const [levelFilter, setLevelFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [feedMode, setFeedMode] = useState<"camera" | "screen" | "both">("both");
@@ -238,8 +239,6 @@ function Page() {
   audioMutedRef.current = audioMuted;
   selectedIdRef.current = selectedId;
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(new Set());
-  const [showAlertsMobile, setShowAlertsMobile] = useState(false);
-  const [alertsOpen, setAlertsOpen] = useState(false);
   const [frames, setFrames] = useState<Record<string, FrameEntry>>({});
   const [screenFrames, setScreenFrames] = useState<Record<string, { src: string; ts: number }>>({});
   const [warningBusy, setWarningBusy] = useState(false);
@@ -903,16 +902,36 @@ function Page() {
     return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
   }, [cards]);
 
+  const levelOptions = useMemo(() => {
+    const levels = new Set<string>();
+    for (const c of cards) {
+      const code = String(c.course || "");
+      const m = code.match(/(\d{3})/);
+      if (m) {
+        const n = parseInt(m[1]!, 10);
+        const lvl = Math.floor(n / 100) * 100;
+        if (lvl >= 100 && lvl <= 900) levels.add(String(lvl));
+      }
+    }
+    return Array.from(levels).sort((a, b) => Number(a) - Number(b));
+  }, [cards]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cards.filter((c) => {
       if (examFilter !== "all" && String(c.a.exam_id || "") !== examFilter) return false;
+      if (levelFilter !== "all") {
+        const code = String(c.course || "");
+        const m = code.match(/(\d{3})/);
+        const lvl = m ? String(Math.floor(parseInt(m[1]!, 10) / 100) * 100) : "";
+        if (lvl !== levelFilter) return false;
+      }
       if (filter === "offline" && c.sev !== "offline" && !c.isDone) return false;
       if (filter !== "all" && filter !== "offline" && (c.sev !== filter || c.isDone)) return false;
       if (!q) return true;
       return c.name.toLowerCase().includes(q) || c.matric.toLowerCase().includes(q) || c.course.toLowerCase().includes(q);
     });
-  }, [cards, filter, search, examFilter]);
+  }, [cards, filter, search, examFilter, levelFilter]);
 
   const selected = cards.find((c) => c.a.id === selectedId) ?? null;
   const studentNameById = useMemo(() => {
@@ -964,7 +983,9 @@ function Page() {
     }
   }, [events, studentNameById]);
 
-  const unreadAlerts = alerts.filter((a) => !readAlertIds.has(a.id));
+  // Alerts list retained for future; panel UI removed per product request
+  const _unreadAlerts = alerts.filter((a) => !readAlertIds.has(a.id));
+  void _unreadAlerts;
   const selectedTimeline = useMemo(() => {
     if (!selected) return [];
     const attemptId = String(selected.a.id || "");
@@ -1256,6 +1277,34 @@ function Page() {
             ))}
           </div>
         ) : null}
+        {levelOptions.length > 1 ? (
+          <div className="flex w-full flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setLevelFilter("all")}
+              className={cn(
+                "rounded-full px-2.5 py-1 text-[10px] font-bold sm:text-[11px]",
+                levelFilter === "all" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+              )}
+            >
+              All levels
+            </button>
+            {levelOptions.map((lv) => (
+              <button
+                key={lv}
+                type="button"
+                onClick={() => setLevelFilter(lv)}
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[10px] font-bold sm:text-[11px]",
+                  levelFilter === lv ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                )}
+              >
+                {lv} Level
+              </button>
+            ))}
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-1.5">
           <div className="flex min-w-0 flex-1 flex-wrap gap-1">
             {FILTERS.map(([k, label]) => (
@@ -1294,63 +1343,8 @@ function Page() {
               <List className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> List
             </button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 shrink-0 px-2 text-[10px] lg:hidden sm:h-8 sm:text-xs"
-            onClick={() => setShowAlertsMobile(true)}
-          >
-            <ShieldAlert className="mr-1 h-3.5 w-3.5" /> Alerts ({unreadAlerts.length})
-          </Button>
         </div>
       </div>
-      {/* Collapsible alerts — does not steal grid space */}
-          <div className="mb-3 rounded-xl border border-slate-200 bg-white shadow-sm">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
-              onClick={() => setAlertsOpen((o) => !o)}
-            >
-              <span className="inline-flex items-center gap-2 text-sm font-extrabold text-slate-900">
-                <ShieldAlert className="h-4 w-4 text-slate-500" />
-                Alerts
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                  {alerts.length}
-                </span>
-                {unreadAlerts.length > 0 ? (
-                  <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                    {unreadAlerts.length} new
-                  </span>
-                ) : null}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                {alerts.some((a) => a.severity === "high") ? (
-                  <span className="h-2.5 w-2.5 rounded-full bg-red-500" title="High severity" />
-                ) : alerts.some((a) => a.severity === "medium") ? (
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" title="Medium severity" />
-                ) : alerts.length > 0 ? (
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" title="OK" />
-                ) : (
-                  <span className="h-2.5 w-2.5 rounded-full bg-slate-300" />
-                )}
-                <ChevronLeft className={cn("h-4 w-4 text-slate-400 transition", alertsOpen ? "rotate-[-90deg]" : "rotate-[-270deg]")} />
-              </span>
-            </button>
-            {alertsOpen ? (
-              <div className="border-t border-slate-100 px-1 pb-2">
-                <AlertsPanel
-                  alerts={alerts}
-                  readIds={readAlertIds}
-                  studentNameById={studentNameById}
-                  onOpen={(sid) => {
-                    const card = cards.find((c) => c.a.student_id === sid);
-                    if (card) setSelectedId(card.a.id);
-                  }}
-                  onMarkAll={() => setReadAlertIds(new Set(alerts.map((a) => a.id)))}
-                />
-              </div>
-            ) : null}
-          </div>
       <div className="grid gap-3 lg:grid-cols-1 lg:gap-4">
         <div>
           {attemptsQ.isLoading ? (
@@ -1386,7 +1380,7 @@ function Page() {
             
               <Button type="button" variant={audioMuted ? "outline" : "default"} size="sm" className={cn("h-7 shrink-0 px-2 text-[10px] font-semibold sm:h-8 sm:text-xs", !audioMuted && "bg-emerald-600 text-white hover:bg-emerald-700")} onClick={() => { setAudioMuted((m) => { const next = !m; if (!next) { try { if (!audioCtxRef.current) { const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext; audioCtxRef.current = new AC(); } void audioCtxRef.current?.resume(); } catch { /* ignore */ } } return next; }); }} title={audioMuted ? "Unmute student microphones" : "Mute all"}>{audioMuted ? (<><MicOff className="mr-1 h-3.5 w-3.5" /> Muted</>) : (<><Mic className="mr-1 h-3.5 w-3.5" /> Listening</>)}</Button>
 {view === "grid" ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-2 xl:grid-cols-3">
               {filtered.map((c) => (
                 <StudentCard
                   key={c.a.id}
@@ -1470,34 +1464,6 @@ function Page() {
         </div>
         
       </div>
-      {showAlertsMobile && (
-        <div className="fixed inset-0 z-[60] bg-black/40 lg:hidden" onClick={() => setShowAlertsMobile(false)}>
-          <div
-            className="absolute inset-x-0 bottom-0 max-h-[75dvh] overflow-y-auto rounded-t-2xl bg-white p-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-extrabold">Alerts</h3>
-              <button type="button" onClick={() => setShowAlertsMobile(false)} aria-label="Close">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <AlertsPanel
-              alerts={alerts}
-              readIds={readAlertIds}
-              studentNameById={studentNameById}
-              onOpen={(sid) => {
-                const card = cards.find((c) => c.a.student_id === sid);
-                if (card) {
-                  setSelectedId(card.a.id);
-                  setShowAlertsMobile(false);
-                }
-              }}
-              onMarkAll={() => setReadAlertIds(new Set(alerts.map((a) => a.id)))}
-            />
-          </div>
-        </div>
-      )}
       {selected && (
         <div
           className="fixed inset-0 z-[70] flex flex-col bg-black/40 lg:left-64"
@@ -1574,7 +1540,7 @@ function Page() {
                     "shrink-0 bg-slate-100 p-1.5 sm:p-2",
                     // Only mount visible panes — no reserved empty column
                     dual
-                      ? "grid grid-cols-2 gap-1.5 sm:gap-3"
+                      ? "grid grid-cols-2 items-stretch gap-1.5 sm:gap-3"
                       : "flex flex-col gap-1.5",
                   )}
                 >
@@ -1583,7 +1549,7 @@ function Page() {
                       className={cn(
                         "relative w-full overflow-hidden rounded-xl bg-slate-900 shadow-inner ring-1 ring-black/10",
                         dual
-                          ? "min-h-[10rem] sm:min-h-[14rem] lg:min-h-[min(42vh,28rem)] xl:min-h-[min(48vh,34rem)]"
+                          ? "h-full min-h-[11rem] sm:min-h-[16rem] lg:min-h-[min(40vh,26rem)] xl:min-h-[min(46vh,32rem)]"
                           : "min-h-[12rem] sm:min-h-[18rem] lg:min-h-[min(58vh,40rem)] xl:min-h-[min(65vh,48rem)]",
                       )}
                     >
@@ -1647,7 +1613,7 @@ function Page() {
                         <div
                           className={cn(
                             "flex flex-col items-center justify-center gap-1.5 px-4 text-center text-white/60",
-                            dual ? "min-h-[10rem] sm:min-h-[14rem]" : "min-h-[14rem] sm:min-h-[20rem] lg:min-h-[28rem]",
+                            dual ? "h-full min-h-[11rem] sm:min-h-[16rem] lg:min-h-[min(40vh,26rem)]" : "min-h-[14rem] sm:min-h-[20rem] lg:min-h-[28rem]",
                           )}
                         >
                           <Monitor className="h-10 w-10 opacity-30" />
@@ -1898,7 +1864,7 @@ function StudentCard({
     >
       <div
         className={cn(
-          "relative aspect-[4/3] min-h-[11rem] sm:min-h-[14rem] lg:min-h-[16rem] xl:min-h-[18rem]",
+          "relative aspect-[4/3] min-h-[7.5rem] sm:min-h-[12rem] lg:min-h-[15rem] xl:min-h-[17rem]",
           isDone
             ? "bg-gradient-to-br from-sky-800 via-slate-800 to-slate-900"
             : "bg-gradient-to-br from-slate-800 to-slate-900",
