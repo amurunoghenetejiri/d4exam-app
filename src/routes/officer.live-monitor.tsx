@@ -246,6 +246,34 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [desktopView, setDesktopView] = useState(false);
+
+  // Chrome-style "Request desktop site": force wide viewport so layout matches laptop
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const meta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+    if (!meta) return;
+    const prev = meta.getAttribute("content") || "width=device-width, initial-scale=1, viewport-fit=cover";
+    if (desktopView) {
+      meta.setAttribute("content", "width=1100");
+      document.documentElement.classList.add("d4-monitor-desktop-site");
+      try {
+        document.body.style.minWidth = "1100px";
+      } catch { /* ignore */ }
+    } else {
+      meta.setAttribute("content", prev.includes("device-width") ? prev : "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
+      document.documentElement.classList.remove("d4-monitor-desktop-site");
+      try {
+        document.body.style.minWidth = "";
+      } catch { /* ignore */ }
+    }
+    return () => {
+      meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
+      document.documentElement.classList.remove("d4-monitor-desktop-site");
+      try {
+        document.body.style.minWidth = "";
+      } catch { /* ignore */ }
+    };
+  }, [desktopView]);
   const [feedMode, setFeedMode] = useState<"camera" | "screen" | "both">("both");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [audioMuted, setAudioMuted] = useState(true);
@@ -1425,7 +1453,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
             
               <Button type="button" variant={audioMuted ? "outline" : "default"} size="sm" className={cn("h-7 shrink-0 px-2 text-[10px] font-semibold sm:h-8 sm:text-xs", !audioMuted && "bg-emerald-600 text-white hover:bg-emerald-700")} onClick={() => { setAudioMuted((m) => { const next = !m; if (!next) { try { if (!audioCtxRef.current) { const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext; audioCtxRef.current = new AC(); } void audioCtxRef.current?.resume(); } catch { /* ignore */ } } return next; }); }} title={audioMuted ? "Unmute student microphones" : "Mute all"}>{audioMuted ? (<><MicOff className="mr-1 h-3.5 w-3.5" /> Muted</>) : (<><Mic className="mr-1 h-3.5 w-3.5" /> Listening</>)}</Button>
 {view === "grid" ? (
-            <div className={cn("grid gap-2 sm:gap-3", desktopView ? "grid-cols-3 md:grid-cols-4" : "grid-cols-2 lg:grid-cols-2 xl:grid-cols-3")}>
+            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-2 xl:grid-cols-3">
               {filtered.map((c) => (
                 <StudentCard
                   key={c.a.id}

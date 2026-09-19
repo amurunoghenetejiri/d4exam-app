@@ -242,6 +242,8 @@ export function ExamCameraPip({
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("focus", onFocus);
     window.addEventListener("pageshow", onPageShow);
+    const onCbtResume = () => tryReconnect();
+    window.addEventListener("d4-cbt-resume", onCbtResume);
 
     const health = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
@@ -255,12 +257,13 @@ export function ExamCameraPip({
         const v = videoRef.current;
         if (v && v.paused) void v.play().catch(() => {});
       }
-    }, 5000);
+    }, 3000);
 
     return () => {
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("d4-cbt-resume", onCbtResume);
       window.clearInterval(health);
     };
   }, [enabled, externalStream, stream, acquireOwnCamera]);

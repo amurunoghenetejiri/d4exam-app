@@ -102,6 +102,7 @@ export function CbtExamPage() {
   doneTerminatedRef.current = doneTerminated;
   const [doneForceSubmit, setDoneForceSubmit] = useState(false);
   const [index, setIndex] = useState(0);
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const answersRef = useRef<Record<string, number>>({});
   answersRef.current = answers;
@@ -785,16 +786,19 @@ export function CbtExamPage() {
         setFsGate(false);
       } catch { /* ignore */ }
       void flushAttemptProgress();
-      // Restart camera / face monitoring promptly (retry once if first fails)
+      // Restart camera / face monitoring promptly (retry if needed)
       void (async () => {
         try {
           await reconnectCamera();
         } catch {
           try {
-            await new Promise((r) => setTimeout(r, 400));
+            await new Promise((r) => setTimeout(r, 500));
             await reconnectCamera();
           } catch { /* ignore */ }
         }
+        try {
+          window.dispatchEvent(new CustomEvent("d4-cbt-resume"));
+        } catch { /* ignore */ }
       })();
     };
 
@@ -977,13 +981,13 @@ export function CbtExamPage() {
     }
   }, [previewMode, examQ.data?.school_id, student?.studentId, student?.schoolId, session?.schoolId, id, security.maxFaceWarnings, security.faceViolationAction, security.thresholdAction]);
 
-  async function requestSubmit() {
+  function requestSubmit() {
     if (done || finishingRef.current || previewMode) return;
-    const unanswered = Math.max(0, TOTAL - answeredCount);
-    const msg = unanswered > 0
-      ? `You have ${unanswered} unanswered question${unanswered === 1 ? "" : "s"}. Submit this examination anyway?`
-      : "Submit this examination now?";
-    if (!window.confirm(msg)) return;
+    setShowSubmitConfirm(true);
+  }
+
+  async function confirmSubmit() {
+    setShowSubmitConfirm(false);
     await finishAttempt(false);
   }
 
@@ -1515,10 +1519,24 @@ export function CbtExamPage() {
             <Button variant="outline" className="rounded-lg font-semibold" disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}>
               <ChevronLeft className="mr-1 h-4 w-4" /> Previous
             </Button>
-            <Button className="rounded-lg font-semibold" disabled={index >= TOTAL - 1} onClick={() => setIndex((i) => Math.min(TOTAL - 1, i + 1))}>
-              Next <ChevronRight className="ml-1 h-4 w-4" />
-            </Button>
+            {index >= TOTAL - 1 ? (
+              <Button className="rounded-lg font-semibold" onClick={() => requestSubmit()}>
+                Submit exam
+              </Button>
+            ) : (
+              <Button className="rounded-lg font-semibold" onClick={() => setIndex((i) => Math.min(TOTAL - 1, i + 1))}>
+                Next <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            )}
           </div>
+          {index >= TOTAL - 1 && !done ? (
+            <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-center sm:px-4">
+              <p className="text-sm font-bold text-sky-900">You are on the last question</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-sky-800/90">
+                Review your answers using the question numbers on the left, then submit when you are ready.
+              </p>
+            </div>
+          ) : null}
         </section>
       </div>
       </main>
@@ -1609,6 +1627,51 @@ export function CbtExamPage() {
             onClose={() => setCalcOpen(false)}
           />
         </>
+      )}
+      {showSubmitConfirm && started && !done && (
+        <div className="fixed inset-0 z-[230] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
+            <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
+              <Flag className="h-5 w-5" aria-hidden />
+            </div>
+            <h2 className="text-center text-lg font-extrabold text-slate-900">Submit examination?</h2>
+            <p className="mt-2 text-center text-sm text-slate-600">
+              {Math.max(0, TOTAL - answeredCount) > 0 ? (
+                <>
+                  You have answered <span className="font-bold text-slate-900">{answeredCount}</span> of{" "}
+                  <span className="font-bold text-slate-900">{TOTAL}</span> questions.
+                  <span className="mt-1 block font-semibold text-amber-700">
+                    {Math.max(0, TOTAL - answeredCount)} unanswered — you can still submit.
+                  </span>
+                </>
+              ) : (
+                <>
+                  You have answered all <span className="font-bold text-slate-900">{TOTAL}</span> questions.
+                </>
+              )}
+            </p>
+            <p className="mt-2 text-center text-xs text-slate-500">
+              Once submitted, you cannot change your answers.
+            </p>
+            <div className="mt-5 flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 font-semibold"
+                onClick={() => setShowSubmitConfirm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="flex-1 font-semibold"
+                onClick={() => void confirmSubmit()}
+              >
+                Submit
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
       {fsGate && security.fullscreen && started && !done && !paused && (
         <div
