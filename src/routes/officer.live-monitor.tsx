@@ -232,7 +232,7 @@ function lastActivityMs(presenceLastSeen: string | null | undefined, row: Attemp
   return Math.max(...candidates);
 }
 
-export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPageProps = {}) {
+export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPageProps = {} as LiveMonitorPageProps) {
   const { data: user } = useSessionUser();
   const qc = useQueryClient();
   const schoolId = user?.schoolId ?? null;

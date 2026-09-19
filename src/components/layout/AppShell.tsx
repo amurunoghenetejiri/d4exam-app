@@ -33,7 +33,7 @@ import { cn, shortLabel, shortDisplayName } from "@/lib/utils";
 import { initials, signOut, useSessionUser, type AppRole } from "@/lib/session";
 import { useSchoolIdentity } from "@/lib/school-identity";
 import { useUnreadNotificationCount } from "@/lib/queries";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import type { RoleConfig } from "@/components/navigation/navConfig";
 import { GlobalSearchPage } from "@/components/search/GlobalSearchPage";
