@@ -8,8 +8,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
-      width: 100%;
-      height: 100%;
+      min-height: 100%;
       min-height: 100dvh;
       background: #0b1b3a;
       color: #fff;
@@ -71,15 +70,12 @@
 </head>
 <body>
   <!--
-    Capacitor errorPath. Looks like the normal D4EXAM splash.
-    OFFLINE: stay here briefly then load the LOCAL bundled app (index.html).
-             Never jump to Vercel — that shows the system "no internet" page
-             and forces the user to press Back.
-    ONLINE: after splash, open the live app.
-    server.url in capacitor.config is never changed by this file.
+    Capacitor errorPath when live server.url is unreachable.
+    Looks exactly like the normal app splash — no "Connecting" / offline wall.
+    Silently retries the live app. server.url is never changed.
   -->
   <div class="boot-main">
-    <img src="logo.png" alt="" width="160" height="160" onerror="this.style.display='none'" />
+    <img src="/logo.png" alt="" width="160" height="160" onerror="this.style.display='none'" />
     <div class="t">D<span class="b">4</span>EXAM</div>
     <div class="s">Smart Examination System</div>
   </div>
@@ -88,42 +84,39 @@
   <script>
     (function () {
       var LIVE = "https://d4exam-platform.vercel.app/";
+      var tries = 0;
       var going = false;
 
-      function offline() {
-        try { return navigator.onLine === false; } catch (e) { return false; }
-      }
-
-      function goLocal() {
-        if (going) return;
-        going = true;
-        // Local bundled shell (same origin as errorPath) → splash + fingerprint
-        var targets = ["index.html", "./index.html", "/index.html"];
-        try { window.location.replace(targets[0]); } catch (e) {
-          going = false;
-          try { window.location.href = targets[1]; } catch (e2) { going = false; }
-        }
-      }
-
-      function goLive() {
+      function go() {
         if (going) return;
         going = true;
         try {
           window.location.replace(LIVE + "?boot=" + Date.now());
         } catch (e) {
           going = false;
+          try { window.location.href = LIVE; } catch (e2) { going = false; }
         }
       }
 
-      // Always show this splash first (~1.4s), then route.
+      // Hold normal splash briefly (like online boot), then retry live app silently
       setTimeout(function () {
-        if (offline()) goLocal();
-        else goLive();
-      }, 1400);
+        go();
+      }, 1200);
+
+      setInterval(function () {
+        tries += 1;
+        going = false;
+        go();
+      }, 3500);
 
       window.addEventListener("online", function () {
         going = false;
-        goLive();
+        go();
+      });
+
+      document.addEventListener("click", function () {
+        going = false;
+        go();
       });
     })();
   </script>

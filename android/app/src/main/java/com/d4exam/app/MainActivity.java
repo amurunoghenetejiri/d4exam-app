@@ -68,8 +68,7 @@ public class MainActivity extends BridgeActivity {
       }
       return cm.getActiveNetworkInfo() != null && cm.getActiveNetworkInfo().isConnected();
     } catch (Throwable ignored) {
-      // Prefer the local splash/shell over the system error page
-      return false;
+      return true;
     }
   }
 
