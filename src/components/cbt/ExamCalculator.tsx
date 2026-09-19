@@ -48,9 +48,12 @@ type Atom =
   | { t: "logb"; base: Atom[]; arg: Atom[] }
   | { t: "nCr"; n: Atom[]; r: Atom[] }
   | { t: "nPr"; n: Atom[]; r: Atom[] }
-  | { t: "mod"; a: Atom[]; b: Atom[] };
+  | { t: "mod"; a: Atom[]; b: Atom[] }
+  | { t: "sum"; lo: Atom[]; hi: Atom[]; body: Atom[] }
+  | { t: "integral"; lo: Atom[]; hi: Atom[]; body: Atom[] }
+  | { t: "deriv"; body: Atom[]; at: Atom[] };
 
-type Slot = "main" | "num" | "den" | "whole" | "arg" | "exp" | "n" | "base" | "r" | "a" | "b";
+type Slot = "main" | "num" | "den" | "whole" | "arg" | "exp" | "n" | "base" | "r" | "a" | "b" | "lo" | "hi" | "body" | "at";
 type Cursor = { path: number[]; slot: Slot };
 
 function emptyCursor(): Cursor {
@@ -224,6 +227,48 @@ function evalAtoms(atoms: Atom[], angle: AngleMode, ans: number): number {
           tokens.push(String(a % b));
           break;
         }
+        case "sum": {
+          const lo = Math.floor(evalAtoms(node.lo.length ? node.lo : [{ t: "num", v: "1" }], angle, ans));
+          const hi = Math.floor(evalAtoms(node.hi.length ? node.hi : [{ t: "num", v: "1" }], angle, ans));
+          let s = 0;
+          const start = Math.min(lo, hi);
+          const end = Math.max(lo, hi);
+          if (end - start > 5000) {
+            tokens.push("NaN");
+            break;
+          }
+          for (let i = start; i <= end; i++) {
+            // substitute X with i in body
+            const body = substituteX(node.body.length ? node.body : [{ t: "num", v: "0" }], i);
+            s += evalAtoms(body, angle, ans);
+          }
+          tokens.push(String(s));
+          break;
+        }
+        case "integral": {
+          const lo = evalAtoms(node.lo.length ? node.lo : [{ t: "num", v: "0" }], angle, ans);
+          const hi = evalAtoms(node.hi.length ? node.hi : [{ t: "num", v: "1" }], angle, ans);
+          const steps = 200;
+          const h = (hi - lo) / steps;
+          let s = 0;
+          for (let k = 0; k <= steps; k++) {
+            const x = lo + k * h;
+            const body = substituteX(node.body.length ? node.body : [{ t: "num", v: "0" }], x);
+            const y = evalAtoms(body, angle, ans);
+            s += (k === 0 || k === steps ? 1 : 2) * y;
+          }
+          tokens.push(String((h / 2) * s));
+          break;
+        }
+        case "deriv": {
+          const at = evalAtoms(node.at.length ? node.at : [{ t: "num", v: "0" }], angle, ans);
+          const eps = 1e-6;
+          const body = node.body.length ? node.body : [{ t: "num", v: "0" }];
+          const y1 = evalAtoms(substituteX(body, at + eps), angle, ans);
+          const y0 = evalAtoms(substituteX(body, at - eps), angle, ans);
+          tokens.push(String((y1 - y0) / (2 * eps)));
+          break;
+        }
       }
     }
   };
@@ -231,17 +276,79 @@ function evalAtoms(atoms: Atom[], angle: AngleMode, ans: number): number {
   return evalTokenList(tokens);
 }
 
+/** Replace X / x atoms with a numeric value (for Σ, ∫, d/dx). */
+function substituteX(atoms: Atom[], xVal: number): Atom[] {
+  return atoms.map((node) => {
+    if (node.t === "x") return { t: "num", v: String(xVal) };
+    if (node.t === "fn") return { ...node, arg: substituteX(node.arg, xVal) };
+    if (node.t === "frac") return { ...node, num: substituteX(node.num, xVal), den: substituteX(node.den, xVal) };
+    if (node.t === "mixed")
+      return {
+        ...node,
+        whole: substituteX(node.whole, xVal),
+        num: substituteX(node.num, xVal),
+        den: substituteX(node.den, xVal),
+      };
+    if (node.t === "sqrt" || node.t === "cbrt") return { ...node, arg: substituteX(node.arg, xVal) };
+    if (node.t === "nroot") return { ...node, n: substituteX(node.n, xVal), arg: substituteX(node.arg, xVal) };
+    if (node.t === "pow") return { ...node, base: substituteX(node.base, xVal), exp: substituteX(node.exp, xVal) };
+    if (node.t === "inv" || node.t === "sq" || node.t === "cube")
+      return { ...node, base: substituteX(node.base, xVal) };
+    if (node.t === "logb") return { ...node, base: substituteX(node.base, xVal), arg: substituteX(node.arg, xVal) };
+    if (node.t === "sum")
+      return {
+        ...node,
+        lo: substituteX(node.lo, xVal),
+        hi: substituteX(node.hi, xVal),
+        body: substituteX(node.body, xVal),
+      };
+    if (node.t === "integral")
+      return {
+        ...node,
+        lo: substituteX(node.lo, xVal),
+        hi: substituteX(node.hi, xVal),
+        body: substituteX(node.body, xVal),
+      };
+    if (node.t === "deriv")
+      return { ...node, body: substituteX(node.body, xVal), at: substituteX(node.at, xVal) };
+    return node;
+  });
+}
+
+function isValueToken(t: string): boolean {
+  if (t === "(" || t === ")") return false;
+  if (["+", "−", "-", "×", "÷", "^", "%", "!"].includes(t)) return false;
+  return t.length > 0;
+}
+
 function evalTokenList(tokens: string[]): number {
-  const expanded: string[] = [];
+  // Expand % / ! then insert implicit multiplication: 2(3)→2×(3), 2π→2×π, )( → )×(
+  const step1: string[] = [];
   for (const t of tokens) {
     if (t === "%") {
-      expanded.push("/", "100");
+      step1.push("/", "100");
       continue;
     }
     if (t === "!") {
-      const prev = expanded.pop();
-      expanded.push(String(factorial(Number(prev))));
+      const prev = step1.pop();
+      step1.push(String(factorial(Number(prev))));
       continue;
+    }
+    step1.push(t);
+  }
+  const expanded: string[] = [];
+  for (let i = 0; i < step1.length; i++) {
+    const t = step1[i]!;
+    const prev = expanded.length ? expanded[expanded.length - 1]! : null;
+    if (prev != null) {
+      const needMul =
+        // number/const before (
+        (isValueToken(prev) && t === "(") ||
+        // ) before number/const or (
+        (prev === ")" && (t === "(" || isValueToken(t))) ||
+        // number before number (e.g. from constants sequenced) — only if both pure numbers
+        (isValueToken(prev) && isValueToken(t) && !["+", "−", "-", "×", "÷", "^"].includes(prev));
+      if (needMul) expanded.push("×");
     }
     expanded.push(t);
   }
@@ -302,6 +409,15 @@ function getListAt(atoms: Atom[], cur: Cursor): Atom[] {
   if (node.t === "logb") return cur.slot === "base" ? node.base : node.arg;
   if (node.t === "nCr" || node.t === "nPr") return cur.slot === "r" ? node.r : node.n;
   if (node.t === "mod") return cur.slot === "b" ? node.b : node.a;
+  if (node.t === "sum" || node.t === "integral") {
+    if (cur.slot === "lo") return node.lo;
+    if (cur.slot === "hi") return node.hi;
+    return node.body;
+  }
+  if (node.t === "deriv") {
+    if (cur.slot === "at") return node.at;
+    return node.body;
+  }
   return atoms;
 }
 
@@ -334,6 +450,13 @@ function setListAt(atoms: Atom[], cur: Cursor, nextList: Atom[]): Atom[] {
   } else if (node.t === "mod") {
     if (cur.slot === "b") node.b = nextList;
     else node.a = nextList;
+  } else if (node.t === "sum" || node.t === "integral") {
+    if (cur.slot === "lo") node.lo = nextList;
+    else if (cur.slot === "hi") node.hi = nextList;
+    else node.body = nextList;
+  } else if (node.t === "deriv") {
+    if (cur.slot === "at") node.at = nextList;
+    else node.body = nextList;
   }
   return clone;
 }
@@ -413,6 +536,14 @@ function insertAt(atoms: Atom[], cur: Cursor, item: Atom): { atoms: Atom[]; cur:
     const a = popTrailingNum(list);
     list.push({ t: "mod", a: a.length ? a : [], b: [] });
     return { atoms: setListAt(atoms, cur, list), cur: { path: [list.length - 1], slot: "b" } };
+  }
+  if (item.t === "sum" || item.t === "integral") {
+    list.push(item);
+    return { atoms: setListAt(atoms, cur, list), cur: { path: [list.length - 1], slot: "lo" } };
+  }
+  if (item.t === "deriv") {
+    list.push(item);
+    return { atoms: setListAt(atoms, cur, list), cur: { path: [list.length - 1], slot: "body" } };
   }
   if (item.t === "num" && list.length && list[list.length - 1]!.t === "num") {
     const last = list[list.length - 1] as { t: "num"; v: string };
@@ -759,6 +890,43 @@ function AtomView({
           <SlotBox atoms={node.b} active={active("b")} onFocus={() => onCursor({ path, slot: "b" })} />
         </span>
       );
+    case "sum":
+      return (
+        <span className="mx-0.5 inline-flex items-end font-sans text-[0.88em]">
+          <span className="mr-0.5 text-[1.2em] leading-none">Σ</span>
+          <span className="inline-flex flex-col items-center text-[0.65em] leading-none">
+            <SlotBox atoms={node.hi} active={active("hi")} onFocus={() => onCursor({ path, slot: "hi" })} minW="0.5em" />
+            <span className="my-px opacity-50">—</span>
+            <SlotBox atoms={node.lo} active={active("lo")} onFocus={() => onCursor({ path, slot: "lo" })} minW="0.5em" />
+          </span>
+          <span className="ml-0.5">(</span>
+          <SlotBox atoms={node.body} active={active("body")} onFocus={() => onCursor({ path, slot: "body" })} />
+          <span>)</span>
+        </span>
+      );
+    case "integral":
+      return (
+        <span className="mx-0.5 inline-flex items-end font-sans text-[0.88em]">
+          <span className="mr-0.5 text-[1.25em] leading-none">∫</span>
+          <span className="inline-flex flex-col items-center text-[0.65em] leading-none">
+            <SlotBox atoms={node.hi} active={active("hi")} onFocus={() => onCursor({ path, slot: "hi" })} minW="0.5em" />
+            <SlotBox atoms={node.lo} active={active("lo")} onFocus={() => onCursor({ path, slot: "lo" })} minW="0.5em" />
+          </span>
+          <SlotBox atoms={node.body} active={active("body")} onFocus={() => onCursor({ path, slot: "body" })} />
+          <span className="ml-0.5 italic">dx</span>
+        </span>
+      );
+    case "deriv":
+      return (
+        <span className="mx-0.5 inline-flex items-center font-sans text-[0.85em]">
+          <span className="mr-0.5">d/dx</span>
+          <span>[</span>
+          <SlotBox atoms={node.body} active={active("body")} onFocus={() => onCursor({ path, slot: "body" })} />
+          <span>](</span>
+          <SlotBox atoms={node.at} active={active("at")} onFocus={() => onCursor({ path, slot: "at" })} minW="0.55em" />
+          <span>)</span>
+        </span>
+      );
     default:
       return null;
   }
@@ -790,9 +958,9 @@ function scientificRows(): KeyDef[][] {
       { label: "DRG", action: "DRG", tone: "fn" },
       { label: <span className="text-[11px]"><span className="align-top text-[9px]">a</span>/<span className="align-bottom text-[9px]">b</span></span>, action: "frac", tone: "fn" },
       { label: <span className="text-[11px]">a<sup className="text-[8px]">b</sup>/<sub className="text-[8px]">c</sub></span>, action: "mixed", tone: "fn" },
-      { label: "Σ", action: "NOP", tone: "fn" },
-      { label: "∫", action: "NOP", tone: "fn" },
-      { label: <span className="text-[10px]">d/dx</span>, action: "NOP", tone: "fn" },
+      { label: "Σ", action: "sum", tone: "fn" },
+      { label: "∫", action: "integral", tone: "fn" },
+      { label: <span className="text-[10px]">d/dx</span>, action: "deriv", tone: "fn" },
     ],
     [
       { label: "CONV", action: "NOP", tone: "fn" },
@@ -900,14 +1068,14 @@ function basicRows(): KeyDef[][] {
 
 const TONE: Record<Tone, string> = {
   shift:
-    "bg-gradient-to-b from-emerald-400 to-emerald-600 text-white shadow-[0_3px_0_0_#065f46] active:shadow-none active:translate-y-[2px]",
-  ac: "bg-gradient-to-b from-orange-400 to-orange-600 text-white shadow-[0_3px_0_0_#9a3412] active:shadow-none active:translate-y-[2px]",
-  bk: "bg-gradient-to-b from-[#3b5b8a] to-[#1e3a5f] text-white shadow-[0_3px_0_0_#0f172a] active:shadow-none active:translate-y-[2px]",
-  fn: "bg-gradient-to-b from-[#2a4a7a] to-[#16325a] text-sky-50 shadow-[0_3px_0_0_#0b1b3a] active:shadow-none active:translate-y-[2px]",
-  nav: "bg-gradient-to-b from-[#2a4a7a] to-[#16325a] text-white shadow-[0_3px_0_0_#0b1b3a] active:shadow-none active:translate-y-[2px]",
-  num: "bg-gradient-to-b from-[#1a2438] to-[#0c1220] text-white shadow-[0_3px_0_0_#020617] active:shadow-none active:translate-y-[2px]",
-  op: "bg-gradient-to-b from-[#2563a8] to-[#1e4a80] text-white shadow-[0_3px_0_0_#0c2a4a] active:shadow-none active:translate-y-[2px]",
-  eq: "bg-gradient-to-b from-[#3b82f6] to-[#1d4ed8] text-white font-extrabold shadow-[0_3px_0_0_#1e3a8a] active:shadow-none active:translate-y-[2px]",
+    "bg-gradient-to-b from-[#34d399] to-[#059669] text-white shadow-[0_3px_0_0_#064e3b,0_0_12px_rgba(16,185,129,0.25)] active:translate-y-[2px] active:shadow-[0_1px_0_0_#064e3b]",
+  ac: "bg-gradient-to-b from-[#fb923c] to-[#ea580c] text-white shadow-[0_3px_0_0_#9a3412,0_0_12px_rgba(249,115,22,0.25)] active:translate-y-[2px] active:shadow-[0_1px_0_0_#9a3412]",
+  bk: "bg-gradient-to-b from-[#3b82c4] to-[#1e4a7a] text-white shadow-[0_3px_0_0_#0f2744] active:translate-y-[2px] active:shadow-[0_1px_0_0_#0f2744]",
+  fn: "bg-gradient-to-b from-[#2b5a9e] to-[#163a6b] text-white shadow-[0_3px_0_0_#0a1e3d,inset_0_1px_0_rgba(255,255,255,0.12)] active:translate-y-[2px] active:shadow-[0_1px_0_0_#0a1e3d]",
+  nav: "bg-gradient-to-b from-[#2b5a9e] to-[#163a6b] text-white shadow-[0_3px_0_0_#0a1e3d] active:translate-y-[2px] active:shadow-[0_1px_0_0_#0a1e3d]",
+  num: "bg-gradient-to-b from-[#1e293b] to-[#0f172a] text-white shadow-[0_3px_0_0_#020617,inset_0_1px_0_rgba(255,255,255,0.06)] active:translate-y-[2px] active:shadow-[0_1px_0_0_#020617]",
+  op: "bg-gradient-to-b from-[#3b82f6] to-[#1d4ed8] text-white shadow-[0_3px_0_0_#1e3a8a,inset_0_1px_0_rgba(255,255,255,0.15)] active:translate-y-[2px] active:shadow-[0_1px_0_0_#1e3a8a]",
+  eq: "bg-gradient-to-b from-[#60a5fa] to-[#2563eb] text-white font-extrabold shadow-[0_3px_0_0_#1e40af,0_0_16px_rgba(37,99,235,0.35)] active:translate-y-[2px] active:shadow-[0_1px_0_0_#1e40af]",
 };
 
 /* ═══════════════ Component ═══════════════ */
@@ -1173,6 +1341,9 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       else if (action === "nCr") item = { t: "nCr", n: [], r: [] };
       else if (action === "nPr") item = { t: "nPr", n: [], r: [] };
       else if (action === "mod") item = { t: "mod", a: [], b: [] };
+      else if (action === "sum") item = { t: "sum", lo: [], hi: [], body: [] };
+      else if (action === "integral") item = { t: "integral", lo: [], hi: [], body: [] };
+      else if (action === "deriv") item = { t: "deriv", body: [], at: [] };
       else return;
 
       const r = insertAt(atoms, cursor, item);
@@ -1224,19 +1395,22 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
           <button
             type="button"
             onClick={() => apply("DRG")}
-            className="rounded-full bg-sky-500 px-2.5 py-1 text-[10px] font-bold text-white shadow-md shadow-sky-900/40"
+            className="rounded-full bg-[#2563eb] px-3 py-1.5 text-[11px] font-bold tracking-wide text-white shadow-lg shadow-blue-900/40"
           >
             {angle}
           </button>
-          {memory !== 0 ? (
-            <span className="rounded-full bg-sky-600/80 px-2 py-1 text-[10px] font-bold text-white">M</span>
-          ) : (
-            <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-bold text-slate-400">M</span>
-          )}
+          <span
+            className={cn(
+              "rounded-full px-3 py-1.5 text-[11px] font-bold tracking-wide",
+              memory !== 0 ? "bg-[#2563eb] text-white shadow-lg shadow-blue-900/40" : "bg-[#1e3a5f] text-slate-300",
+            )}
+          >
+            M
+          </span>
           <button
             type="button"
             onClick={onClose}
-            className="grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20 active:scale-95"
+            className="grid h-9 w-9 place-items-center rounded-full bg-[#1e3a5f] text-white shadow-md transition hover:bg-[#2a4a75] active:scale-95"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
@@ -1247,7 +1421,7 @@ export function ExamCalculator({ open, mode, onClose }: Props) {
       {/* Display */}
       <div
         ref={scrollRef}
-        className="mx-3 shrink-0 overflow-x-auto rounded-2xl border border-sky-500/20 bg-[#050d1a] px-3.5 py-3 shadow-[inset_0_2px_12px_rgba(0,0,0,0.55)]"
+        className="mx-3 shrink-0 overflow-x-auto rounded-2xl border border-[#1e4a8c] bg-[#06101f] px-3.5 py-3.5 shadow-[inset_0_2px_16px_rgba(0,0,0,0.65),0_0_0_1px_rgba(56,189,248,0.12),0_0_24px_rgba(30,64,140,0.35)]"
         style={{ minHeight: "6.75rem" }}
         onClick={() => setCursor(emptyCursor())}
       >

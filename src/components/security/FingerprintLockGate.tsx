@@ -185,7 +185,7 @@ export function FingerprintLockGate() {
     };
   }, [native, splashDone]);
 
-  const [mode, setMode] = useState<"fingerprint" | "password">("fingerprint");
+  const [mode, setMode] = useState<"fingerprint" | "password">("fingerprint"); // default: fingerprint
   const [appPw, setAppPw] = useState("");
   const [pwError, setPwError] = useState<string | null>(null);
   const [pwBusy, setPwBusy] = useState(false);
@@ -321,8 +321,12 @@ export function FingerprintLockGate() {
   useEffect(() => {
     if (!locked) return;
     const fpOn = isFingerprintEnabledFor(userId) || Boolean(pref?.enabled && pref.userId);
-    if (fpOn) setMode("fingerprint");
-    else setMode("password");
+    // Default is always fingerprint when enabled — password only if user taps "Use password"
+    if (fpOn) {
+      setMode("fingerprint");
+    } else {
+      setMode("password");
+    }
   }, [locked, userId, pref?.enabled]);
 
 
