@@ -62,8 +62,19 @@ import {
 
 export const Route = createFileRoute("/officer/live-monitor")({
   head: () => ({ meta: [{ title: "Live Monitoring — D4EXAM" }] }),
-  component: Page,
+  component: OfficerLiveMonitorRoute,
 });
+
+function OfficerLiveMonitorRoute() {
+  return <LiveMonitorPage />;
+}
+
+export type LiveMonitorPageProps = {
+  /** When set, only exams on these courses (teacher scope). */
+  courseIds?: string[] | null;
+  /** Page title override */
+  pageTitle?: string;
+};
 
 const OFFLINE_HIDE_MS = 3 * 60 * 1000;
 const RECENT_SUBMIT_MS = 10 * 60 * 1000;
@@ -221,10 +232,14 @@ function lastActivityMs(presenceLastSeen: string | null | undefined, row: Attemp
   return Math.max(...candidates);
 }
 
-function Page() {
+export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPageProps = {}) {
   const { data: user } = useSessionUser();
   const qc = useQueryClient();
   const schoolId = user?.schoolId ?? null;
+  const courseIdSet = useMemo(() => {
+    if (!courseIds || !courseIds.length) return null;
+    return new Set(courseIds.map(String));
+  }, [courseIds]);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [examFilter, setExamFilter] = useState<string>("all");
   const [levelFilter, setLevelFilter] = useState<string>("all");
@@ -352,18 +367,22 @@ function Page() {
   );
 
   const examsQ = useQuery({
-    queryKey: ["officer-live", schoolId],
+    queryKey: ["officer-live", schoolId, courseIds?.slice().sort().join(",") ?? "all"],
     enabled: Boolean(schoolId),
     refetchInterval: 12_000,
     queryFn: async () => {
       if (!schoolId) return [];
-      const { data, error } = await supabase
+      let q = supabase
         .from("examinations")
-        .select("id, title, status, scheduled_start, scheduled_end, courses(code, name)")
+        .select("id, title, status, scheduled_start, scheduled_end, course_id, courses(code, name)")
         .eq("school_id", schoolId)
         .in("status", ["ongoing", "scheduled", "published", "approved"])
         .order("scheduled_start", { ascending: true })
         .limit(50);
+      if (courseIds && courseIds.length) {
+        q = q.in("course_id", courseIds);
+      }
+      const { data, error } = await q;
       if (error) {
         console.warn("[live-monitor] exams query", error);
         return [];
@@ -373,7 +392,7 @@ function Page() {
   });
 
   const attemptsQ = useQuery({
-    queryKey: ["officer-live-attempts", schoolId],
+    queryKey: ["officer-live-attempts", schoolId, courseIds?.slice().sort().join(",") ?? "all"],
     enabled: Boolean(schoolId),
     refetchInterval: 3_000,
     queryFn: async () => {
@@ -916,9 +935,19 @@ function Page() {
     return Array.from(levels).sort((a, b) => Number(a) - Number(b));
   }, [cards]);
 
+  const allowedExamIds = useMemo(() => {
+    if (!courseIdSet) return null;
+    const ids = new Set<string>();
+    for (const e of examsQ.data ?? []) {
+      ids.add(String(e.id));
+    }
+    return ids;
+  }, [courseIdSet, examsQ.data]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return cards.filter((c) => {
+      if (allowedExamIds && !allowedExamIds.has(String(c.a.exam_id || ""))) return false;
       if (examFilter !== "all" && String(c.a.exam_id || "") !== examFilter) return false;
       if (levelFilter !== "all") {
         const code = String(c.course || "");
@@ -931,7 +960,7 @@ function Page() {
       if (!q) return true;
       return c.name.toLowerCase().includes(q) || c.matric.toLowerCase().includes(q) || c.course.toLowerCase().includes(q);
     });
-  }, [cards, filter, search, examFilter, levelFilter]);
+  }, [cards, filter, search, examFilter, levelFilter, allowedExamIds]);
 
   const selected = cards.find((c) => c.a.id === selectedId) ?? null;
   const studentNameById = useMemo(() => {
@@ -1221,7 +1250,7 @@ function Page() {
   return (
     <div className="mx-auto w-full max-w-[1400px] px-0 sm:px-0">
       <PageHeader
-        title="Live Monitoring"
+        title={pageTitle || "Live Monitoring"}
         description={
           <span className="flex flex-wrap items-center gap-1.5 text-[12px] sm:text-sm">
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 sm:gap-1.5 sm:px-2 sm:text-[11px]">

@@ -93,7 +93,7 @@ export const teacherNav: RoleConfig = {
     {
       label: "Delivery",
       items: [
-        { label: "Live Exams", to: "/teacher/live-exams", icon: Radio },
+        { label: "Live Monitor", to: "/teacher/live-exams", icon: Radio },
         { label: "Exam Security", to: "/teacher/exam-security", icon: ShieldCheck },
         { label: "Integrity", to: "/teacher/integrity", icon: ShieldCheck },
       ],

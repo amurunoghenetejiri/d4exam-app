@@ -287,7 +287,11 @@ export function AppShell({
   // Nav activity indicators (live + pending)
   const liveMonQ = useQuery({
     queryKey: ["nav-live-monitor", session?.schoolId, session?.role],
-    enabled: Boolean(session?.schoolId) && (session?.role === "examination_officer" || session?.role === "school_admin"),
+    enabled: Boolean(session?.schoolId) && (
+      session?.role === "examination_officer" ||
+      session?.role === "school_admin" ||
+      session?.role === "teacher"
+    ),
     staleTime: 8_000,
     refetchInterval: 12_000,
     queryFn: async () => {
@@ -322,6 +326,7 @@ export function AppShell({
     const b: Record<string, { dot?: "green" | "blue" | "red"; live?: boolean }> = {};
     if ((liveMonQ.data ?? 0) > 0) {
       b["/officer/live-monitor"] = { live: true, dot: "green" };
+      b["/teacher/live-exams"] = { live: true, dot: "green" };
     }
     if ((pendingApprovalQ.data ?? 0) > 0) {
       b["/officer/approvals"] = { dot: "blue" };
