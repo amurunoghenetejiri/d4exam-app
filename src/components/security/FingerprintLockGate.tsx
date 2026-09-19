@@ -23,7 +23,10 @@ import {
   type AppRole,
 } from "@/lib/session";
 import { isNativeShell } from "@/native/platform";
-import { authenticateWithFingerprint } from "@/native/fingerprintAuth";
+import {
+  authenticateWithFingerprint,
+  checkFingerprintAvailable,
+} from "@/native/fingerprintAuth";
 import {
   clearBackgroundMark,
   isFingerprintEnabledFor,
@@ -35,6 +38,7 @@ import {
   setFingerprintLocked,
   shouldLockAfterBackground,
   isActiveCbtExamPath,
+  enableFingerprintFor,
 } from "@/lib/fingerprint-lock";
 import { readLastUserId } from "@/lib/offline-query";
 import { cn } from "@/lib/utils";
@@ -163,7 +167,11 @@ export function FingerprintLockGate() {
 
   // Splash must finish before fingerprint page + OS prompt
   useEffect(() => {
-    if (!native || splashDone) return;
+    if (!native) {
+      if (!splashDone) setSplashDone(true);
+      return;
+    }
+    if (splashDone) return;
     if (!isSplashStillShowing()) {
       setSplashDone(true);
       return;
@@ -192,6 +200,11 @@ export function FingerprintLockGate() {
   const [pwBusy, setPwBusy] = useState(false);
   const [hasAppPw, setHasAppPw] = useState(false);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
+  /** Device has usable fingerprint hardware + enrolled print */
+  const [hwFpOk, setHwFpOk] = useState(false);
+  /** Soft prompt: enable fingerprint after password unlock */
+  const [offerEnableFp, setOfferEnableFp] = useState(false);
+  const [enableFpBusy, setEnableFpBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -236,7 +249,7 @@ export function FingerprintLockGate() {
         setPwError("Incorrect app password. Try again.");
         return;
       }
-      finishUnlock();
+      finishUnlock({ fromPassword: true });
     } catch {
       setPwError("Could not verify password. Try again.");
     } finally {
@@ -277,23 +290,25 @@ export function FingerprintLockGate() {
   }
 
   const evaluateLock = useCallback(() => {
-    if (!native || isPublicAuthPath) {
+    if (isPublicAuthPath) {
       setLocked(false);
       return;
     }
-    // Never lock / show fingerprint during an in-progress exam
+    // Never lock during an in-progress exam
     if (isActiveCbtExamPath(pathname)) {
       setLocked(false);
       return;
     }
     const uid = session?.userId ?? pref?.userId ?? lastUid;
-    const fpOn = Boolean(uid && isFingerprintEnabledFor(uid)) || Boolean(pref?.enabled && pref.userId);
-    const unlockConfigured = fpOn || hasAppPw;
+    const fpEnabled = Boolean(uid && isFingerprintEnabledFor(uid)) || Boolean(pref?.enabled && pref.userId);
+    // Fingerprint UI only when native + hardware OK + user enabled it
+    const canFp = Boolean(native && hwFpOk && fpEnabled);
+    const unlockConfigured = canFp || hasAppPw;
     if (!uid || !unlockConfigured) {
       setLocked(false);
       return;
     }
-    // Lock only after real background / cold start — never on in-app navigation
+    // Lock after background / cold start / web tab leave
     if (isFingerprintLocked() || shouldLockAfterBackground()) {
       if (isSessionUnlocked() && !isFingerprintLocked() && !shouldLockAfterBackground()) {
         setLocked(false);
@@ -304,36 +319,32 @@ export function FingerprintLockGate() {
       setFailedMsg(null);
       setStatus("idle");
       promptedRef.current = false;
-      // Prefer fingerprint when enabled; password only as fallback
-      if (fpOn) setMode("fingerprint");
-      else if (hasAppPw) setMode("password");
+      // Default: fingerprint first when available; otherwise password only
+      if (canFp) setMode("fingerprint");
+      else setMode("password");
       return;
     }
     setLocked(false);
-  }, [native, isPublicAuthPath, session?.userId, pathname, pref?.userId, pref?.enabled, lastUid, hasAppPw]);
+  }, [native, isPublicAuthPath, session?.userId, pathname, pref?.userId, pref?.enabled, lastUid, hasAppPw, hwFpOk]);
 
   useEffect(() => {
-    if (!native) return;
     evaluateLock();
-  }, [native, evaluateLock, session?.userId, splashDone]);
+  }, [evaluateLock, session?.userId, splashDone, native]);
   // Never leave the user on a blank navy screen
   useEffect(() => {
-    if (!locked || !native) return;
+    if (!locked) return;
     setSplashDone(true);
     const t = window.setTimeout(() => setPageReady(true), 150);
     return () => window.clearTimeout(t);
-  }, [locked, native]); // force-splash-on-lock
+  }, [locked]);
 
   useEffect(() => {
     if (!locked) return;
-    const fpOn = isFingerprintEnabledFor(userId) || Boolean(pref?.enabled && pref.userId);
-    // Default is always fingerprint when enabled — password only if user taps "Use password"
-    if (fpOn) {
-      setMode("fingerprint");
-    } else {
-      setMode("password");
-    }
-  }, [locked, userId, pref?.enabled]);
+    const fpEnabled = isFingerprintEnabledFor(userId) || Boolean(pref?.enabled && pref.userId);
+    const canFp = Boolean(native && hwFpOk && fpEnabled);
+    if (canFp) setMode("fingerprint");
+    else setMode("password");
+  }, [locked, userId, pref?.enabled, native, hwFpOk]);
 
 
   // Background / resume
@@ -350,8 +361,9 @@ export function FingerprintLockGate() {
             return;
           }
           const uid = session?.userId ?? pref?.userId ?? lastUid;
-          const fpOn = isFingerprintEnabledFor(uid) || Boolean(pref?.enabled && pref.userId);
-          const canLock = fpOn || hasAppPw;
+          const fpEnabled = isFingerprintEnabledFor(uid) || Boolean(pref?.enabled && pref.userId);
+          const canFp = Boolean(hwFpOk && fpEnabled);
+          const canLock = canFp || hasAppPw;
           if (!canLock) return;
           // Do not interrupt an in-progress examination
           if (isActiveCbtExamPath()) return;
@@ -363,7 +375,7 @@ export function FingerprintLockGate() {
           promptedRef.current = false;
           runningRef.current = false;
           setPageReady(false);
-          setMode(fpOn ? "fingerprint" : "password");
+          setMode(canFp ? "fingerprint" : "password");
           clearBackgroundMark();
         });
       } catch {
@@ -376,9 +388,42 @@ export function FingerprintLockGate() {
     };
   }, [native, session?.userId, pref?.userId, lastUid]);
 
+
+  // Website: lock with app password when user leaves the tab and returns
+  useEffect(() => {
+    if (native) return;
+    const onVis = () => {
+      if (document.visibilityState === "hidden") {
+        markAppBackgrounded();
+        return;
+      }
+      if (isPublicAuthPath || isActiveCbtExamPath()) return;
+      const uid = session?.userId ?? pref?.userId ?? lastUid;
+      if (!uid || !hasAppPw) return;
+      if (isActiveCbtExamPath()) return;
+      setFingerprintLocked(true);
+      setLocked(true);
+      setMode("password");
+      setFailedMsg(null);
+      setStatus("idle");
+      setPageReady(true);
+      clearBackgroundMark();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [native, isPublicAuthPath, session?.userId, pref?.userId, lastUid, hasAppPw]);
+
   // Page visible → ready for OS prompt (never over splash)
   useEffect(() => {
-    if (!locked || !splashDone || !native) {
+    if (!locked) {
+      setPageReady(false);
+      return;
+    }
+    if (!native) {
+      setPageReady(true);
+      return;
+    }
+    if (!splashDone) {
       setPageReady(false);
       return;
     }
@@ -387,7 +432,7 @@ export function FingerprintLockGate() {
     return () => window.clearTimeout(t);
   }, [locked, splashDone, native]);
 
-  function finishUnlock() {
+  function finishUnlock(opts?: { fromPassword?: boolean }) {
     setFingerprintLocked(false);
     clearBackgroundMark();
     markSessionUnlocked();
@@ -396,6 +441,16 @@ export function FingerprintLockGate() {
     setLocked(false);
     promptedRef.current = false;
     runningRef.current = false;
+    // After password unlock on a fingerprint-capable device that is not yet enabled → offer enable
+    if (
+      opts?.fromPassword &&
+      native &&
+      hwFpOk &&
+      userId &&
+      !isFingerprintEnabledFor(userId)
+    ) {
+      window.setTimeout(() => setOfferEnableFp(true), 400);
+    }
   }
 
   async function tryUnlock() {
@@ -495,7 +550,7 @@ export function FingerprintLockGate() {
     };
   }, [locked]);
 
-  if (!native || !locked || isPublicAuthPath) {
+  if (!locked || isPublicAuthPath) {
     return null;
   }
   // Never return a blank navy: if splash is slow, still render unlock UI
@@ -637,11 +692,28 @@ export function FingerprintLockGate() {
             </button>
             <button
               type="button"
-              onClick={showFingerprintMode}
-              className="mt-3 text-sm font-medium text-slate-400 hover:text-white"
+              onClick={() => void (async () => {
+                try {
+                  const { clearAppUnlockFor } = await import("@/lib/app-unlock");
+                  await clearAppUnlockFor(userId);
+                } catch { /* ignore */ }
+                setLocked(false);
+                setFingerprintLocked(false);
+                try { window.location.assign("/settings"); } catch { window.location.href = "/settings"; }
+              })()}
+              className="mt-3 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline"
             >
-              Use fingerprint
+              Forgot app password?
             </button>
+            {native && hwFpOk && (isFingerprintEnabledFor(userId) || Boolean(pref?.enabled)) ? (
+              <button
+                type="button"
+                onClick={showFingerprintMode}
+                className="mt-2 text-sm font-medium text-slate-400 hover:text-white"
+              >
+                Use fingerprint
+              </button>
+            ) : null}
           </div>
         ) : (
         <div className="flex flex-col items-center justify-center py-4 sm:py-6">
@@ -717,14 +789,66 @@ export function FingerprintLockGate() {
           >
             Log out
           </button>
-          <button
-            type="button"
-            onClick={showPasswordMode}
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-slate-300 transition hover:bg-white/5 hover:text-white sm:text-sm"
-          >
-            Use password
-          </button>
+          {mode === "fingerprint" ? (
+            <button
+              type="button"
+              onClick={showPasswordMode}
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium text-slate-300 transition hover:bg-white/5 hover:text-white sm:text-sm"
+            >
+              Use password
+            </button>
+          ) : (
+            <span />
+          )}
         </div>
+
+
+        {offerEnableFp ? (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0f1f3d] p-5 text-center shadow-2xl">
+              <p className="text-base font-bold text-white">Enable fingerprint unlock?</p>
+              <p className="mt-2 text-sm text-slate-400">
+                Unlock D4EXAM faster next time with your fingerprint. You can change this later in Settings.
+              </p>
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  className="flex-1 rounded-xl border border-white/15 py-2.5 text-sm font-semibold text-slate-200"
+                  disabled={enableFpBusy}
+                  onClick={() => setOfferEnableFp(false)}
+                >
+                  Not now
+                </button>
+                <button
+                  type="button"
+                  className="flex-1 rounded-xl bg-blue-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  disabled={enableFpBusy}
+                  onClick={() => {
+                    void (async () => {
+                      if (!userId) return;
+                      setEnableFpBusy(true);
+                      try {
+                        const auth = await authenticateWithFingerprint({
+                          reason: "Enable fingerprint unlock for D4EXAM",
+                          title: "D4EXAM",
+                          subtitle: "Confirm with your fingerprint",
+                        });
+                        if (auth.ok) {
+                          enableFingerprintFor(userId);
+                          setOfferEnableFp(false);
+                        }
+                      } finally {
+                        setEnableFpBusy(false);
+                      }
+                    })();
+                  }}
+                >
+                  {enableFpBusy ? "…" : "Enable"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {logoutConfirm ? (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-4">

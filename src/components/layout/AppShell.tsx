@@ -181,7 +181,7 @@ function NotificationBell({ to, unread }: { to: string; unread: number }) {
     >
       <Link to={to as string} preload={false} className="inline-flex h-11 w-11 items-center justify-center">
         <span className={cn("inline-flex items-center justify-center", hasUnread && "bell-ring")}>
-          <Bell className="h-7 w-7 text-slate-700" strokeWidth={2.25} aria-hidden />
+          <Bell className="h-7 w-7 text-white/90" strokeWidth={2.25} aria-hidden />
         </span>
         {hasUnread ? (
           <span className="absolute right-0.5 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold leading-none text-white shadow-sm">
@@ -289,10 +289,10 @@ export function AppShell({
 
       <header
         className={cn(
-          "d4-app-topbar fixed top-0 right-0 z-50 border-b border-slate-200/90",
+          "d4-app-topbar fixed top-0 right-0 z-50 border-b border-white/10",
           "left-0 lg:left-64",
-          "bg-white shadow-sm",
-          "supports-[backdrop-filter]:bg-white/95 supports-[backdrop-filter]:backdrop-blur-md",
+          "bg-[#0b1b3a] shadow-[0_4px_20px_rgba(11,27,58,0.35)]",
+          "supports-[backdrop-filter]:bg-[#0b1b3a]/95 supports-[backdrop-filter]:backdrop-blur-md",
         )}
         style={{ position: "fixed", paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
@@ -303,7 +303,7 @@ export function AppShell({
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9 shrink-0 lg:hidden"
+                  className="h-9 w-9 shrink-0 border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
                   aria-label="Open menu"
                 >
                   <Menu className="h-5 w-5" />
@@ -357,7 +357,7 @@ export function AppShell({
               </SheetContent>
             </Sheet>
 
-            <span className="hidden text-sm font-bold text-primary lg:inline">
+            <span className="hidden text-sm font-bold text-white/90 lg:inline">
               {config.label} Portal
             </span>
 
@@ -375,7 +375,7 @@ export function AppShell({
                     size="sm"
                     className="shrink-0 bg-transparent"
                   />
-                  <span className="truncate text-sm font-extrabold leading-tight tracking-tight text-slate-900 sm:text-[0.9375rem] md:text-base">
+                  <span className="truncate text-sm font-extrabold leading-tight tracking-tight text-white sm:text-[0.9375rem] md:text-base">
                     {shortLabel(schoolName || "School", 28)}
                   </span>
                 </>
@@ -390,11 +390,11 @@ export function AppShell({
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
-                className="flex h-10 w-full items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-left text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                className="flex h-10 w-full items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-3 text-left text-sm text-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition hover:bg-white/15 hover:text-white"
                 aria-label="Open search"
               >
-                <Search className="h-4 w-4 shrink-0 text-slate-400" aria-hidden />
-                <span className="truncate">Search exams, materials, courses…</span>
+                <Search className="h-4 w-4 shrink-0 text-white/65" aria-hidden />
+                <span className="truncate text-white/55">Search exams, materials, courses…</span>
               </button>
             </div>
           </div>

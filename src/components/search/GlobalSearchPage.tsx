@@ -55,11 +55,14 @@ const FEATURES: { q: string[]; title: string; href: string; roles?: AppRole[] }[
   { q: ["student"], title: "Students", href: "/admin/students", roles: ["school_admin"] },
 ];
 
-const RECENT_KEY = "d4_search_recent_v1";
+function recentKey(userId: string | null, role: string): string {
+  const u = userId || "anon";
+  return `d4_search_recent_v2:${u}:${role}`;
+}
 
-function loadRecent(): string[] {
+function loadRecent(userId: string | null, role: string): string[] {
   try {
-    const raw = localStorage.getItem(RECENT_KEY);
+    const raw = localStorage.getItem(recentKey(userId, role));
     const arr = raw ? (JSON.parse(raw) as string[]) : [];
     return Array.isArray(arr) ? arr.slice(0, 8) : [];
   } catch {
@@ -67,12 +70,12 @@ function loadRecent(): string[] {
   }
 }
 
-function saveRecent(q: string) {
+function saveRecent(q: string, userId: string | null, role: string) {
   try {
-    const t = q.trim();
-    if (t.length < 2) return;
-    const prev = loadRecent().filter((x) => x.toLowerCase() !== t.toLowerCase());
-    localStorage.setItem(RECENT_KEY, JSON.stringify([t, ...prev].slice(0, 8)));
+    const term = q.trim();
+    if (term.length < 2) return;
+    const prev = loadRecent(userId, role).filter((x) => x.toLowerCase() !== term.toLowerCase());
+    localStorage.setItem(recentKey(userId, role), JSON.stringify([term, ...prev].slice(0, 8)));
   } catch {
     /* ignore */
   }
@@ -114,11 +117,11 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
 
   useEffect(() => {
     if (!open) return;
-    setRecent(loadRecent());
+    setRecent(loadRecent(userId, role));
     setQ("");
     setHits([]);
     setErr(null);
-  }, [open]);
+  }, [open, userId, role]);
 
   useEffect(() => {
     if (!open) return;
@@ -155,7 +158,7 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
   }, [q, open, role, schoolId, userId]);
 
   function go(hit: SearchHit) {
-    saveRecent(q);
+    saveRecent(q, userId, role);
     onClose();
     safeGo(hit.href);
   }
@@ -209,8 +212,8 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
           style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
         >
           <div className="flex items-center gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-white/15 bg-white px-3 py-2.5 shadow-sm">
-              <Search className="h-5 w-5 shrink-0 text-slate-400" aria-hidden />
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-white/35 bg-white/10 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm">
+              <Search className="h-5 w-5 shrink-0 text-white/70" aria-hidden />
               <input
                 autoFocus
                 type="search"
@@ -218,11 +221,11 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search exams, materials, results, courses…"
-                className="min-w-0 flex-1 bg-transparent text-base font-medium text-slate-900 outline-none placeholder:text-slate-400"
+                className="min-w-0 flex-1 bg-transparent text-base font-medium text-white outline-none placeholder:text-white/55"
                 autoComplete="off"
                 autoCorrect="off"
               />
-              {busy ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" /> : null}
+              {busy ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-white/60" /> : null}
             </div>
             <button
               type="button"
