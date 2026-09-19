@@ -156,6 +156,7 @@ export function FingerprintLockGate() {
     pathname === "/login" ||
     pathname === "/" ||
     pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/forgot-app-password") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/school-application") ||
     pathname.startsWith("/application-status") ||
@@ -200,11 +201,13 @@ export function FingerprintLockGate() {
   const [pwBusy, setPwBusy] = useState(false);
   const [hasAppPw, setHasAppPw] = useState(false);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
-  /** Device has usable fingerprint hardware + enrolled print */
-  const [hwFpOk, setHwFpOk] = useState(false);
+  /** Device fingerprint capability: pending | yes | no */
+  const [hwState, setHwState] = useState<"pending" | "yes" | "no">("pending");
   /** Soft prompt: enable fingerprint after password unlock */
   const [offerEnableFp, setOfferEnableFp] = useState(false);
   const [enableFpBusy, setEnableFpBusy] = useState(false);
+  /** User explicitly chose password — do not auto-switch back until unlock cycle resets */
+  const userPickedPasswordRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -223,6 +226,7 @@ export function FingerprintLockGate() {
   }, [userId]);
 
   function showPasswordMode() {
+    userPickedPasswordRef.current = true;
     setMode("password");
     setAppPw("");
     setPwError(null);
@@ -231,6 +235,7 @@ export function FingerprintLockGate() {
   }
 
   function showFingerprintMode() {
+    userPickedPasswordRef.current = false;
     setMode("fingerprint");
     setAppPw("");
     setPwError(null);
@@ -304,17 +309,18 @@ export function FingerprintLockGate() {
     // Device supports fingerprint (phone/laptop biometric)?
     // Show FP UI when device supports it AND user has enabled FP in app.
     // If device supports but user never enabled → password only, then offer enable.
-    // Native + device supports FP + user enabled → fingerprint first
-    // Web always uses app password (no native biometric plugin in browser)
-    const deviceFp = Boolean(hwFpOk) || Boolean(native && fpEnabled);
-    const canFp = Boolean(native && fpEnabled && deviceFp);
-    // Always allow lock if app password or fingerprint is configured
+    // Native + user enabled FP + device not proven without FP → fingerprint first
+    // Web always password. hwState "pending" still allows FP UI so it does not flash away.
+    const canFp = Boolean(
+      native &&
+        fpEnabled &&
+        hwState !== "no",
+    );
     const unlockConfigured = hasAppPw || fpEnabled;
     if (!uid || !unlockConfigured) {
       setLocked(false);
       return;
     }
-    // Lock after background / cold start / web tab leave
     if (isFingerprintLocked() || shouldLockAfterBackground()) {
       if (isSessionUnlocked() && !isFingerprintLocked() && !shouldLockAfterBackground()) {
         setLocked(false);
@@ -325,13 +331,13 @@ export function FingerprintLockGate() {
       setFailedMsg(null);
       setStatus("idle");
       promptedRef.current = false;
-      // Device has FP + user enabled → fingerprint first; otherwise password only
+      userPickedPasswordRef.current = false;
       if (canFp) setMode("fingerprint");
       else setMode("password");
       return;
     }
     setLocked(false);
-  }, [native, isPublicAuthPath, session?.userId, pathname, pref?.userId, pref?.enabled, lastUid, hasAppPw, hwFpOk]);
+  }, [native, isPublicAuthPath, session?.userId, pathname, pref?.userId, pref?.enabled, lastUid, hasAppPw, hwState]);
 
   useEffect(() => {
     evaluateLock();
@@ -346,11 +352,16 @@ export function FingerprintLockGate() {
 
   useEffect(() => {
     if (!locked) return;
+    if (userPickedPasswordRef.current) {
+      setMode("password");
+      return;
+    }
     const fpEnabled = isFingerprintEnabledFor(userId) || Boolean(pref?.enabled && pref.userId);
-    const canFp = Boolean(native && hwFpOk && fpEnabled);
+    // Only force password when device is known to lack fingerprint
+    const canFp = Boolean(native && fpEnabled && hwState !== "no");
     if (canFp) setMode("fingerprint");
     else setMode("password");
-  }, [locked, userId, pref?.enabled, hwFpOk, native]);
+  }, [locked, userId, pref?.enabled, hwState, native]);
 
 
   // Background / resume
@@ -368,12 +379,10 @@ export function FingerprintLockGate() {
           }
           const uid = session?.userId ?? pref?.userId ?? lastUid;
           const fpEnabled = isFingerprintEnabledFor(uid) || Boolean(pref?.enabled && pref.userId);
-          const canFp = Boolean(hwFpOk && fpEnabled);
+          const canFp = Boolean(fpEnabled && hwState !== "no");
           const canLock = hasAppPw || fpEnabled;
           if (!canLock) return;
-          // Do not interrupt an in-progress examination
           if (isActiveCbtExamPath()) return;
-          // Returning from background → lock (user must unlock to enter app)
           setFingerprintLocked(true);
           setLocked(true);
           setFailedMsg(null);
@@ -381,6 +390,7 @@ export function FingerprintLockGate() {
           promptedRef.current = false;
           runningRef.current = false;
           setPageReady(false);
+          userPickedPasswordRef.current = false;
           setMode(canFp ? "fingerprint" : "password");
           clearBackgroundMark();
         });
@@ -451,7 +461,7 @@ export function FingerprintLockGate() {
     if (
       opts?.fromPassword &&
       native &&
-      hwFpOk &&
+      hwState === "yes" &&
       userId &&
       !isFingerprintEnabledFor(userId)
     ) {
@@ -699,6 +709,9 @@ export function FingerprintLockGate() {
             <button
               type="button"
               onClick={() => {
+                // Release lock so the forgot page is not covered / bounced away
+                setLocked(false);
+                setFingerprintLocked(false);
                 try {
                   window.location.assign("/forgot-app-password");
                 } catch {
@@ -709,7 +722,7 @@ export function FingerprintLockGate() {
             >
               Forgot app password?
             </button>
-            {hwFpOk && (isFingerprintEnabledFor(userId) || Boolean(pref?.enabled)) ? (
+            {hwState !== "no" && (isFingerprintEnabledFor(userId) || Boolean(pref?.enabled)) ? (
               <button
                 type="button"
                 onClick={showFingerprintMode}

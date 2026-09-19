@@ -296,14 +296,14 @@ export function AppShell({
         )}
         style={{ position: "fixed", paddingTop: "env(safe-area-inset-top, 0px)" }}
       >
-        <div className="mx-auto grid h-12 max-w-[1400px] grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 px-2.5 sm:h-16 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-6 lg:px-8">
+        <div className="mx-auto grid h-12 max-w-[1400px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetTrigger asChild>
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9 shrink-0 border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
+                  className="h-9 w-9 shrink-0 border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
                   aria-label="Open menu"
                 >
                   <Menu className="h-5 w-5" />
@@ -357,7 +357,7 @@ export function AppShell({
               </SheetContent>
             </Sheet>
 
-            <span className="hidden text-sm font-bold text-white/90 lg:inline">
+            <span className="hidden text-[15px] font-extrabold tracking-tight text-white lg:inline">
               {config.label} Portal
             </span>
 
@@ -375,7 +375,7 @@ export function AppShell({
                     size="sm"
                     className="shrink-0 bg-transparent"
                   />
-                  <span className="truncate text-sm font-extrabold leading-tight tracking-tight text-white sm:text-[0.9375rem] md:text-base">
+                  <span className="truncate text-[15px] font-extrabold leading-none tracking-tight text-white sm:text-base">
                     {shortLabel(schoolName || "School", 28)}
                   </span>
                 </>
@@ -390,11 +390,11 @@ export function AppShell({
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
-                className="flex h-10 w-full items-center gap-2 rounded-xl border-2 border-sky-400/70 bg-white/10 px-3 text-left text-sm text-white shadow-[0_0_0_1px_rgba(56,189,248,0.25),inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:border-sky-300 hover:bg-white/15"
+                className="flex h-9 w-full items-center gap-2 rounded-full border border-white/55 bg-white/10 px-3.5 text-left text-sm text-white transition hover:border-white hover:bg-white/15"
                 aria-label="Open search"
               >
                 <Search className="h-4 w-4 shrink-0 text-white" aria-hidden />
-                <span className="truncate text-white/80">Search exams, materials, courses…</span>
+                <span className="truncate text-white/75">Search exams, materials, courses…</span>
               </button>
             </div>
           </div>
@@ -411,7 +411,7 @@ export function AppShell({
                   <span className="grid h-8 w-8 place-items-center rounded-full bg-white/15 text-[11px] font-semibold text-white ring-1 ring-white/25">
                     {avatarLetters.slice(0, 2)}
                   </span>
-                  <span className="hidden max-w-[8rem] truncate text-left text-sm font-semibold text-white sm:block">
+                  <span className="hidden max-w-[9rem] truncate text-left text-[15px] font-extrabold tracking-tight text-white sm:block">
                     {shortDisplayName(user.name, 16)}
                   </span>
                 </Button>
