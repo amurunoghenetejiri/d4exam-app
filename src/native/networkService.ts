@@ -41,19 +41,35 @@ export async function probeConnectivity(timeoutMs = 4000): Promise<boolean> {
   const now = Date.now();
   if (now - lastProbeAt < 3000) return lastProbeOk;
 
+  // Native shell running the bundled offline shell would always "succeed" on a
+  // same-origin asset, so probe a real remote origin there instead.
+  const remoteBase =
+    (import.meta as unknown as { env?: Record<string, string | undefined> }).env
+      ?.VITE_SUPABASE_URL ?? "";
+  let local = true;
+  try {
+    local = !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(window.location.origin);
+  } catch {
+    local = true;
+  }
+  const url =
+    !local && remoteBase
+      ? `${remoteBase}/auth/v1/health?_ping=${now}`
+      : `${window.location.origin}/site.webmanifest?_ping=${now}`;
+
   try {
     const ctrl = new AbortController();
     const t = window.setTimeout(() => ctrl.abort(), timeoutMs);
-    const url = `${window.location.origin}/site.webmanifest?_ping=${now}`;
     const res = await fetch(url, {
       method: "GET",
       cache: "no-store",
+      mode: !local && remoteBase ? "cors" : "same-origin",
       signal: ctrl.signal,
     });
     window.clearTimeout(t);
-    lastProbeOk = res.ok || res.status === 304 || res.type === "opaque";
+    lastProbeOk = res.ok || res.status === 304 || res.status === 401 || res.type === "opaque";
   } catch {
-    lastProbeOk = typeof navigator !== "undefined" ? navigator.onLine : false;
+    lastProbeOk = false;
   }
   lastProbeAt = Date.now();
   return lastProbeOk;
