@@ -41,21 +41,22 @@ export async function probeConnectivity(timeoutMs = 4000): Promise<boolean> {
   const now = Date.now();
   if (now - lastProbeAt < 3000) return lastProbeOk;
 
-  // Native shell running the bundled offline shell would always "succeed" on a
-  // same-origin asset, so probe a real remote origin there instead.
+  // The bundled Android shell is served from https://localhost, so a same-origin
+  // asset would always "succeed" and falsely report the device as online.
+  // Probe the real remote backend origin in that case.
   const remoteBase =
     (import.meta as unknown as { env?: Record<string, string | undefined> }).env
       ?.VITE_SUPABASE_URL ?? "";
-  let local = true;
+  let localShell = false;
   try {
-    local = !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(window.location.origin);
+    localShell = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(window.location.origin);
   } catch {
-    local = true;
+    localShell = false;
   }
-  const url =
-    !local && remoteBase
-      ? `${remoteBase}/auth/v1/health?_ping=${now}`
-      : `${window.location.origin}/site.webmanifest?_ping=${now}`;
+  const useRemoteProbe = localShell && Boolean(remoteBase);
+  const url = useRemoteProbe
+    ? `${remoteBase}/auth/v1/health?_ping=${now}`
+    : `${window.location.origin}/site.webmanifest?_ping=${now}`;
 
   try {
     const ctrl = new AbortController();
@@ -63,7 +64,7 @@ export async function probeConnectivity(timeoutMs = 4000): Promise<boolean> {
     const res = await fetch(url, {
       method: "GET",
       cache: "no-store",
-      mode: !local && remoteBase ? "cors" : "same-origin",
+      mode: useRemoteProbe ? "cors" : "same-origin",
       signal: ctrl.signal,
     });
     window.clearTimeout(t);
