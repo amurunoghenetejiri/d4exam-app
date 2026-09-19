@@ -301,9 +301,15 @@ export function FingerprintLockGate() {
     }
     const uid = session?.userId ?? pref?.userId ?? lastUid;
     const fpEnabled = Boolean(uid && isFingerprintEnabledFor(uid)) || Boolean(pref?.enabled && pref.userId);
-    // Fingerprint UI only when native + hardware OK + user enabled it
-    const canFp = Boolean(native && hwFpOk && fpEnabled);
-    const unlockConfigured = canFp || hasAppPw;
+    // Device supports fingerprint (phone/laptop biometric)?
+    // Show FP UI when device supports it AND user has enabled FP in app.
+    // If device supports but user never enabled → password only, then offer enable.
+    // Native + device supports FP + user enabled → fingerprint first
+    // Web always uses app password (no native biometric plugin in browser)
+    const deviceFp = Boolean(hwFpOk) || Boolean(native && fpEnabled);
+    const canFp = Boolean(native && fpEnabled && deviceFp);
+    // Always allow lock if app password or fingerprint is configured
+    const unlockConfigured = hasAppPw || fpEnabled;
     if (!uid || !unlockConfigured) {
       setLocked(false);
       return;
@@ -319,7 +325,7 @@ export function FingerprintLockGate() {
       setFailedMsg(null);
       setStatus("idle");
       promptedRef.current = false;
-      // Default: fingerprint first when available; otherwise password only
+      // Device has FP + user enabled → fingerprint first; otherwise password only
       if (canFp) setMode("fingerprint");
       else setMode("password");
       return;
@@ -344,7 +350,7 @@ export function FingerprintLockGate() {
     const canFp = Boolean(native && hwFpOk && fpEnabled);
     if (canFp) setMode("fingerprint");
     else setMode("password");
-  }, [locked, userId, pref?.enabled, native, hwFpOk]);
+  }, [locked, userId, pref?.enabled, hwFpOk, native]);
 
 
   // Background / resume
@@ -363,7 +369,7 @@ export function FingerprintLockGate() {
           const uid = session?.userId ?? pref?.userId ?? lastUid;
           const fpEnabled = isFingerprintEnabledFor(uid) || Boolean(pref?.enabled && pref.userId);
           const canFp = Boolean(hwFpOk && fpEnabled);
-          const canLock = canFp || hasAppPw;
+          const canLock = hasAppPw || fpEnabled;
           if (!canLock) return;
           // Do not interrupt an in-progress examination
           if (isActiveCbtExamPath()) return;
@@ -692,20 +698,18 @@ export function FingerprintLockGate() {
             </button>
             <button
               type="button"
-              onClick={() => void (async () => {
+              onClick={() => {
                 try {
-                  const { clearAppUnlockFor } = await import("@/lib/app-unlock");
-                  await clearAppUnlockFor(userId);
-                } catch { /* ignore */ }
-                setLocked(false);
-                setFingerprintLocked(false);
-                try { window.location.assign("/settings"); } catch { window.location.href = "/settings"; }
-              })()}
+                  window.location.assign("/forgot-app-password");
+                } catch {
+                  window.location.href = "/forgot-app-password";
+                }
+              }}
               className="mt-3 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline"
             >
               Forgot app password?
             </button>
-            {native && hwFpOk && (isFingerprintEnabledFor(userId) || Boolean(pref?.enabled)) ? (
+            {hwFpOk && (isFingerprintEnabledFor(userId) || Boolean(pref?.enabled)) ? (
               <button
                 type="button"
                 onClick={showFingerprintMode}

@@ -131,15 +131,26 @@ async function getPlugin(): Promise<NativeBiometricPlugin | null> {
 }
 
 export async function checkFingerprintAvailable(): Promise<FingerprintAvailability> {
+  // Web: platform authenticator (Windows Hello / Touch ID in browser) counts as supported
   if (!isNativeShell()) {
+    try {
+      const pk = (window as unknown as { PublicKeyCredential?: { isUserVerifyingPlatformAuthenticatorAvailable?: () => Promise<boolean> } }).PublicKeyCredential;
+      if (pk?.isUserVerifyingPlatformAuthenticatorAvailable) {
+        const ok = await withTimeout(pk.isUserVerifyingPlatformAuthenticatorAvailable(), 2500, "web_fp");
+        if (ok) return { ok: true, hasFingerprint: true };
+      }
+    } catch {
+      /* fall through */
+    }
     return {
       ok: false,
       reason: "web",
-      message: "Fingerprint unlock is only available in the D4EXAM Android app.",
+      message: "Fingerprint unlock is only available when this device supports it.",
     };
   }
   const plugin = await getPlugin();
   if (!plugin) {
+    // Plugin missing in this build — do not claim hardware exists
     return {
       ok: false,
       reason: "no_plugin",
@@ -151,13 +162,9 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
     const info = await withTimeout(plugin.isAvailable({ useFallback: false }), CHECK_MS, "fp_check");
     if (!info?.isAvailable) {
       const code = info?.errorCode;
+      // not enrolled still means device SUPPORTS fingerprint — UI can offer enable later
       if (code === 3 || code === 1 || code === -1) {
-        return {
-          ok: false,
-          reason: "not_enrolled",
-          message:
-            "No fingerprint enrolled. Add one in Android Settings → Security, then try again.",
-        };
+        return { ok: true, hasFingerprint: true };
       }
       return {
         ok: false,
@@ -166,6 +173,7 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
       };
     }
     const bt = info.biometryType;
+    // Face-only devices: treat as no fingerprint for D4EXAM
     if (bt === 2 || bt === 4) {
       return {
         ok: false,
@@ -176,7 +184,8 @@ export async function checkFingerprintAvailable(): Promise<FingerprintAvailabili
     return { ok: true, hasFingerprint: true };
   } catch (e) {
     const msg = String((e as Error)?.message || e || "").toLowerCase();
-    if (msg.includes("timeout")) {
+    // Timeouts / transient errors: optimistically allow FP UI on native
+    if (msg.includes("timeout") || msg.includes("fp_check")) {
       return { ok: true, hasFingerprint: true };
     }
     return {

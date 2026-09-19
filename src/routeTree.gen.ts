@@ -15,6 +15,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ApplicationStatusRouteImport } from './routes/application-status'
 import { Route as FeaturesRouteImport } from './routes/features'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
+import { Route as ForgotAppPasswordRouteImport } from './routes/forgot-app-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotificationGalleryRouteImport } from './routes/notification-gallery'
 import { Route as OfficerRouteImport } from './routes/officer'
@@ -127,6 +128,11 @@ const FeaturesRoute = FeaturesRouteImport.update({
 const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
   id: '/forgot-password',
   path: '/forgot-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotAppPasswordRoute = ForgotAppPasswordRouteImport.update({
+  id: '/forgot-app-password',
+  path: '/forgot-app-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -551,6 +557,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/application-status': typeof ApplicationStatusRoute
   '/features': typeof FeaturesRoute
+  '/forgot-app-password': typeof ForgotAppPasswordRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/notification-gallery': typeof NotificationGalleryRoute
@@ -821,6 +828,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/application-status'
     | '/features'
+    | '/forgot-app-password'
     | '/forgot-password'
     | '/login'
     | '/notification-gallery'
@@ -911,6 +919,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/application-status'
     | '/features'
+    | '/forgot-app-password'
     | '/forgot-password'
     | '/login'
     | '/notification-gallery'
@@ -997,6 +1006,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/application-status'
     | '/features'
+    | '/forgot-app-password'
     | '/forgot-password'
     | '/login'
     | '/notification-gallery'
@@ -1089,6 +1099,7 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   ApplicationStatusRoute: typeof ApplicationStatusRoute
   FeaturesRoute: typeof FeaturesRoute
+  ForgotAppPasswordRoute: typeof ForgotAppPasswordRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
   LoginRoute: typeof LoginRoute
   NotificationGalleryRoute: typeof NotificationGalleryRoute
@@ -1139,6 +1150,13 @@ declare module '@tanstack/react-router' {
       path: '/features'
       fullPath: '/features'
       preLoaderRoute: typeof FeaturesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-app-password': {
+      id: '/forgot-app-password'
+      path: '/forgot-app-password'
+      fullPath: '/forgot-app-password'
+      preLoaderRoute: typeof ForgotAppPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/forgot-password': {
@@ -1945,6 +1963,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApplicationStatusRoute: ApplicationStatusRoute,
   FeaturesRoute: FeaturesRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,
+  ForgotAppPasswordRoute: ForgotAppPasswordRoute,
+  ForgotAppPasswordRoute,
   LoginRoute: LoginRoute,
   NotificationGalleryRoute: NotificationGalleryRoute,
   OfficerRoute: OfficerRouteWithChildren,

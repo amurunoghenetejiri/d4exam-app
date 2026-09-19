@@ -212,8 +212,8 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
           style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
         >
           <div className="flex items-center gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-white/35 bg-white/10 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-sm">
-              <Search className="h-5 w-5 shrink-0 text-white/70" aria-hidden />
+            <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border-2 border-sky-400/75 bg-white/10 px-3 py-2.5 shadow-[0_0_0_1px_rgba(56,189,248,0.2),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-sm">
+              <Search className="h-5 w-5 shrink-0 text-white" aria-hidden />
               <input
                 autoFocus
                 type="search"
@@ -221,7 +221,7 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search exams, materials, results, courses…"
-                className="min-w-0 flex-1 bg-transparent text-base font-medium text-white outline-none placeholder:text-white/55"
+                className="min-w-0 flex-1 bg-transparent text-base font-medium text-white outline-none placeholder:text-white/75"
                 autoComplete="off"
                 autoCorrect="off"
               />

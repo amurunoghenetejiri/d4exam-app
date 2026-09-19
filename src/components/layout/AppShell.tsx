@@ -390,11 +390,11 @@ export function AppShell({
               <button
                 type="button"
                 onClick={() => setSearchOpen(true)}
-                className="flex h-10 w-full items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-3 text-left text-sm text-white/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition hover:bg-white/15 hover:text-white"
+                className="flex h-10 w-full items-center gap-2 rounded-xl border-2 border-sky-400/70 bg-white/10 px-3 text-left text-sm text-white shadow-[0_0_0_1px_rgba(56,189,248,0.25),inset_0_1px_0_rgba(255,255,255,0.12)] transition hover:border-sky-300 hover:bg-white/15"
                 aria-label="Open search"
               >
-                <Search className="h-4 w-4 shrink-0 text-white/65" aria-hidden />
-                <span className="truncate text-white/55">Search exams, materials, courses…</span>
+                <Search className="h-4 w-4 shrink-0 text-white" aria-hidden />
+                <span className="truncate text-white/80">Search exams, materials, courses…</span>
               </button>
             </div>
           </div>
@@ -405,13 +405,13 @@ export function AppShell({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="gap-2 px-1.5 sm:px-2"
+                  className="gap-2 px-1.5 text-white hover:bg-white/10 hover:text-white sm:px-2"
                   aria-label="Account menu"
                 >
-                  <span className="grid h-8 w-8 place-items-center rounded-full bg-slate-800 text-[11px] font-semibold text-white ring-1 ring-slate-200">
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-white/15 text-[11px] font-semibold text-white ring-1 ring-white/25">
                     {avatarLetters.slice(0, 2)}
                   </span>
-                  <span className="hidden max-w-[8rem] truncate text-left text-sm font-semibold sm:block">
+                  <span className="hidden max-w-[8rem] truncate text-left text-sm font-semibold text-white sm:block">
                     {shortDisplayName(user.name, 16)}
                   </span>
                 </Button>
