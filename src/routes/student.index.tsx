@@ -308,26 +308,36 @@ function Page() {
   }, [attemptsQ.data, finishedByResult]);
 
   const { availableNow, upcoming } = useMemo(() => {
-    void tick;
-    const live: ExamRow[] = [];
+    void nowTick;
+    const continueList: ExamRow[] = [];
+    const startList: ExamRow[] = [];
     const up: ExamRow[] = [];
     for (const e of exams) {
       if (isStudentFinished(e.id)) continue;
       if (["completed", "closed", "cancelled"].includes(String(e.status).toLowerCase())) continue;
-      // Always surface in-progress attempts as available (Continue)
+      // In-progress: only show if time remains (time-up belongs in history/results after auto-submit)
       if (isWriting(e.id)) {
-        live.push(e);
+        const ea = endsAtByExam.get(e.id);
+        if (ea) {
+          const left = new Date(ea).getTime() - nowTick;
+          if (left <= 0) continue; // time up — do not show on Ready to start
+        }
+        continueList.push(e);
         continue;
       }
       const avail = examAvailability(e.status, e.scheduled_start, e.scheduled_end);
-      if (avail === "available" || String(e.status).toLowerCase() === "ongoing") live.push(e);
+      // Window already closed — never show as ready
+      if (avail === "missed" || avail === "ended" || avail === "blocked") continue;
+      if (avail === "available" || String(e.status).toLowerCase() === "ongoing") startList.push(e);
       else if (avail === "upcoming") up.push(e);
     }
-    return { availableNow: live, upcoming: up };
-  }, [exams, attemptsByExam, finishedByResult, tick]);
+    // Continue (with live countdown) first, then startable exams — never time-up or pure upcoming on this card
+    return { availableNow: [...continueList, ...startList], upcoming: up };
+  }, [exams, attemptsByExam, finishedByResult, endsAtByExam, nowTick]);
 
   const readyNow = availableNow;
-  const readyList = [...availableNow, ...upcoming];
+  // Dashboard card: only exams you can continue or start right now (no upcoming, no time-up)
+  const readyList = availableNow;
 
   const unreadNotifs = notifs.filter((n) => !n.read_at).length;
   const courseCount = student?.courses?.length ?? 0;
@@ -464,37 +474,19 @@ function Page() {
                       (() => {
                         const ea = endsAtByExam.get(e.id);
                         const left = ea ? Math.max(0, new Date(ea).getTime() - nowTick) : null;
-                        const timeUp = left != null && left <= 0;
                         return (
                       <Button
                         size="sm"
-                        className={
-                          timeUp
-                            ? "h-8 shrink-0 bg-red-600 px-3 text-xs font-bold text-white hover:bg-red-700 sm:text-sm"
-                            : "h-8 shrink-0 bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700 sm:text-sm"
-                        }
+                        className="h-8 shrink-0 bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700 sm:text-sm"
                         type="button"
                         onClick={() => {
-                          if (timeUp) {
-                            const hasResult = finishedByResult.has(e.id);
-                            if (hasResult) {
-                              void navigate({ to: "/student/results/$id", params: { id: e.id } });
-                            } else {
-                              void navigate({ to: "/student/exam/$id", params: { id: e.id } });
-                            }
-                            return;
-                          }
                           void navigate({
                             to: "/student/exam/$id",
                             params: { id: e.id },
                           });
                         }}
                       >
-                        {timeUp
-                          ? "Time up · 00:00:00"
-                          : left != null
-                            ? `Continue · ${formatLeft(left)}`
-                            : "Continue"}
+                        {left != null ? formatLeft(left) : "In progress"}
                       </Button>
                         );
                       })()

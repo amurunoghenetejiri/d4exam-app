@@ -86,21 +86,39 @@ function useCountdown(targetIso: string | null | undefined) {
 function StartExamButton({ examId, continueMode, remainingMs, hasResult }: { examId: string; continueMode?: boolean; remainingMs?: number | null; hasResult?: boolean }) {
   const navigate = useNavigate();
   const timeUp = Boolean(continueMode && remainingMs != null && remainingMs <= 0);
+  // Time-up attempts are auto-submitted — send user to finalize/result, not a red "Time up" CTA
+  if (timeUp) {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-9 w-full px-4 text-sm font-bold sm:h-8 sm:w-auto"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (hasResult) {
+            void navigate({ to: "/student/results/$id", params: { id: examId } });
+          } else {
+            void navigate({ to: "/student/exam/$id", params: { id: examId } });
+          }
+        }}
+      >
+        {hasResult ? "View result" : "Open submission"}
+      </Button>
+    );
+  }
   const label = continueMode
-    ? (timeUp
-        ? "Time up · 00:00:00"
-        : remainingMs != null && remainingMs > 0
-          ? `Continue · ${formatCountdown(remainingMs)} left`
-          : "Continue exam")
+    ? (remainingMs != null && remainingMs > 0
+          ? formatCountdown(remainingMs)
+          : "In progress")
     : "Start exam";
   return (
     <Button
       type="button"
       size="sm"
       className={
-        timeUp
-          ? "h-9 w-full bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 sm:h-8 sm:w-auto"
-          : continueMode
+        continueMode
             ? "h-9 w-full bg-emerald-600 px-4 text-sm font-bold text-white hover:bg-emerald-700 sm:h-8 sm:w-auto"
             : "h-9 w-full bg-primary px-4 text-sm font-bold text-primary-foreground hover:bg-primary/90 sm:h-8 sm:w-auto"
       }
@@ -109,14 +127,6 @@ function StartExamButton({ examId, continueMode, remainingMs, hasResult }: { exa
         e.stopPropagation();
         if (typeof navigator !== "undefined" && navigator.onLine === false) {
           window.alert("Connect to the internet to write this exam.");
-          return;
-        }
-        if (timeUp) {
-          if (hasResult) {
-            void navigate({ to: "/student/results/$id", params: { id: examId } });
-          } else {
-            void navigate({ to: "/student/exam/$id", params: { id: examId } });
-          }
           return;
         }
         void navigate({ to: "/student/exam/$id", params: { id: examId } });

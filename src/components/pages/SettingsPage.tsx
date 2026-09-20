@@ -147,8 +147,20 @@ export function SettingsPage({ scope }: { scope: string }) {
     };
   }, [helpDoc, showManual]);
 
-  if (showManual) {
+  if (showManual && !isSuperAdmin) {
     const manualRole = resolveManualRole(scope, session?.role);
+    if (manualRole === "super_admin") {
+      return (
+        <>
+          <div className="mb-4">
+            <button type="button" onClick={() => setShowManual(false)} className="inline-flex items-center gap-2 rounded-lg px-1 py-2 text-sm font-semibold text-primary hover:bg-slate-50">
+              <ArrowLeft className="h-4 w-4" /> Back to settings
+            </button>
+          </div>
+          <p className="text-sm text-slate-600">Manual Guide is not available for Super Admin.</p>
+        </>
+      );
+    }
     return (
       <>
         <div className="mb-4">
@@ -160,7 +172,7 @@ export function SettingsPage({ scope }: { scope: string }) {
             <ArrowLeft className="h-4 w-4" /> Back to settings
           </button>
         </div>
-        <RoleManual role={manualRole} />
+        <RoleManual role={manualRole} fullName={session?.fullName} />
       </>
     );
   }
@@ -313,7 +325,9 @@ export function SettingsPage({ scope }: { scope: string }) {
         </SectionCard>
         <SectionCard title="Help & legal" description="About, contact & support, privacy and pricing">
           <div className="flex flex-col gap-1">
+            {!isSuperAdmin ? (
             <button type="button" onClick={() => { setShowManual(true); setHelpDoc(null); }} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><BookOpen className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">App manual — how to use D4EXAM</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
+            ) : null}
             <button type="button" onClick={() => setHelpDoc("about")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><Info className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">About Us</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
             <button type="button" onClick={() => setHelpDoc("support")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><LifeBuoy className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Contact & Support</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
             <button type="button" onClick={() => setHelpDoc("privacy")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><Shield className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Privacy Policy</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
