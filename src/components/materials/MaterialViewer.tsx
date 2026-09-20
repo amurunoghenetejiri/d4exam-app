@@ -29,6 +29,8 @@ import { runImageOcr, downloadTextFile, openPrintableOcr } from "@/lib/material-
 import { isMaterialOffline, saveMaterialOffline, getOfflineMaterial } from "@/lib/material-offline";
 import { isOnlineNow } from "@/lib/offline-sync";
 import { supabase } from "@/integrations/supabase/client";
+import { StudyHelpPanel } from "@/components/materials/StudyHelp";
+import { isNativeShell } from "@/native/platform";
 
 export type ViewerMaterial = {
   id: string;
@@ -50,6 +52,9 @@ type Props = {
   item: ViewerMaterial;
   siblings: ViewerMaterial[];
   courseLabel?: string | null;
+  /** Students see Study Help; teachers never do */
+  role?: "teacher" | "student";
+  topic?: string | null;
   onClose: () => void;
   onNavigate: (m: ViewerMaterial) => void;
   onItemPatch?: (id: string, patch: Partial<ViewerMaterial>) => void;
@@ -79,7 +84,7 @@ function typeLabel(t: string) {
   return map[t] || t;
 }
 
-export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigate, onItemPatch }: Props) {
+export function MaterialViewer({ item, siblings, courseLabel, role = "student", topic, onClose, onNavigate, onItemPatch }: Props) {
   const { data: session } = useSessionUser();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -97,6 +102,7 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
   const [goPageOpen, setGoPageOpen] = useState(false);
   const [goPage, setGoPage] = useState("");
   const [ocrOpen, setOcrOpen] = useState(false);
+  const [studyHelpOpen, setStudyHelpOpen] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrDraft, setOcrDraft] = useState(item.ocr_text || "");
@@ -340,6 +346,16 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
     toast.success(annState.bookmarks.includes(page) ? "Bookmark removed" : "Page bookmarked");
   }
 
+  function materialDeepLink() {
+    try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const path = role === "teacher" ? "/teacher/materials" : "/student/materials";
+      return `${origin}${path}?m=${encodeURIComponent(item.id)}`;
+    } catch {
+      return item.file_url || "";
+    }
+  }
+
   function download() {
     const href = offlineSrc || item.file_url;
     if (!href) return;
@@ -351,20 +367,57 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
     document.body.appendChild(a);
     a.click();
     a.remove();
+    toast.success("Download started");
   }
 
-  async function share() {
-    if (!item.file_url) return;
+  async function shareFileOrLink() {
+    const href = offlineSrc || item.file_url;
+    if (!href) return;
     try {
-      if (navigator.share) {
-        await navigator.share({ title: item.title, url: item.file_url });
-      } else {
-        await navigator.clipboard.writeText(item.file_url);
-        toast.success("Link copied");
+      // Prefer native share sheet with actual file when possible
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        try {
+          const res = await fetch(href);
+          const blob = await res.blob();
+          const name = item.file_name || `${item.title || "material"}.bin`;
+          const file = new File([blob], name, { type: blob.type || item.file_mime || "application/octet-stream" });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ title: item.title, files: [file] });
+            return;
+          }
+        } catch {
+          /* fall through to link share */
+        }
+        await navigator.share({
+          title: item.title,
+          text: item.description || item.title,
+          url: materialDeepLink() || href,
+        });
+        return;
       }
+      await navigator.clipboard.writeText(materialDeepLink() || href);
+      toast.success("Material link copied");
     } catch {
       /* cancelled */
     }
+  }
+
+  async function shareMaterialLink() {
+    const link = materialDeepLink();
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        await navigator.share({ title: item.title, text: "Open this material on D4EXAM", url: link });
+        return;
+      }
+      await navigator.clipboard.writeText(link);
+      toast.success("D4EXAM material link copied");
+    } catch {
+      /* cancelled */
+    }
+  }
+
+  async function share() {
+    await shareFileOrLink();
   }
 
   async function startOcr() {
@@ -696,6 +749,14 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
                       <Type className="h-4 w-4 opacity-70" /> Convert handwriting (OCR)
                     </button>
                   )}
+                  {role === "student" ? (
+                    <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-white/10" onClick={() => { setMoreOpen(false); setStudyHelpOpen(true); setChromeVisible(true); }}>
+                      <Bookmark className="h-4 w-4 opacity-70" /> Study Help
+                    </button>
+                  ) : null}
+                  <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-white/10" onClick={() => { setMoreOpen(false); void shareMaterialLink(); }}>
+                    <Share2 className="h-4 w-4 opacity-70" /> Share material link
+                  </button>
                   <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-white/10" onClick={() => { setMoreOpen(false); void handleSaveOffline(); }}>
                     <Save className="h-4 w-4 opacity-70" /> {offlineSaved ? "Re-save offline" : "Save offline"}
                   </button>
@@ -787,6 +848,28 @@ export function MaterialViewer({ item, siblings, courseLabel, onClose, onNavigat
           )}
         </div>
       )}
+
+      {role === "student" && studyHelpOpen && (
+        <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-40 max-h-[55vh] overflow-y-auto border-t border-white/10 bg-[#0b1220]/97 p-3 backdrop-blur-md sm:left-auto sm:right-3 sm:bottom-16 sm:max-h-[70vh] sm:w-[min(100%,24rem)] sm:rounded-2xl sm:border sm:border-white/15">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-bold text-white/90">Study Help</p>
+            <button type="button" className="rounded-lg px-2 py-1 text-xs font-semibold text-white/80 hover:bg-white/10" onClick={() => setStudyHelpOpen(false)}>
+              Close
+            </button>
+          </div>
+          <StudyHelpPanel
+            materialId={item.id}
+            title={item.title}
+            courseLabel={courseLabel || undefined}
+            topic={topic}
+            description={item.description}
+            ocrText={item.ocr_text}
+            compact
+            className="border-0 shadow-none"
+          />
+        </div>
+      )}
+
     </div>
   );
 

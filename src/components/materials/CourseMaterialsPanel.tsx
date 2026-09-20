@@ -132,6 +132,10 @@ export function CourseMaterialsPanel({
 
   const filtered = useMemo(() => {
     let rows = [...all];
+    // Teachers only see materials they personally uploaded
+    if (role === "teacher" && session?.userId) {
+      rows = rows.filter((m) => m.uploaded_by === session.userId);
+    }
     if (catFilter) rows = rows.filter((m) => typeMeta(m.material_type).cat === catFilter);
     if (filterType !== "all") rows = rows.filter((m) => m.material_type === filterType);
     if (filterCourse !== "all") rows = rows.filter((m) => m.course_id === filterCourse);
@@ -149,7 +153,7 @@ export function CourseMaterialsPanel({
       return +new Date(b.created_at) - +new Date(a.created_at);
     });
     return rows;
-  }, [all, catFilter, filterType, filterCourse, search, sortBy, courseMap]);
+  }, [all, catFilter, filterType, filterCourse, search, sortBy, courseMap, role, session?.userId]);
 
   function onPickFiles(list: FileList | null) {
     if (!list?.length) return;
@@ -285,8 +289,15 @@ export function CourseMaterialsPanel({
 
   if (!courses.length) {
     return (
-      <EmptyState icon={BookOpen} title="No courses yet"
-        description={role === "teacher" ? "When courses are assigned, you can upload materials here." : "Materials for your courses will appear here."} />
+      <EmptyState
+        icon={BookOpen}
+        title="No courses yet"
+        description={
+          role === "teacher"
+            ? "When courses are assigned, you can upload materials here."
+            : "Materials for your courses will appear here."
+        }
+      />
     );
   }
 
@@ -295,7 +306,14 @@ export function CourseMaterialsPanel({
   return (
     <>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <PageHeader title="Learning Materials" description="Access and download study materials" />
+        <PageHeader
+          title={role === "teacher" ? "My Materials" : "Learning Materials"}
+          description={
+            role === "teacher"
+              ? "Upload and manage materials you own — only your uploads appear here."
+              : "Notes, assignments, and study resources for your courses."
+          }
+        />
         {canUpload && (
           <Button className="shrink-0 gap-1.5 font-semibold" onClick={openUpload}>
             <Upload className="h-4 w-4" /> Upload Material
@@ -496,11 +514,13 @@ export function CourseMaterialsPanel({
         <MaterialViewer
           item={viewer}
           siblings={filtered}
+          role={role}
           courseLabel={(() => {
             const c = courseMap.get(viewer.course_id);
             if (!c) return null;
             return c.code ? `${c.code} · ${c.name}` : c.name;
           })()}
+          topic={viewer.tags}
           onClose={() => setViewer(null)}
           onNavigate={(m) => setViewer(m as MaterialRow)}
           onItemPatch={(id, patch) => {
