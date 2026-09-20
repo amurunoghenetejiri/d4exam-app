@@ -1,0 +1,31 @@
+D4EXAM — SETTINGS WIRE-UP PROMPT (PAGE-BY-PAGE BEHAVIOUR)
+
+Use after the architecture prompt. For each area, connect Settings → runtime behaviour.
+
+1. LANGUAGE
+   Pages that MUST react: AppShell nav, all role dashboards, login chrome, Settings, Profile, Notifications lists, Materials, Examinations lists, Results, Search placeholder, empty states, toasts (where centralized), Offline banners.
+   Exclude: exam question text, uploaded material binaries, student-entered answers.
+
+2. TIMEZONE
+   Helpers: formatExamWindow, formatNotifTime, formatMaterialDate — single module.
+   Pages: student examinations, teacher examinations, officer live monitor headers, notifications, results publish times.
+
+3. COMPACT TABLES
+   Target table wrappers / DataTable components / common list rows with `data-d4-table`.
+   Verify: admin.students, admin.teachers, officer.results, teacher.results, student.results, audit-logs.
+
+4. REDUCED MOTION
+   CSS: disable transform transitions on layout; keep opacity fades ≤ 100ms or none.
+   Live Monitor pulse: replace with static green “Live” badge when reduced motion ON.
+
+5. APPEARANCE
+   Ensure body class theme-light / theme-dark / system.
+
+6. NOTIFICATION TOGGLES
+   When examReminders false → do not show local reminder toasts for that user.
+   When integrityAlerts false → hide non-critical integrity toasts (still log server-side for officers).
+
+7. OFFLINE STORAGE UI
+   Settings → list offline materials from IndexedDB keys; delete one; clear cache button with confirm.
+
+Do not invent new backends. Reuse Supabase + existing offline libs.

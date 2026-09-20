@@ -1,0 +1,166 @@
+D4EXAM — FULL SETTINGS SYSTEM IMPLEMENTATION PROMPT (FOR GROK / ENGINEERS)
+
+Work ONLY on Settings, preferences persistence, i18n, display preferences (language, timezone, compact tables, reduced motion, appearance), notifications prefs, security/app unlock, offline/storage controls, and wiring those preferences into real app behaviour.
+
+DO NOT break CBT, camera/PIP, screen share, live monitor, calculator, global search, materials/Study Help, auth, Supabase URL/keys/RLS, or unrelated refactors.
+
+Inspect FIRST:
+- src/components/pages/SettingsPage.tsx
+- src/lib/notification-prefs.ts (NotificationPrefs + DisplayPrefs already exist)
+- src/components/settings/* (PushSettingsCard, FingerprintLockCard, ChangeAppPasswordCard, SwitchAccountCard, RoleSwitchCard)
+- src/routes/{student,teacher,officer,admin,super-admin}.settings.tsx
+- AppShell / theme / tables across admin, officer, teacher, student portals
+- Offline cache (offline-cache, material-offline, offline-sync)
+- Existing localStorage + profiles.settings dual-write pattern
+
+GOAL: Every Settings control must change real app behaviour and persist (device + account when possible). No decorative-only switches.
+
+════════════════════════════════════════
+A. SETTINGS PAGE ARCHITECTURE
+════════════════════════════════════════
+Reorganize Settings into clear sections (same component, role-aware visibility):
+
+1) Preferences
+   - Language (12 languages)
+   - Time Zone (Automatic Africa/Lagos + manual options)
+   - Appearance (System / Light / Dark)
+   - Compact Tables (ON/OFF)
+   - Reduced Motion (ON/OFF)
+
+2) Notifications
+   - Examination reminders
+   - Results published
+   - Integrity alerts
+   - Exam paused / terminated (add if missing)
+   - New materials (add if missing)
+   - Study Orb activity (add if missing / role-relevant)
+   - System announcements
+   - Product announcements
+   - Native push (existing PushSettingsCard)
+
+3) Security & Privacy
+   - Change app unlock password (existing — keep separate from account login password)
+   - Fingerprint / biometric unlock (existing)
+   - Auto-lock duration (add: e.g. Immediately / 1 min / 5 min / 15 min / Never while app open)
+   - Switch account / Role switch (existing cards)
+   - Sign out this device / Sign out all sessions (wire to existing account-switcher)
+   - Privacy / Security info links
+
+4) Offline & Storage
+   - Offline mode status
+   - Downloaded materials count + size
+   - Clear temporary cache
+   - Manage downloaded materials
+   - Last sync time
+
+5) Accessibility (can merge with Preferences)
+   - Text size (if feasible without breaking CBT)
+   - Reduced motion (shared)
+   - Larger controls (optional)
+
+6) About / App
+   - App version / build
+   - Check for updates (existing gates if any)
+   - Help & Support, Terms, Privacy (existing InAppHelpLegal)
+
+7) Role-specific
+   - School Admin: school name/logo (existing SchoolIdentityCard)
+   - Student: exam display preferences ONLY where security allows (never override invigilation rules)
+   - Teacher/Officer: no ability to disable exam security from personal Settings
+
+Apply preferences IMMEDIATELY on change where safe; still offer Save for batch notification toggles if needed. Prefer instant apply + auto-persist for Language, Theme, Compact Tables, Reduced Motion, Timezone.
+
+════════════════════════════════════════
+B. LANGUAGE (i18n) — MUST WORK APP-WIDE
+════════════════════════════════════════
+Languages (codes):
+en English | fr French | es Spanish | ar Arabic | pt Portuguese | de German |
+zh Chinese | ja Japanese | ko Korean | hi Hindi | sw Swahili | yo Yoruba
+
+Requirements:
+1. Create a lightweight i18n layer (e.g. src/lib/i18n/) with:
+   - dictionaries per locale for UI strings
+   - t(key) / useT() hook
+   - document.documentElement.lang + dir (rtl for Arabic)
+2. Translate ALL chrome UI: nav labels, dashboard titles, buttons, dialogs, empty states, offline messages, errors, Settings, login chrome, materials chrome, search placeholders, calculator chrome labels if present, notifications UI.
+3. DO NOT translate user-generated content: material titles, student names, course names, PDF content, exam paper text, officer posts body, etc.
+4. Persist language in DisplayPrefs (localStorage + profiles.settings).
+5. Changing language must not require logout/restart; re-render UI immediately.
+6. Fallback to English for missing keys.
+7. Start with high-coverage English + French + (at least skeleton keys for the other 10). Expanding all 12 fully is OK incrementally but architecture must support all 12 in the selector from day one.
+
+════════════════════════════════════════
+C. TIME ZONE
+════════════════════════════════════════
+1. Default: Automatic → Africa/Lagos for NG schools; detect via Intl when possible.
+2. Manual options: Africa/Lagos, UTC, Africa/Nairobi, Africa/Johannesburg, Europe/London, America/New_York, Asia/Dubai, etc. (reasonable list).
+3. Wire formatting helpers so exam start/end, reminders, notification timestamps, material dates, activity logs, Study Orb timestamps use the selected zone (display only — server still stores UTC/timestamptz).
+4. Persist in DisplayPrefs.
+
+════════════════════════════════════════
+D. COMPACT TABLES
+════════════════════════════════════════
+1. When ON: apply a global class (e.g. html.d4-compact-tables) reducing table row padding / density on data tables (students, results, exams, courses, materials lists, notifications lists, reports, monitoring tables, audit logs).
+2. When OFF: default comfortable spacing.
+3. NEVER shrink CBT question controls, calculator keys, or exam security critical hit targets.
+4. Persist and apply on load before paint if possible (avoid flash).
+
+════════════════════════════════════════
+E. REDUCED MOTION
+════════════════════════════════════════
+1. When ON: set html.d4-reduced-motion; minimise page transitions, card entrance animations, decorative pulses (except critical live “Live Monitor” status if needed for safety — prefer opacity over motion).
+2. Respect prefers-reduced-motion media query: if OS requests reduced motion, default ON.
+3. Persist in DisplayPrefs.
+
+════════════════════════════════════════
+F. APPEARANCE (THEME)
+════════════════════════════════════════
+System / Light / Dark — wire to existing theme system if present (ThemeColorSync). Persist per user. Apply immediately.
+
+════════════════════════════════════════
+G. NOTIFICATIONS
+════════════════════════════════════════
+Extend NotificationPrefs as needed; ensure toggles actually gate:
+- reminder scheduling / display
+- result push/in-app
+- integrity alerts
+- product announcements
+PushSettingsCard remains source of truth for native permission.
+
+════════════════════════════════════════
+H. OFFLINE & STORAGE
+════════════════════════════════════════
+Use existing offline-cache / material-offline APIs:
+- Count downloaded materials + approximate bytes
+- Clear temporary cache (safe keys only — do not wipe auth session)
+- Manage downloads list with remove-one
+- Show last successful sync timestamp from offline-sync
+
+════════════════════════════════════════
+I. SECURITY
+════════════════════════════════════════
+Keep app unlock password ≠ account password messaging.
+FingerprintLockCard + ChangeAppPasswordCard remain.
+Auto-lock: integrate with existing app-lock / visibility handlers; do not show fingerprint during active CBT start flow (existing rule).
+
+════════════════════════════════════════
+J. PERSISTENCE
+════════════════════════════════════════
+Continue dual-write pattern in notification-prefs.ts:
+- localStorage instant
+- profiles.settings JSON when column exists
+Hydrate on login; merge defaults safely.
+
+════════════════════════════════════════
+K. TESTS
+════════════════════════════════════════
+- Language switch updates nav + Settings labels without reload
+- Compact tables densifies a known admin/student table
+- Reduced motion removes/minimises animation classes
+- Timezone changes displayed exam times
+- Prefs survive refresh
+- Teacher Settings has no Study Help / no exam-security bypass
+- Student CBT still fullscreen/secure
+- Offline section does not crash when empty
+
+FINAL REPORT: files changed, new i18n files, prefs keys, remaining untranslated strings, any Supabase column assumptions.
