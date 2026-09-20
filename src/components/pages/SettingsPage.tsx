@@ -23,6 +23,8 @@ import {
   loadDisplayPrefs,
   hydratePrefsFromDb,
   persistPrefsToDb,
+  applyDisplayPrefsToDom,
+  saveDisplayPrefs,
   type NotificationPrefs,
   type DisplayPrefs,
 } from "@/lib/notification-prefs";
@@ -35,7 +37,7 @@ import {
   validateLogoFile,
 } from "@/lib/school-identity";
 import { SchoolLogo } from "@/components/brand/SchoolLogo";
-import { Loader2, Upload, Building2, Info, LifeBuoy, Shield, ChevronRight, CreditCard, ArrowLeft } from "lucide-react";
+import { Loader2, Upload, Building2, Info, LifeBuoy, Shield, ChevronRight, CreditCard, ArrowLeft, HardDrive, Languages, Clock, Palette, Trash2 } from "lucide-react";
 import { InAppHelpLegal, helpLegalTitle, type HelpLegalDoc } from "@/components/pages/InAppHelpLegal";
 import { PushSettingsCard } from "@/components/settings/PushSettingsCard";
 import { FingerprintLockCard } from "@/components/settings/FingerprintLockCard";
@@ -43,6 +45,10 @@ import { ChangeAppPasswordCard } from "@/components/settings/ChangeAppPasswordCa
 import { SwitchAccountCard } from "@/components/settings/SwitchAccountCard";
 import { RoleSwitchCard } from "@/components/settings/RoleSwitchCard";
 import { signOutThisAccount, signOutAllAccounts, listSavedAccounts } from "@/lib/account-switcher";
+import { LOCALES, setLocale, useT } from "@/lib/i18n";
+import { TIMEZONE_OPTIONS } from "@/lib/user-timezone";
+import { isOnlineNow } from "@/lib/offline-sync";
+
 
 export function SettingsPage({ scope }: { scope: string }) {
   const { data: session } = useSessionUser();
@@ -50,6 +56,8 @@ export function SettingsPage({ scope }: { scope: string }) {
   const [helpDoc, setHelpDoc] = useState<HelpLegalDoc | null>(null);
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({ ...DEFAULT_NOTIFICATION_PREFS });
   const [displayPrefs, setDisplayPrefs] = useState<DisplayPrefs>({ ...DEFAULT_DISPLAY_PREFS });
+  const [offlineInfo, setOfflineInfo] = useState({ count: 0, bytes: 0, lastSync: null as string | null });
+  const t = useT();
   const scopeLower = (scope || "").toLowerCase();
   const isSuperAdmin = scopeLower.includes("super") || session?.role === "super_admin" || (session?.roles ?? []).includes("super_admin");
   const isSchoolAdmin = !isSuperAdmin && (scopeLower.includes("school admin") || (scopeLower.includes("admin") && !scopeLower.includes("super")) || scopeLower === "school" || session?.role === "school_admin");
@@ -61,8 +69,35 @@ export function SettingsPage({ scope }: { scope: string }) {
     void hydratePrefsFromDb(session.userId, session.profileId).then(({ notif, display }) => {
       setNotifPrefs(notif);
       setDisplayPrefs(display);
+      applyDisplayPrefsToDom(display);
+      setLocale(display.language || "en");
     });
   }, [session?.userId, session?.profileId]);
+
+  useEffect(() => {
+    try {
+      let count = 0;
+      let bytes = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i) || "";
+        if (k.includes("material") || k.includes("d4_study_help") || k.includes("offline")) {
+          count += 1;
+          bytes += ((localStorage.getItem(k) || "").length) * 2;
+        }
+      }
+      setOfflineInfo({ count, bytes, lastSync: localStorage.getItem("d4exam_last_sync") });
+    } catch { /* */ }
+  }, [session?.userId]);
+
+  function patchDisplay(patch: Partial<DisplayPrefs>) {
+    setDisplayPrefs((prev) => {
+      const next = { ...prev, ...patch };
+      if (session?.userId) saveDisplayPrefs(session.userId, next);
+      else applyDisplayPrefsToDom(next);
+      if (patch.language) setLocale(patch.language);
+      return next;
+    });
+  }
 
   async function savePrefs() {
     if (!session?.userId) {
@@ -103,48 +138,113 @@ export function SettingsPage({ scope }: { scope: string }) {
 
   return (
     <>
-      <PageHeader title="Settings" description={`Manage your school identity, preferences and account for ${scope}.`} />
+      <PageHeader title={t("settings.title")} description={t("settings.subtitle", { scope })} />
       <div className="grid gap-6 lg:grid-cols-2">
         {isSchoolAdmin && <SchoolIdentityCard />}
-        <SectionCard title="Preferences" description="Regional and display options">
+        <SectionCard title={t("settings.preferences")} description={t("settings.preferencesDesc")}>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="lang">Language</Label>
-              <Select value={displayPrefs.language} onValueChange={(v) => setDisplayPrefs((p) => ({ ...p, language: v }))}>
+              <Label htmlFor="lang" className="inline-flex items-center gap-1.5">
+                <Languages className="h-3.5 w-3.5 text-slate-400" />
+                {t("settings.language")}
+              </Label>
+              <Select value={displayPrefs.language} onValueChange={(v) => patchDisplay({ language: v })}>
                 <SelectTrigger id="lang"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="fr">French</SelectItem>
-                  <SelectItem value="ar">Arabic</SelectItem>
+                <SelectContent className="max-h-72">
+                  {LOCALES.map((l) => (
+                    <SelectItem key={l.code} value={l.code}>{l.native} ({l.label})</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="tz">Time zone</Label>
-              <Select value={displayPrefs.timezone} onValueChange={(v) => setDisplayPrefs((p) => ({ ...p, timezone: v }))}>
+              <Label htmlFor="tz" className="inline-flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-slate-400" />
+                {t("settings.timezone")}
+              </Label>
+              <Select value={displayPrefs.timezone} onValueChange={(v) => patchDisplay({ timezone: v })}>
                 <SelectTrigger id="tz"><SelectValue /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {TIMEZONE_OPTIONS.map((z) => (
+                    <SelectItem key={z.value} value={z.value}>{z.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="appearance" className="inline-flex items-center gap-1.5">
+                <Palette className="h-3.5 w-3.5 text-slate-400" />
+                {t("settings.appearance")}
+              </Label>
+              <Select
+                value={displayPrefs.appearance || "system"}
+                onValueChange={(v) => patchDisplay({ appearance: v as "system" | "light" | "dark" })}
+              >
+                <SelectTrigger id="appearance"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="wat">West Africa Time (UTC+1)</SelectItem>
-                  <SelectItem value="gmt">Greenwich Mean Time (UTC)</SelectItem>
-                  <SelectItem value="eat">East Africa Time (UTC+3)</SelectItem>
+                  <SelectItem value="system">{t("settings.appearanceSystem")}</SelectItem>
+                  <SelectItem value="light">{t("settings.appearanceLight")}</SelectItem>
+                  <SelectItem value="dark">{t("settings.appearanceDark")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <Separator />
-            <ToggleRow id="compact" label="Compact tables" hint="Reduce row height on data tables" checked={displayPrefs.compactTables} onCheckedChange={(v) => setDisplayPrefs((p) => ({ ...p, compactTables: v }))} />
-            <ToggleRow id="reduced" label="Reduced motion" hint="Minimise interface animation" checked={displayPrefs.reducedMotion} onCheckedChange={(v) => setDisplayPrefs((p) => ({ ...p, reducedMotion: v }))} />
-            <Button disabled={saving} onClick={() => void savePrefs()}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save preferences</Button>
+            <ToggleRow id="compact" label={t("settings.compactTables")} hint={t("settings.compactTablesHint")} checked={displayPrefs.compactTables} onCheckedChange={(v) => patchDisplay({ compactTables: v })} />
+            <ToggleRow id="reduced" label={t("settings.reducedMotion")} hint={t("settings.reducedMotionHint")} checked={displayPrefs.reducedMotion} onCheckedChange={(v) => patchDisplay({ reducedMotion: v })} />
+            <Button disabled={saving} onClick={() => void savePrefs()}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t("settings.savePreferences")}</Button>
           </div>
         </SectionCard>
-        <SectionCard title="Notifications" description="Choose what you get alerted about">
+        <SectionCard title={t("settings.notifications")} description={t("settings.notificationsDesc")}>
           <div className="space-y-4">
-            <ToggleRow id="n1" label="Examination reminders" hint="24 hours before" checked={notifPrefs.examReminders} onCheckedChange={(v) => setNotifPrefs((p) => ({ ...p, examReminders: v }))} />
-            <ToggleRow id="n2" label="Result publications" checked={notifPrefs.resultPublications} onCheckedChange={(v) => setNotifPrefs((p) => ({ ...p, resultPublications: v }))} />
-            <ToggleRow id="n3" label="Integrity alerts" checked={notifPrefs.integrityAlerts} onCheckedChange={(v) => setNotifPrefs((p) => ({ ...p, integrityAlerts: v }))} />
-            <ToggleRow id="n4" label="Product announcements" checked={notifPrefs.productAnnouncements} onCheckedChange={(v) => setNotifPrefs((p) => ({ ...p, productAnnouncements: v }))} />
-            <Button disabled={saving} onClick={() => void savePrefs()}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save notification settings</Button>
+            <ToggleRow id="n1" label={t("settings.examReminders")} hint={t("settings.examRemindersHint")} checked={notifPrefs.examReminders} onCheckedChange={(v) => setNotifPrefs((p) => ({ ...p, examReminders: v }))} />
+            <ToggleRow id="n2" label={t("settings.resultPublications")} checked={notifPrefs.resultPublications} onCheckedChange={(v) => setNotifPrefs((p) => ({ ...p, resultPublications: v }))} />
+            <ToggleRow id="n3" label={t("settings.integrityAlerts")} checked={notifPrefs.integrityAlerts} onCheckedChange={(v) => setNotifPrefs((p) => ({ ...p, integrityAlerts: v }))} />
+            <ToggleRow id="n4" label={t("settings.productAnnouncements")} checked={notifPrefs.productAnnouncements} onCheckedChange={(v) => setNotifPrefs((p) => ({ ...p, productAnnouncements: v }))} />
+            <Button disabled={saving} onClick={() => void savePrefs()}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t("settings.saveNotifications")}</Button>
           </div>
         </SectionCard>
+        
+        <SectionCard title={t("settings.offline")} description={t("settings.offlineDesc")}>
+          <div className="space-y-3 text-sm">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5">
+              <span className="inline-flex items-center gap-2 font-medium text-slate-800">
+                <HardDrive className="h-4 w-4 text-slate-400" />
+                {t("settings.offlineAvailable")}
+              </span>
+              <span className="text-xs font-semibold text-emerald-700">{isOnlineNow() ? "Online" : "Offline"}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 px-1">
+              <span className="text-slate-600">{t("settings.downloadedMaterials")}</span>
+              <span className="font-semibold tabular-nums">{offlineInfo.count}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 px-1">
+              <span className="text-slate-600">{t("settings.storageUsed")}</span>
+              <span className="font-semibold tabular-nums">
+                {offlineInfo.bytes < 1024 * 1024 ? `${Math.round(offlineInfo.bytes / 1024)} KB` : `${(offlineInfo.bytes / (1024 * 1024)).toFixed(1)} MB`}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-3 px-1">
+              <span className="text-slate-600">{t("settings.lastSync")}</span>
+              <span className="text-xs text-slate-500">{offlineInfo.lastSync ? new Date(offlineInfo.lastSync).toLocaleString() : "—"}</span>
+            </div>
+            <Button type="button" variant="outline" className="w-full gap-2" onClick={() => {
+              try {
+                const keys: string[] = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                  const k = localStorage.key(i) || "";
+                  if (k.includes("d4_study_help") || k.startsWith("d4exam_tmp")) keys.push(k);
+                }
+                keys.forEach((k) => localStorage.removeItem(k));
+                toast.success("Temporary cache cleared");
+                setOfflineInfo((s) => ({ ...s, count: Math.max(0, s.count - keys.length) }));
+              } catch { toast.error("Could not clear cache"); }
+            }}>
+              <Trash2 className="h-4 w-4" />
+              {t("settings.clearCache")}
+            </Button>
+          </div>
+        </SectionCard>
+
         <PushSettingsCard scope={scope} />
         <ChangeAppPasswordCard />
         <FingerprintLockCard />

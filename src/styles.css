@@ -512,3 +512,33 @@ html.d4-exam-immersive .d4-cbt-scroll {
   overflow-y: auto !important;
   overscroll-behavior-y: contain;
 }
+
+
+/* —— Display preferences (Settings) —— */
+html.d4-compact-tables table tbody tr td,
+html.d4-compact-tables table tbody tr th,
+html.d4-compact-tables [data-d4-table] tbody tr td,
+html.d4-compact-tables [data-d4-table] tbody tr th {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+html.d4-compact-tables [data-d4-row] {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+html.d4-reduced-motion *,
+html.reduce-motion *,
+html.d4-reduced-motion *::before,
+html.d4-reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Keep CBT / calculator hit targets usable even with compact tables */
+html.d4-compact-tables .d4-cbt-root button,
+html.d4-compact-tables .d4-calculator button {
+  min-height: 2.5rem;
+}

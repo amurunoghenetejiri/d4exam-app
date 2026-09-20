@@ -36,6 +36,8 @@ import { useUnreadNotificationCount } from "@/lib/queries";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import type { RoleConfig } from "@/components/navigation/navConfig";
+import { useT } from "@/lib/i18n";
+
 import { GlobalSearchPage } from "@/components/search/GlobalSearchPage";
 
 export interface AppUser {
@@ -79,6 +81,33 @@ function AccountRoleBadge({
   );
 }
 
+
+const NAV_I18N: Record<string, string> = {
+  Dashboard: "nav.dashboard",
+  Home: "nav.dashboard",
+  "My Exams": "nav.examinations",
+  Exams: "nav.examinations",
+  Examinations: "nav.examinations",
+  Results: "nav.results",
+  "My Courses": "nav.courses",
+  Courses: "nav.courses",
+  Materials: "nav.materials",
+  Notifications: "nav.notifications",
+  Profile: "nav.profile",
+  Settings: "nav.settings",
+  Students: "nav.students",
+  Teachers: "nav.teachers",
+  Officers: "nav.officers",
+  "Live Monitor": "nav.liveMonitor",
+  Approvals: "nav.approvals",
+  Integrity: "nav.integrity",
+  Reports: "nav.reports",
+  "Question bank": "nav.questionBank",
+  "Question Bank": "nav.questionBank",
+  Marking: "nav.marking",
+  Submissions: "nav.submissions",
+};
+
 function NavLinks({
   config,
   onNavigate,
@@ -89,6 +118,11 @@ function NavLinks({
   badges?: Record<string, { dot?: "green" | "blue" | "red"; live?: boolean }>;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const t = useT();
+  const translateNav = (label: string) => {
+    const key = NAV_I18N[label];
+    return key ? t(key) : label;
+  };
   return (
     <nav className="flex flex-col gap-5 px-3 py-4" aria-label={`${config.label} navigation`}>
       {config.groups.map((group, gi) => (
@@ -128,7 +162,7 @@ function NavLinks({
                         aria-hidden
                       />
                     </span>
-                    <span className="truncate">{item.label}</span>
+                    <span className="truncate">{translateNav(item.label)}</span>
                     {!isLive && badge?.dot ? (
                       <span
                         className={cn(

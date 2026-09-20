@@ -17,6 +17,8 @@ export type DisplayPrefs = {
   timezone: string;
   compactTables: boolean;
   reducedMotion: boolean;
+  /** system | light | dark */
+  appearance: "system" | "light" | "dark";
 };
 
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
@@ -28,9 +30,10 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
 
 export const DEFAULT_DISPLAY_PREFS: DisplayPrefs = {
   language: "en",
-  timezone: "wat",
+  timezone: "auto",
   compactTables: false,
   reducedMotion: false,
+  appearance: "system",
 };
 
 function storageKey(userId: string) {
@@ -83,11 +86,16 @@ export function loadDisplayPrefs(userId: string | null | undefined): DisplayPref
       };
     }
     const parsed = JSON.parse(raw) as Partial<DisplayPrefs>;
+    const appearance = parsed.appearance;
     return {
       language: parsed.language || "en",
-      timezone: parsed.timezone || "wat",
+      timezone: parsed.timezone || "auto",
       compactTables: parsed.compactTables === true,
       reducedMotion: parsed.reducedMotion === true,
+      appearance:
+        appearance === "light" || appearance === "dark" || appearance === "system"
+          ? appearance
+          : "system",
     };
   } catch {
     return { ...DEFAULT_DISPLAY_PREFS };
@@ -101,8 +109,7 @@ export function saveDisplayPrefs(userId: string | null | undefined, prefs: Displ
     localStorage.setItem(`d4exam_pref_compact:${userId}`, prefs.compactTables ? "1" : "0");
     localStorage.setItem(`d4exam_pref_reduced:${userId}`, prefs.reducedMotion ? "1" : "0");
     try {
-      document.documentElement.classList.toggle("reduce-motion", prefs.reducedMotion);
-      document.documentElement.dataset.compactTables = prefs.compactTables ? "1" : "0";
+      applyDisplayPrefsToDom(prefs);
     } catch {
       /* ignore */
     }
@@ -138,6 +145,10 @@ export async function hydratePrefsFromDb(
       timezone: typeof d.timezone === "string" ? d.timezone : localDisplay.timezone,
       compactTables: d.compactTables === true,
       reducedMotion: d.reducedMotion === true,
+      appearance:
+        d.appearance === "light" || d.appearance === "dark" || d.appearance === "system"
+          ? d.appearance
+          : localDisplay.appearance || "system",
     };
     saveNotificationPrefs(userId, notif);
     saveDisplayPrefs(userId, display);
@@ -204,4 +215,40 @@ export function isNotificationTypeAllowed(
     return prefs.examReminders !== false;
   }
   return true;
+}
+
+
+/** Apply language, motion, compact tables, and theme classes to <html>. */
+export function applyDisplayPrefsToDom(prefs: DisplayPrefs) {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  root.classList.toggle("reduce-motion", prefs.reducedMotion);
+  root.classList.toggle("d4-reduced-motion", prefs.reducedMotion);
+  root.classList.toggle("d4-compact-tables", prefs.compactTables);
+  root.dataset.compactTables = prefs.compactTables ? "1" : "0";
+  root.dataset.language = prefs.language || "en";
+  root.dataset.timezone = prefs.timezone || "auto";
+
+  // Theme
+  const appearance = prefs.appearance || "system";
+  root.classList.remove("light", "dark");
+  if (appearance === "light") {
+    root.classList.add("light");
+    root.classList.remove("dark");
+  } else if (appearance === "dark") {
+    root.classList.add("dark");
+  } else {
+    // system
+    const dark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+    root.classList.toggle("dark", !!dark);
+  }
+
+  // Reduced motion also respect OS when user has not forced motion on
+  try {
+    if (!prefs.reducedMotion && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+      root.classList.add("d4-reduced-motion", "reduce-motion");
+    }
+  } catch {
+    /* */
+  }
 }

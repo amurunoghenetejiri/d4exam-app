@@ -29,6 +29,7 @@ import { isNativeShell } from "@/native/platform";
 import { applyNativeStatusBar } from "@/native/statusBar";
 import { registerAndroidBackButton } from "@/native/backButton";
 import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
+import { DisplayPrefsBootstrap } from "@/components/DisplayPrefsBootstrap";
 import { startAccountVaultKeepAlive } from "@/lib/account-switcher";
 
 function NativeBootstrap() {
@@ -346,6 +347,7 @@ function RootComponent() {
       <Outlet />
       <NativeBootstrap />
       <WebPushBootstrap />
+      <DisplayPrefsBootstrap />
       <AnimatedSplash />
       <Toaster />
     </QueryClientProvider>
