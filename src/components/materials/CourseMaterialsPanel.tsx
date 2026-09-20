@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Upload, Trash2, Loader2, Search, Filter, MoreVertical, Download, Calendar, Eye, Pencil, X, FileImage, FileText, BookOpen, Youtube, GraduationCap, UserRound,
+  Upload, Trash2, Loader2, Search, Filter, MoreVertical, Download, Calendar, Eye, Pencil, X, FileImage, FileText, BookOpen, Youtube, GraduationCap, UserRound, Share2,
 } from "lucide-react";
 import { PageHeader, EmptyState } from "@/components/dashboard/kit";
 import { Button } from "@/components/ui/button";
@@ -53,7 +53,7 @@ export function CourseMaterialsPanel({
   const [materialType, setMaterialType] = useState<MaterialType>("notes");
   const [tags, setTags] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [imagesToPdf, setImagesToPdf] = useState(true);
+  const [imagesToPdf, setImagesToPdf] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
@@ -311,7 +311,7 @@ export function CourseMaterialsPanel({
           description={
             role === "teacher"
               ? "Upload and manage materials you own — only your uploads appear here."
-              : "Open any material to read it. Students can use Study Help for related videos."
+              : "Notes, assignments, and study resources for your courses."
           }
         />
         {canUpload && (
@@ -320,21 +320,6 @@ export function CourseMaterialsPanel({
           </Button>
         )}
       </div>
-      {role === "student" ? (
-        <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50/80 px-3 py-2.5 text-xs text-red-900 sm:text-sm">
-          <Youtube className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-          <p>
-            <span className="font-bold">Study Help:</span> Open a material, then tap the{" "}
-            <span className="font-semibold">Study Help</span> button for related educational videos.
-            Teacher and Student badges show who uploaded each file.
-          </p>
-        </div>
-      ) : (
-        <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-2.5 text-xs text-blue-900 sm:text-sm">
-          <span className="font-bold">My Materials:</span> Only materials you uploaded appear here. Students in your courses can see them tagged as <span className="font-semibold">Teacher</span>.
-        </div>
-      )}
-
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -404,7 +389,7 @@ export function CourseMaterialsPanel({
             const course = courseMap.get(m.course_id);
             const mine = m.uploaded_by === session?.userId;
             return (
-              <div key={m.id} className="relative flex items-center gap-2.5 rounded-xl border border-slate-100 bg-white px-2.5 py-2 shadow-sm sm:block sm:px-3 sm:py-2.5 transition hover:border-slate-200 hover:shadow-md">
+              <div key={m.id} className="relative flex items-start gap-2 rounded-xl border border-slate-100 bg-white px-2 py-1.5 shadow-sm sm:block sm:px-3 sm:py-2.5 transition hover:border-slate-200 hover:shadow-md">
                 <div className="mb-3 flex items-start justify-between">
                   <button type="button" className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", meta.wrap)} onClick={() => setViewer(m)} aria-label="Preview">
                     <Icon className="h-5 w-5" />
@@ -414,77 +399,108 @@ export function CourseMaterialsPanel({
                       <MoreVertical className="h-4 w-4" />
                     </button>
                     {menuId === m.id && (
-                      <div className="absolute right-0 z-20 mt-1 min-w-[9rem] rounded-xl border border-slate-200 bg-white py-1 text-sm shadow-lg">
-                        <button type="button" className="flex w-full items-center gap-2 px-3 py-2 hover:bg-slate-50" onClick={() => { setViewer(m); setMenuId(null); }}>
-                          <Eye className="h-3.5 w-3.5" /> Preview
-                        </button>
-                        {m.file_url && (
-                          <button type="button" className="flex w-full items-center gap-2 px-3 py-2 hover:bg-slate-50" onClick={() => { void downloadMaterial(m); setMenuId(null); }}>
-                            <Download className="h-3.5 w-3.5" /> Download
+                      <>
+                        <button
+                          type="button"
+                          className="fixed inset-0 z-[90] bg-black/30 sm:bg-transparent"
+                          aria-label="Close menu"
+                          onClick={() => setMenuId(null)}
+                        />
+                        <div className="fixed inset-x-0 bottom-0 z-[100] max-h-[70vh] overflow-y-auto rounded-t-2xl border border-slate-200 bg-white py-2 text-sm shadow-2xl sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-1 sm:max-h-none sm:min-w-[11rem] sm:rounded-xl sm:shadow-lg">
+                          <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-slate-200 sm:hidden" />
+                          <button type="button" className="flex w-full items-center gap-2 px-4 py-3 hover:bg-slate-50 sm:px-3 sm:py-2" onClick={() => { setViewer(m); setMenuId(null); }}>
+                            <Eye className="h-4 w-4" /> Open / Preview
                           </button>
-                        )}
-                        {mine && (
-                          <>
-                            <button type="button" className="flex w-full items-center gap-2 px-3 py-2 hover:bg-slate-50" onClick={() => openEdit(m)}>
-                              <Pencil className="h-3.5 w-3.5" /> Edit
+                          {m.file_url && (
+                            <button type="button" className="flex w-full items-center gap-2 px-4 py-3 hover:bg-slate-50 sm:px-3 sm:py-2" onClick={() => { void downloadMaterial(m); setMenuId(null); }}>
+                              <Download className="h-4 w-4" /> Download
                             </button>
-                            <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50" onClick={() => void remove(m.id)}>
-                              <Trash2 className="h-3.5 w-3.5" /> Delete
+                          )}
+                          {m.file_url && (
+                            <button type="button" className="flex w-full items-center gap-2 px-4 py-3 hover:bg-slate-50 sm:px-3 sm:py-2" onClick={() => { void shareMaterial(m); setMenuId(null); }}>
+                              <Share2 className="h-4 w-4" /> Share
                             </button>
-                          </>
-                        )}
-                      </div>
+                          )}
+                          {mine && (
+                            <>
+                              <button type="button" className="flex w-full items-center gap-2 px-4 py-3 hover:bg-slate-50 sm:px-3 sm:py-2" onClick={() => openEdit(m)}>
+                                <Pencil className="h-4 w-4" /> Edit
+                              </button>
+                              <button type="button" className="flex w-full items-center gap-2 px-4 py-3 text-red-600 hover:bg-red-50 sm:px-3 sm:py-2" onClick={() => void remove(m.id)}>
+                                <Trash2 className="h-4 w-4" /> Delete
+                              </button>
+                            </>
+                          )}
+                          <button type="button" className="mt-1 flex w-full items-center justify-center gap-2 border-t border-slate-100 px-4 py-3 font-semibold text-slate-500 sm:hidden" onClick={() => setMenuId(null)}>
+                            Cancel
+                          </button>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
-                <button type="button" className="w-full text-left" onClick={() => setViewer(m)}>
-                  <h3 className="line-clamp-2 text-sm font-bold text-slate-900">{m.title}</h3>
-                  <p className="mt-1 line-clamp-2 text-xs text-slate-500">{m.description || course?.name || "—"}</p>
-                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", meta.badge)}>{meta.label}</span>
-                    {course?.code && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{course.code}</span>}
+                <div className="min-w-0 flex-1 sm:w-full">
+                  <button type="button" className="w-full text-left" onClick={() => setViewer(m)}>
+                    <h3 className="line-clamp-2 text-[13px] font-bold leading-snug text-slate-900 sm:text-sm">{m.title}</h3>
+                    <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-500">
+                      {[course?.code, course?.name, m.tags].filter(Boolean).join(" · ") || m.description || "—"}
+                    </p>
+                  </button>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                    <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-bold sm:text-[10px]", meta.badge)}>{meta.label}</span>
                     {(() => {
                       const r = String(m.uploader_role || "").toLowerCase();
-                      const isTeacher = r === "teacher" || r.includes("teacher");
-                      const isStudent = r === "student" || r.includes("student");
-                      if (isTeacher) {
+                      if (r.includes("teacher")) {
                         return (
-                          <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">
-                            <GraduationCap className="h-3 w-3" /> Teacher
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-800 sm:text-[10px]">
+                            <GraduationCap className="h-2.5 w-2.5" /> Teacher
                           </span>
                         );
                       }
-                      if (isStudent) {
+                      if (r.includes("student")) {
                         return (
-                          <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                            <UserRound className="h-3 w-3" /> Student
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800 sm:text-[10px]">
+                            <UserRound className="h-2.5 w-2.5" /> Student
                           </span>
                         );
                       }
                       return (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                          {m.uploader_role || "Uploader"}
-                        </span>
+                        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">Uploader</span>
                       );
                     })()}
-                  </div>
-                  <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-slate-500">
-                    <span className="truncate font-medium text-slate-600">
-                      {m.uploader_name ? `by ${m.uploader_name}` : "Uploaded"}
-                    </span>
-                    <span className="shrink-0 flex items-center gap-1 text-slate-400">
-                      <Calendar className="h-3 w-3" /> {formatDate(m.created_at)}
+                    <span className="text-[9px] text-slate-400 sm:text-[10px]">{formatBytes(m.file_size)}</span>
+                    <span className="ml-auto flex items-center gap-0.5 text-[9px] text-slate-400 sm:text-[10px]">
+                      <Calendar className="h-2.5 w-2.5" /> {formatDate(m.created_at)}
                     </span>
                   </div>
-                  <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400">
-                    <span>{formatBytes(m.file_size)}{m.download_count ? ` · ${m.download_count} dl` : ""}</span>
-                    {role === "student" ? (
-                      <span className="inline-flex items-center gap-0.5 font-semibold text-red-600">
-                        <Youtube className="h-3 w-3" /> Study Help
-                      </span>
-                    ) : null}
+                  <div className="mt-1.5 flex items-center gap-1">
+                    <button
+                      type="button"
+                      className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary hover:bg-primary/15"
+                      onClick={() => setViewer(m)}
+                    >
+                      Open
+                    </button>
+                    {m.file_url && (
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                        onClick={() => void downloadMaterial(m)}
+                      >
+                        Download
+                      </button>
+                    )}
+                    {m.file_url && (
+                      <button
+                        type="button"
+                        className="rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                        onClick={() => void shareMaterial(m)}
+                      >
+                        Share
+                      </button>
+                    )}
                   </div>
-                </button>
+                </div>
               </div>
             );
           })}
@@ -493,7 +509,7 @@ export function CourseMaterialsPanel({
 
       {uploadOpen && (
         <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
-          <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
+          <div className="flex max-h-[min(92vh,100dvh)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" style={{ paddingBottom: "env(safe-area-inset-bottom,0px)" }}>
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <h3 className="text-base font-bold">{editItem ? "Edit material" : "Upload material"}</h3>
               <button type="button" onClick={() => setUploadOpen(false)} aria-label="Close"><X className="h-5 w-5 text-slate-400" /></button>

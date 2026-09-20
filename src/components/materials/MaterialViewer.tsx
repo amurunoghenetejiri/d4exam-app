@@ -106,6 +106,8 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
   const [goPage, setGoPage] = useState("");
   const [ocrOpen, setOcrOpen] = useState(false);
   const [studyHelpOpen, setStudyHelpOpen] = useState(false);
+  const [studySplit, setStudySplit] = useState(false);
+
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrDraft, setOcrDraft] = useState(item.ocr_text || "");
@@ -318,17 +320,24 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
       const doc = pdfDocRef.current;
       const pg = await doc.getPage(page);
       const base = pg.getViewport({ scale: 1 });
-      const maxW = Math.min((wrapRef.current?.clientWidth || 900) - 16, 1100);
+      const maxW = Math.min((wrapRef.current?.clientWidth || 900) - 16, 1400);
       const maxH = Math.max((wrapRef.current?.clientHeight || 700) - 16, 200);
       const fit = Math.min(maxW / base.width, maxH / base.height);
-      const scale = fit * zoom;
+      const dpr = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 2.5);
+      const scale = fit * zoom * dpr;
       const viewport = pg.getViewport({ scale });
       const canvas = canvasRef.current;
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      // CSS size keeps layout sharp on retina without huge layout box
+      canvas.style.width = `${Math.floor(viewport.width / dpr)}px`;
+      canvas.style.height = `${Math.floor(viewport.height / dpr)}px`;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      await pg.render({ canvasContext: ctx, viewport }).promise;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      await pg.render({ canvasContext: ctx, viewport, intent: "display" } as Parameters<typeof pg.render>[0]).promise;
     } catch (e) {
       setError((e as Error).message || "Render failed");
     }
@@ -887,11 +896,11 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
         </div>
       )}
 
-      {role === "student" && studyHelpOpen && (
-        <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-40 max-h-[55vh] overflow-y-auto border-t border-white/10 bg-[#0b1220]/97 p-3 backdrop-blur-md sm:left-auto sm:right-3 sm:bottom-16 sm:max-h-[70vh] sm:w-[min(100%,24rem)] sm:rounded-2xl sm:border sm:border-white/15">
+      {role === "student" && studyHelpOpen && !studySplit && (
+        <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-40 max-h-[48vh] overflow-y-auto border-t border-white/10 bg-[#0b1220]/97 p-3 backdrop-blur-md sm:left-auto sm:right-3 sm:bottom-16 sm:max-h-[70vh] sm:w-[min(100%,24rem)] sm:rounded-2xl sm:border sm:border-white/15">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-bold text-white/90">Study Help</p>
-            <button type="button" className="rounded-lg px-2 py-1 text-xs font-semibold text-white/80 hover:bg-white/10" onClick={() => setStudyHelpOpen(false)}>
+            <button type="button" className="rounded-lg px-2 py-1 text-xs font-semibold text-white/80 hover:bg-white/10" onClick={() => { setStudyHelpOpen(false); setStudySplit(false); }}>
               Close
             </button>
           </div>
@@ -904,6 +913,27 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
             ocrText={item.ocr_text}
             compact
             className="border-0 shadow-none"
+            onActiveChange={(v) => {
+              if (v) setStudySplit(true);
+            }}
+          />
+        </div>
+      )}
+
+      {role === "student" && studySplit && (
+        <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-40 flex h-[42vh] flex-col border-t border-white/10 bg-[#0b1220] sm:inset-y-16 sm:left-auto sm:right-0 sm:h-auto sm:w-[min(100%,28rem)] sm:border-l sm:border-t-0">
+          <StudyHelpPanel
+            materialId={item.id}
+            title={item.title}
+            courseLabel={courseLabel || undefined}
+            topic={topic}
+            description={item.description}
+            ocrText={item.ocr_text}
+            embedMode
+            onCloseEmbed={() => setStudySplit(false)}
+            onActiveChange={(v) => {
+              if (!v) setStudySplit(false);
+            }}
           />
         </div>
       )}
