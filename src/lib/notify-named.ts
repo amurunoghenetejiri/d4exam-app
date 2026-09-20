@@ -26,6 +26,55 @@ async function authNames(ids: string[]): Promise<Map<string, string>> {
   } catch {
     /* ignore */
   }
+  // Fill gaps from students.full_name via profile linkage
+  try {
+    const missing = uniq.filter((id) => !map.get(id) || map.get(id) === "Student");
+    if (missing.length) {
+      const { data: studs } = await supabase
+        .from("students")
+        .select("full_name, profiles(auth_user_id, full_name)")
+        .in("profile_id", missing.length ? missing : ["__none__"]);
+      // Also match profiles.auth_user_id on nested
+      for (const s of studs ?? []) {
+        const row = s as {
+          full_name?: string | null;
+          profiles?: { auth_user_id?: string | null; full_name?: string | null } | null;
+        };
+        const auth = row.profiles?.auth_user_id;
+        if (!auth) continue;
+        const n = (row.full_name || row.profiles?.full_name || "").trim();
+        if (n) map.set(auth, n);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return map;
+}
+
+/** Resolve display names for student row ids → auth user ids */
+async function namesFromStudentIds(studentIds: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const uniq = [...new Set(studentIds.filter(Boolean))];
+  if (!uniq.length) return map;
+  try {
+    const { data } = await supabase
+      .from("students")
+      .select("id, full_name, profiles(auth_user_id, full_name)")
+      .in("id", uniq);
+    for (const s of data ?? []) {
+      const row = s as {
+        id: string;
+        full_name?: string | null;
+        profiles?: { auth_user_id?: string | null; full_name?: string | null } | null;
+      };
+      const n = (row.full_name || row.profiles?.full_name || "").trim() || "Student";
+      const auth = row.profiles?.auth_user_id;
+      if (auth) map.set(auth, n);
+    }
+  } catch {
+    /* ignore */
+  }
   return map;
 }
 
@@ -80,6 +129,11 @@ export async function namedStudentsResultsReleased(opts: {
   const fromStudents = await studentIdsToAuthUserIds([...(opts.studentIds ?? [])]);
   const authIds = [...new Set([...fromAuth, ...fromStudents])];
   const names = await authNames(authIds);
+  // Prefer student-table names when we have studentIds
+  if ((opts.studentIds ?? []).length) {
+    const byStudent = await namesFromStudentIds([...(opts.studentIds ?? [])]);
+    for (const [uid, n] of byStudent) names.set(uid, n);
+  }
   const examId = opts.examId || "released";
   const link = "/student/results";
   await notifyMany(

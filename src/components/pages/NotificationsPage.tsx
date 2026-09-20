@@ -1,7 +1,7 @@
 import { useState, type MouseEvent } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, CheckCheck, Loader2, Trash2 } from "lucide-react";
+import { Bell, CheckCheck, ChevronDown, ChevronUp, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, SectionCard, EmptyState } from "@/components/dashboard/kit";
 import { Button } from "@/components/ui/button";
@@ -259,6 +259,7 @@ export function NotificationsPage({ scope }: { scope: string }) {
   const { data: user } = useSessionUser();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
 
   useRealtimeInvalidate(
@@ -417,7 +418,41 @@ export function NotificationsPage({ scope }: { scope: string }) {
                     {(n.type || "info").replace(/_/g, " ")}
                   </Badge>
                 </div>
-                <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate-600">{n.message}</p>
+                {n.message ? (
+                  <div className="mt-0.5">
+                    <p
+                      className={
+                        expandedIds[n.id]
+                          ? "whitespace-pre-wrap text-sm text-slate-600"
+                          : "line-clamp-2 whitespace-pre-wrap text-sm text-slate-600"
+                      }
+                    >
+                      {n.message}
+                    </p>
+                    {(n.message.length > 80 || (n.message.match(/\n/g) || []).length > 0) ? (
+                      <button
+                        type="button"
+                        className="mt-1 inline-flex items-center gap-0.5 text-[11px] font-semibold text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedIds((prev) => ({ ...prev, [n.id]: !prev[n.id] }));
+                        }}
+                      >
+                        {expandedIds[n.id] ? (
+                          <>
+                            Show less <ChevronUp className="h-3 w-3" />
+                          </>
+                        ) : (
+                          <>
+                            Show full message <ChevronDown className="h-3 w-3" />
+                          </>
+                        )}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-0.5 text-sm italic text-slate-400">No message body</p>
+                )}
                 <p className="mt-1 text-[11px] text-slate-400">
                   {new Date(n.created_at).toLocaleString()}
                 </p>

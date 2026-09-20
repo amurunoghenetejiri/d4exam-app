@@ -93,8 +93,8 @@ function Page() {
               .filter((l) => essayIds.has(String(l.question_id)))
               .map((l) => String(l.exam_id)),
           );
+          // Prefer essay exams; if detection finds none (RLS/type mismatch), keep all so teacher still sees scripts
           if (essayExamIds.size) examIds = examIds.filter((id) => essayExamIds.has(id));
-          else examIds = [];
         }
       } catch {
         /* keep all if filter fails */
@@ -124,13 +124,19 @@ function Page() {
     queryKey: ["marking-paper", active?.exam_id],
     enabled: Boolean(active?.exam_id),
     queryFn: async () => {
-      const { data, error } = await supabase
+      let res = await supabase
         .from("exam_questions")
         .select("question_id, marks, questions(id, question_text, question_type, marks)")
         .eq("exam_id", active!.exam_id)
         .order("question_order");
-      if (error) throw error;
-      return (data ?? []) as PaperQ[];
+      if (res.error) {
+        res = await supabase
+          .from("exam_questions")
+          .select("question_id, marks, questions(id, question_text, question_type, marks)")
+          .eq("exam_id", active!.exam_id);
+      }
+      if (res.error) throw res.error;
+      return (res.data ?? []) as PaperQ[];
     },
   });
 
@@ -138,7 +144,16 @@ function Page() {
     const rows = paperQ.data ?? [];
     return rows.filter((r) => {
       const t = (r.questions?.question_type || "").toLowerCase();
-      return t === "essay" || t === "short_answer" || t === "numerical";
+      return (
+        t === "essay" ||
+        t === "short_answer" ||
+        t === "short-answer" ||
+        t === "numerical" ||
+        t.includes("essay") ||
+        t.includes("short") ||
+        t.includes("theory") ||
+        t.includes("descript")
+      );
     });
   }, [paperQ.data]);
 
@@ -321,7 +336,8 @@ function Page() {
           ) : (
             <div className="space-y-4">
               {subjective.map((q, i) => {
-                const ans = (active.answers ?? {})[q.question_id] || "";
+                const rawAns = (active.answers ?? {})[q.question_id];
+                const ans = rawAns == null ? "" : String(rawAns);
                 const max = Number(q.marks || q.questions?.marks || 0);
                 return (
                   <div key={q.question_id} className="rounded-xl border border-slate-200 p-3">

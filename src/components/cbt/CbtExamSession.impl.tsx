@@ -1565,17 +1565,22 @@ export function CbtExamPage() {
                     inputMode={qType === "numerical" ? "decimal" : "text"}
                     autoComplete="off"
                     autoCorrect="off"
-                    autoCapitalize="sentences"
+                    autoCapitalize="off"
                     spellCheck={false}
+                    data-gramm="false"
+                    data-gramm_editor="false"
+                    data-enable-grammarly="false"
+                    enterKeyHint="done"
                     placeholder={
                       qType === "numerical"
                         ? "Type numbers only…"
-                        : "Type your answer here. Paste is disabled — you must type."
+                        : "Type your answer here…"
                     }
                     onPaste={(e) => {
                       e.preventDefault();
-                      toast.message("Paste is disabled — type your answer");
                     }}
+                    onCopy={(e) => e.preventDefault()}
+                    onCut={(e) => e.preventDefault()}
                     onDrop={(e) => e.preventDefault()}
                     onChange={(e) => {
                       if (locked) return;
@@ -1589,7 +1594,7 @@ export function CbtExamPage() {
                     )}
                   />
                   <p className="mt-1.5 text-[11px] text-slate-400">
-                    {textVal.trim().length} characters · Copy/paste blocked
+                    {textVal.trim().length} characters
                   </p>
                 </div>
               );
