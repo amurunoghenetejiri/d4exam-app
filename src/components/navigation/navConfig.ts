@@ -22,6 +22,7 @@ import {
   Home,
   Network,
   Send,
+  Server,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/types";
@@ -232,6 +233,7 @@ export const superAdminNav: RoleConfig = {
         { label: "Platform Reports", to: "/super-admin/reports", icon: ScrollText },
         { label: "Audit Logs", to: "/super-admin/audit-logs", icon: ScrollText },
         { label: "All Examinations", to: "/super-admin/examinations", icon: FileText },
+        { label: "Services", to: "/super-admin/services", icon: Server },
       ],
     },
     {

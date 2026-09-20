@@ -13,12 +13,18 @@ import {
   Loader2,
   UserCheck,
   Activity,
+  Ban,
+  Trash2,
+  ShieldOff,
+  Pencil,
 } from "lucide-react";
 import { PageHeader, SectionCard, StatusBadge, EmptyState } from "@/components/dashboard/kit";
 import { Button } from "@/components/ui/button";
 import { SchoolLogo } from "@/components/brand/SchoolLogo";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 export const Route = createFileRoute("/super-admin/schools/$id")({
   validateSearch: (
@@ -48,10 +54,45 @@ function Page() {
   const { id } = Route.useParams();
   const search = Route.useSearch();
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [mgmtBusy, setMgmtBusy] = useState(false);
   const tab = (search.tab as Tab) || "overview";
   const facultyId = search.faculty ?? null;
   const departmentId = search.department ?? null;
   const levelId = search.level ?? null;
+
+  async function setSchoolStatus(status: string, message: string) {
+    if (!id) return;
+    setMgmtBusy(true);
+    try {
+      const { error } = await supabase.from("schools").update({ status } as never).eq("id", id);
+      if (error) throw error;
+      toast.success(message);
+      void qc.invalidateQueries({ queryKey: ["sa-school", id] });
+      void qc.invalidateQueries({ queryKey: ["sa-schools-list"] });
+      void qc.invalidateQueries({ queryKey: ["sa-ov-counts"] });
+    } catch (e) {
+      toast.error((e as Error).message || "Could not update school");
+    } finally {
+      setMgmtBusy(false);
+    }
+  }
+
+  async function deleteSchool() {
+    if (!id) return;
+    if (!window.confirm("Permanently delete this school record? This cannot be undone from the UI.")) return;
+    setMgmtBusy(true);
+    try {
+      const { error } = await supabase.from("schools").delete().eq("id", id);
+      if (error) throw error;
+      toast.success("School deleted");
+      void navigate({ to: "/super-admin/schools" });
+    } catch (e) {
+      toast.error((e as Error).message || "Could not delete school (check related data / RLS)");
+    } finally {
+      setMgmtBusy(false);
+    }
+  }
 
   function setTab(next: Tab) {
     void navigate({
@@ -377,6 +418,41 @@ function Page() {
             {school.school_code ? `ID ${school.school_code}` : "No code"}
             {school.country ? ` · ${school.country}` : ""}
           </p>
+        </div>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 font-semibold"
+            disabled={mgmtBusy}
+            onClick={() =>
+              void setSchoolStatus(
+                school.status === "suspended" ? "active" : "suspended",
+                school.status === "suspended" ? "School reactivated" : "School suspended",
+              )
+            }
+          >
+            <Ban className="h-3.5 w-3.5" />
+            {school.status === "suspended" ? "Reactivate" : "Suspend"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 font-semibold text-amber-800"
+            disabled={mgmtBusy}
+            onClick={() => void setSchoolStatus("revoked", "School access revoked")}
+          >
+            <ShieldOff className="h-3.5 w-3.5" /> Revoke
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 font-semibold text-red-700"
+            disabled={mgmtBusy}
+            onClick={() => void deleteSchool()}
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Delete
+          </Button>
         </div>
       </div>
 

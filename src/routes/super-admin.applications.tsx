@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, SectionCard, StatusBadge, EmptyState } from "@/components/dashboard/kit";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,7 +10,7 @@ import {
   reviewSchoolApplication,
 } from "@/lib/auth.school-admin.functions";
 import { toast } from "sonner";
-import { ArrowLeft, Building2, Copy, Loader2, MapPin, Phone, Mail, User } from "lucide-react";
+import { ArrowLeft, Building2, Copy, Loader2, MapPin, Phone, Mail, User, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -767,11 +767,22 @@ function Page() {
             {apps.map((app) => {
               const logo = logoFromApp(app);
               return (
-                <button
+                <SwipeDeleteCard
                   key={app.id}
-                  type="button"
-                  onClick={() => setSelectedId(app.id)}
-                  className="flex flex-col items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  onOpen={() => setSelectedId(app.id)}
+                  onDelete={async () => {
+                    const ok = window.confirm(`Delete application for ${app.school_name}?`);
+                    if (!ok) return;
+                    try {
+                      const { error } = await supabase.from("school_applications").delete().eq("id", app.id);
+                      if (error) throw error;
+                      toast.success("Application deleted");
+                      void qc.invalidateQueries({ queryKey: ["super-admin", "school_applications"] });
+                      void refetch();
+                    } catch (e) {
+                      toast.error((e as Error).message || "Could not delete application");
+                    }
+                  }}
                 >
                   <div className="flex w-full items-start gap-3">
                     <SchoolLogo url={logo} name={app.school_name} size="lg" />
@@ -780,30 +791,91 @@ function Page() {
                       <p className="mt-0.5 truncate text-xs text-slate-500">
                         {[app.school_type, app.city || app.state || app.country].filter(Boolean).join(" · ") || "—"}
                       </p>
-                      <div className="mt-2">
+                      <div className="mt-2 flex flex-wrap gap-1.5">
                         <StatusBadge status={app.status || "pending"} />
-              {extrasFromApp(app).is_trial ? (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
-                  Trial / Demo
-                </span>
-              ) : null}
-              {extrasFromApp(app).lat != null ? (
-                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-800">
-                  Map
-                </span>
-              ) : null}
+                        {extrasFromApp(app).is_trial ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                            Trial / Demo
+                          </span>
+                        ) : null}
+                        {extrasFromApp(app).lat != null ? (
+                          <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-800">
+                            Map
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
-                  <p className="text-xs text-slate-400">
+                  <p className="mt-3 text-xs text-slate-400">
                     {app.created_at ? new Date(app.created_at).toLocaleString() : ""}
                   </p>
-                </button>
+                </SwipeDeleteCard>
               );
             })}
           </div>
         )}
       </div>
     </>
+  );
+}
+
+/** Drag left to reveal delete, then release past threshold to delete. Tap opens detail. */
+function SwipeDeleteCard({
+  children,
+  onOpen,
+  onDelete,
+}: {
+  children: React.ReactNode;
+  onOpen: () => void;
+  onDelete: () => void | Promise<void>;
+}) {
+  const [ox, setOx] = useState(0);
+  const startX = useRef(0);
+  const dragging = useRef(false);
+  const moved = useRef(false);
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl">
+      <div className="absolute inset-y-0 right-0 flex w-20 items-center justify-center bg-red-500">
+        <Trash2 className="h-5 w-5 text-white" />
+      </div>
+      <div
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") onOpen();
+        }}
+        onPointerDown={(e) => {
+          dragging.current = true;
+          moved.current = false;
+          startX.current = e.clientX;
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (!dragging.current) return;
+          const dx = e.clientX - startX.current;
+          if (Math.abs(dx) > 6) moved.current = true;
+          setOx(Math.min(0, Math.max(-88, dx)));
+        }}
+        onPointerUp={() => {
+          dragging.current = false;
+          if (ox < -64) {
+            void onDelete();
+            setOx(0);
+            return;
+          }
+          if (!moved.current) onOpen();
+          setOx(0);
+        }}
+        onPointerCancel={() => {
+          dragging.current = false;
+          setOx(0);
+        }}
+        className="relative flex flex-col items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-primary/40 hover:shadow-md"
+        style={{ transform: `translateX(${ox}px)`, touchAction: "pan-y" }}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
