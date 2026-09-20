@@ -33,7 +33,10 @@ export function useLiveCamPublish(opts: {
     const schoolId = String(opts.schoolId || "");
     const studentId = String(opts.studentId || "");
     const examId = String(opts.examId || "");
-    const attemptId = String(opts.attemptId || "");
+    // Fall back to pending key so frames flow before attempt row is ready
+    const attemptId =
+      String(opts.attemptId || "").trim() ||
+      (studentId && examId ? `pending:${studentId}:${examId}` : "");
 
     if (!opts.enabled || !schoolId || !studentId || !examId || !attemptId) {
       try {

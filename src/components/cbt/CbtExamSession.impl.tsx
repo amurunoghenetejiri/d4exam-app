@@ -440,7 +440,8 @@ export function CbtExamPage() {
   }, []);
 
   useLiveCamPublish({
-    enabled: started && !done && !previewMode && Boolean(security.requireCamera),
+    // Publish whenever exam is live and camera is required OR a stream is available
+    enabled: started && !done && !previewMode && (Boolean(security.requireCamera) || Boolean(security.faceDetection)),
     schoolId: examQ.data?.school_id ?? student?.schoolId ?? session?.schoolId,
     studentId: student?.studentId,
     examId: id,
@@ -574,12 +575,12 @@ export function CbtExamPage() {
       void supabase.removeChannel(ch);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [started, done, previewMode, student?.studentId, id]);
+  }, [started, done, previewMode, student?.studentId, id, liveAttemptId]);
 
   // Backup: poll attempt status so officer actions apply if broadcast is missed
   useEffect(() => {
     if (!started || done || previewMode || !student?.studentId || !id) return;
-    const attemptId = attemptIdRef.current;
+    const attemptId = liveAttemptId || attemptIdRef.current;
     if (!attemptId) return;
     let cancelled = false;
     const poll = async () => {

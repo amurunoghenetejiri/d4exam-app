@@ -767,17 +767,19 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
     const merged = [...inProgress, ...recentDone, ...frameOnly];
     // Resolve live frames only for the matching attempt/exam (never bleed onto an older paper)
     const resolveCamFrame = (a: AttemptRow) => {
+      // 1) Exact attempt id (including pending: keys once upgraded)
       const byAttempt = frames[a.id];
       if (byAttempt) return byAttempt;
+      // 2) pending key for this student+exam (frames may start before attempt UUID exists)
+      const pendingKey = `pending:${a.student_id}:${a.exam_id}`;
+      if (frames[pendingKey]) return frames[pendingKey]!;
       const sid = String(a.student_id || "");
       if (!sid) return null;
       const byStudent = frames[`student:${sid}`];
       if (!byStudent) return null;
       const feid = String(byStudent.examId || "").trim();
       const aeid = String(a.exam_id || "").trim();
-      // If frame carries examId, it must match this attempt's exam
       if (feid && aeid && feid !== aeid) return null;
-      // Prefer frame only when this attempt is still active (not a finished paper)
       const st = String(a.status || "").toLowerCase();
       if (["submitted", "terminated", "flagged", "completed"].includes(st)) return null;
       return byStudent;
@@ -785,6 +787,8 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
     const resolveScrFrame = (a: AttemptRow) => {
       const byAttempt = screenFrames[a.id];
       if (byAttempt) return byAttempt;
+      const pendingKey = `pending:${a.student_id}:${a.exam_id}`;
+      if (screenFrames[pendingKey]) return screenFrames[pendingKey]!;
       const sid = String(a.student_id || "");
       if (!sid) return null;
       const byStudent = screenFrames[`student:${sid}`];
@@ -1184,12 +1188,16 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
       const nowIso = new Date().toISOString();
       if (cmd === "hold" || cmd === "pause") {
         const meta = { ...(selected.a.metadata || {}), officer_hold: true, officer_pause: true, officer_hold_at: nowIso };
-        const { error } = await supabase.from("exam_attempts").update({ metadata: meta, status: "paused", updated_at: nowIso } as never).eq("id", attemptId).eq("school_id", schoolId);
+        let { error } = await supabase.from("exam_attempts").update({ metadata: meta, status: "paused", updated_at: nowIso } as never).eq("id", attemptId).eq("school_id", schoolId);
+        if (error) {
+          const r2 = await supabase.from("exam_attempts").update({ metadata: meta, status: "paused", updated_at: nowIso } as never).eq("id", attemptId);
+          error = r2.error;
+        }
         if (error) throw error;
         await logSecurityEvent({ schoolId, examId, attemptId, studentId, eventType: "OFFICER_PAUSE", severity: "medium", description: "Examination paused by officer", extra: { source: "officer_live_monitor", officer_user_id: user?.userId ?? null } });
         await broadcastOfficerCommand("pause", attemptId, studentId, examId);
         window.setTimeout(() => { void broadcastOfficerCommand("pause", attemptId, studentId, examId); }, 800);
-        qc.setQueryData(["officer-live-attempts", schoolId], (prev: unknown) => {
+        qc.setQueryData(["officer-live-attempts", schoolId, courseIds?.slice().sort().join(",") ?? "all"], (prev: unknown) => {
           if (!Array.isArray(prev)) return prev;
           return prev.map((row: { id?: string; metadata?: Record<string, unknown> }) =>
             String(row?.id) === String(attemptId)
@@ -1207,7 +1215,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
         await logSecurityEvent({ schoolId, examId, attemptId, studentId, eventType: "OFFICER_RELEASE", severity: "low", description: "Examination released by officer", extra: { source: "officer_live_monitor", officer_user_id: user?.userId ?? null } });
         await broadcastOfficerCommand("release", attemptId, studentId, examId);
         window.setTimeout(() => { void broadcastOfficerCommand("release", attemptId, studentId, examId); }, 800);
-        qc.setQueryData(["officer-live-attempts", schoolId], (prev: unknown) => {
+        qc.setQueryData(["officer-live-attempts", schoolId, courseIds?.slice().sort().join(",") ?? "all"], (prev: unknown) => {
           if (!Array.isArray(prev)) return prev;
           return prev.map((row: { id?: string; metadata?: Record<string, unknown> }) => {
             if (String(row?.id) !== String(attemptId)) return row;
@@ -1258,6 +1266,8 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
       void attemptsQ.refetch();
       void recentDoneQ.refetch();
       void eventsQ.refetch();
+      void qc.invalidateQueries({ queryKey: ["officer-live-attempts", schoolId] });
+      void qc.invalidateQueries({ queryKey: ["officer-live-recent-done", schoolId] });
     } catch (e) {
       toast.error("Could not apply officer action");
       console.warn(e);

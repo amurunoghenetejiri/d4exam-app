@@ -116,8 +116,8 @@ export async function captureJpegFromStream(
 export type LiveCamPublisher = { stop: () => void };
 
 export const LIVE_CAM_EVENT = "cam-frame";
-export const LIVE_CAM_FRAME_INTERVAL_MS = 350;
-export const LIVE_CAM_STALE_MS = 4_500;
+export const LIVE_CAM_FRAME_INTERVAL_MS = 280;
+export const LIVE_CAM_STALE_MS = 8_000;
 export const LIVE_CAM_DISPLAY_MS = 90_000;
 
 export type LiveCamFramePayload = {

@@ -11,7 +11,7 @@ const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
 
 const LOAD_TIMEOUT_MS = 18_000;
-const MIN_SCORE = 0.22;
+const MIN_SCORE = 0.18;
 const NMS_IOU = 0.5;
 
 export type FaceEngine = {
@@ -80,7 +80,7 @@ function createNative(): FaceEngine | null {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const FD = (window as any).FaceDetector;
     if (typeof FD !== "function") return null;
-    const detector = new FD({ fastMode: true, maxDetectedFaces: 10 });
+    const detector = new FD({ fastMode: false, maxDetectedFaces: 10 });
     return {
       count: async (video) => {
         if (!videoReady(video)) return null;
