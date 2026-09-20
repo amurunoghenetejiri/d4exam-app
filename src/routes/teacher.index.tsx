@@ -117,7 +117,7 @@ function Page() {
               description="Ask School Admin to assign courses under Teachers & Courses or Courses."
             />
           ) : (
-            <ul className="max-h-[10.5rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[12rem] sm:space-y-2">
+            <ul className="max-h-[14rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[18rem] lg:max-h-[24rem] sm:space-y-2">
               {teacher.courses.map((c) => (
                 <li key={c.id}>
                   <NavCard
@@ -157,7 +157,7 @@ function Page() {
               }}
             />
           ) : (
-            <ul className="max-h-[10.5rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[12rem] sm:space-y-2">
+            <ul className="max-h-[14rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[18rem] lg:max-h-[24rem] sm:space-y-2">
               {exams.map((e) => (
                 <li key={e.id}>
                   <NavCard

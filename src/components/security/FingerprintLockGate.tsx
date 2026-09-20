@@ -816,7 +816,7 @@ export function FingerprintLockGate() {
           <button
             type="button"
             onClick={() => setLogoutConfirm(true)}
-            className="inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white md:px-4 md:py-2.5 md:text-base"
+            className="inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/20 hover:text-red-300 md:px-4 md:py-2.5 md:text-base"
           >
             <LogOut className="h-4 w-4 md:h-5 md:w-5" aria-hidden />
             Log out

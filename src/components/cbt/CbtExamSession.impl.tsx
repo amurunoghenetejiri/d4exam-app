@@ -974,25 +974,11 @@ export function CbtExamPage() {
       eventType: mapped.eventType, severity: mapped.severity, description: mapped.description,
       extra: { faceCount: ev.faceCount, source: "ExamCameraPip", warnCount: faceWarnCountRef.current },
     });
-    const maxW = security.maxFaceWarnings ?? 5;
-    const action = security.faceViolationAction || security.thresholdAction || "flag";
+    // Face monitoring: detect + log + brief banner only.
+    // Tab violations alone use limits and pause/terminate consequences.
     if (!isViolation) return;
-    if (faceWarnCountRef.current < maxW) {
-      setWarnBanner(mapped.description || "Face integrity warning");
-      window.setTimeout(() => setWarnBanner(null), 5000);
-      return;
-    }
-    if (action === "warn" || action === "flag") {
-      setWarnBanner(mapped.description || "Face integrity threshold reached");
-      window.setTimeout(() => setWarnBanner(null), 6000);
-    } else if (action === "pause") {
-      try { haptic("officer_pause"); } catch { /* ignore */ }
-      beginTimedPause(mapped.description || "Face integrity violation");
-    } else if (action === "terminate") {
-      try { haptic("officer_submit"); } catch { /* ignore */ }
-      setDoneTerminated(true);
-      void finishAttempt(true);
-    }
+    setWarnBanner(mapped.description || "Face integrity notice");
+    window.setTimeout(() => setWarnBanner(null), 4500);
   }, [previewMode, examQ.data?.school_id, student?.studentId, student?.schoolId, session?.schoolId, id, security.maxFaceWarnings, security.faceViolationAction, security.thresholdAction]);
 
   function requestSubmit() {

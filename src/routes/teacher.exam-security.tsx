@@ -55,7 +55,14 @@ function Page() {
       toast.error("Max tab switches must be between 1 and 20");
       return;
     }
-    saveTeacherSecurityDefaults(teacher.teacherId, settings);
+    const toSave = {
+      ...settings,
+      // Face monitoring: detect only — no count-based pause/terminate
+      faceViolationAction: "warn" as const,
+      maxFaceWarnings: 9999,
+    };
+    saveTeacherSecurityDefaults(teacher.teacherId, toSave);
+    setSettings(toSave);
     toast.success("Security defaults saved. They will apply when you create or submit examinations.");
   }
 
@@ -180,7 +187,7 @@ function Page() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Paper integrity">
+        <SectionCard title="Proctoring & tools">
           <div className="space-y-3">
             <Toggle
               label="Randomise question order"
@@ -196,9 +203,18 @@ function Page() {
             />
             <Toggle
               label="Require camera"
-              hint="Optional proctoring camera"
+              hint="Student must enable camera for the exam"
               checked={settings.requireCamera}
               onChange={(v) => toggle("requireCamera", v)}
+            />
+            <Toggle
+              label="Face monitoring"
+              hint="Detect one face / no face / multiple faces live. Does not pause or terminate the exam — only tab violations use limits and consequences."
+              checked={settings.faceDetection}
+              onChange={(v) => {
+                toggle("faceDetection", v);
+                if (v) toggle("requireCamera", true);
+              }}
             />
             <Toggle
               label="Require microphone"
@@ -206,14 +222,59 @@ function Page() {
               checked={settings.requireMicrophone}
               onChange={(v) => toggle("requireMicrophone", v)}
             />
+            <div className="space-y-2 rounded-xl border border-slate-200 px-4 py-3">
+              <Label className="font-semibold">Screen share</Label>
+              <Select
+                value={settings.screenShareMode || "disabled"}
+                onValueChange={(v) =>
+                  toggle("screenShareMode", v as ExamSecuritySettings["screenShareMode"])
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="disabled">Disabled</SelectItem>
+                  <SelectItem value="optional">Optional</SelectItem>
+                  <SelectItem value="required">Required</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">Share the student screen with officers during the exam.</p>
+            </div>
+            <Toggle
+              label="Allow calculator"
+              hint="In-exam calculator for this paper"
+              checked={settings.allowCalculator}
+              onChange={(v) => toggle("allowCalculator", v)}
+            />
+            {settings.allowCalculator ? (
+              <div className="space-y-2 rounded-xl border border-slate-200 px-4 py-3">
+                <Label className="font-semibold">Calculator type</Label>
+                <Select
+                  value={settings.calculatorType || "basic"}
+                  onValueChange={(v) =>
+                    toggle("calculatorType", v as ExamSecuritySettings["calculatorType"])
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="basic">Basic</SelectItem>
+                    <SelectItem value="scientific">Scientific</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-6 flex items-start gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <p className="text-sm text-slate-700">
               Click <strong>Save defaults</strong> to store these settings. When you create or submit
-              an examination, the same security rules are saved on that exam so the Examination
-              Officer can review them before approval.
+              an examination, the same security rules are applied so the Examination Officer can
+              review them. <strong>Face monitoring</strong> logs and shows status only — only{" "}
+              <strong>tab violations</strong> use limits and consequences (pause / terminate / etc.).
             </p>
           </div>
         </SectionCard>

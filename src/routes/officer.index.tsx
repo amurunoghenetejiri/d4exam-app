@@ -81,7 +81,7 @@ function Page() {
       ["officer-dash-live", schoolId],
       ["officer-dash-integrity", schoolId],
       ["rows", "examinations"],
-      ["rows", "audit_logs"],
+      ["rows", "integrity_events"],
     ],
     enabled,
     2000,
@@ -175,16 +175,24 @@ function Page() {
     select: "id, title, status, scheduled_start, courses(code)",
     filters: schoolId ? [{ column: "school_id", value: schoolId }] : [],
     order: { column: "created_at", ascending: false },
-    limit: 5,
+    limit: 12,
     enabled,
   });
 
-  const logs = useRows<Audit>({
-    table: "audit_logs",
-    select: "id, action, description, created_at",
+  type IntegrityRow = {
+    id: string;
+    event_type: string;
+    severity: string | null;
+    description: string | null;
+    created_at: string;
+  };
+
+  const integrityRecent = useRows<IntegrityRow>({
+    table: "integrity_events",
+    select: "id, event_type, severity, description, created_at",
     filters: schoolId ? [{ column: "school_id", value: schoolId }] : [],
     order: { column: "created_at", ascending: false },
-    limit: 6,
+    limit: 10,
     enabled,
   });
 
@@ -253,17 +261,17 @@ function Page() {
               description="When teachers create and submit exams, they appear here."
             />
           ) : (
-            <ul className="max-h-[10.5rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[12rem] sm:space-y-2">
+            <ul className="max-h-[14rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[18rem] lg:max-h-[24rem] sm:space-y-2">
               {(exams.data ?? []).map((e) => (
                 <li key={e.id}>
                   <NavCard
                     to="/officer/approvals"
                     ariaLabel={`Review ${e.title}`}
-                    className="flex items-center justify-between gap-2 rounded-lg border-slate-100 px-2.5 py-2 sm:rounded-xl sm:px-3 sm:py-2.5"
+                    className="flex items-center justify-between gap-2 rounded-lg border-slate-100 px-2.5 py-2 sm:rounded-xl sm:px-3.5 sm:py-3 lg:px-4 lg:py-3.5"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-[13px] font-bold text-slate-900 sm:text-sm">{e.title}</p>
-                      <p className="truncate text-[11px] text-slate-500 sm:text-xs">
+                      <p className="truncate text-[13px] font-bold text-slate-900 sm:text-sm lg:text-[15px]">{e.title}</p>
+                      <p className="truncate text-[11px] text-slate-500 sm:text-xs lg:text-[13px]">
                         {e.courses?.code ?? "—"} ·{" "}
                         {e.scheduled_start
                           ? new Date(e.scheduled_start).toLocaleString()
@@ -279,29 +287,34 @@ function Page() {
         </SectionCard>
 
         <SectionCard
-          title="Recent audit activity"
+          title="Recent integrity alerts"
           action={
             <Button variant="ghost" size="sm" className="font-semibold text-primary" asChild>
-              <Link to="/officer/audit-logs">View all</Link>
+              <Link to="/officer/integrity">View all</Link>
             </Button>
           }
         >
-          {(logs.data ?? []).length === 0 ? (
+          {(integrityRecent.data ?? []).length === 0 ? (
             <EmptyState
-              title="No audit logs"
-              description="Approve/reject actions will appear here."
+              title="No integrity events"
+              description="Face, tab, and proctoring alerts from live exams appear here."
             />
           ) : (
-            <ul className="max-h-[10.5rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[12rem] sm:space-y-2">
-              {(logs.data ?? []).map((l) => (
+            <ul className="max-h-[14rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[18rem] lg:max-h-[24rem] sm:space-y-2">
+              {(integrityRecent.data ?? []).map((l) => (
                 <li key={l.id}>
                   <NavCard
-                    to="/officer/audit-logs"
-                    ariaLabel={l.action}
-                    className="rounded-lg border-slate-100 px-2.5 py-2 sm:rounded-xl sm:px-3 sm:py-2.5"
+                    to="/officer/integrity"
+                    ariaLabel={l.event_type}
+                    className="rounded-lg border-slate-100 px-2.5 py-2 sm:rounded-xl sm:px-3.5 sm:py-3 lg:px-4 lg:py-3.5"
                   >
-                    <p className="truncate text-[13px] font-semibold text-slate-900 sm:text-sm">{l.action}</p>
-                    <p className="line-clamp-1 text-[11px] text-slate-500 sm:text-xs">
+                    <p className="truncate text-[13px] font-semibold text-slate-900 sm:text-sm lg:text-[15px]">
+                      {String(l.event_type || "event").replaceAll("_", " ")}
+                      {l.severity ? (
+                        <span className="ml-2 text-[10px] font-bold uppercase text-amber-700">{l.severity}</span>
+                      ) : null}
+                    </p>
+                    <p className="line-clamp-2 text-[11px] text-slate-500 sm:text-xs lg:text-[13px]">
                       {l.description || "—"} · {new Date(l.created_at).toLocaleString()}
                     </p>
                   </NavCard>

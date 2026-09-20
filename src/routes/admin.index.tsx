@@ -109,7 +109,7 @@ function Page() {
           {(todayExams.data ?? []).length === 0 ? (
             <EmptyState title="No examinations" description="Exams created for this school will appear here." />
           ) : (
-            <ul className="max-h-[10.5rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[12rem] sm:space-y-2">
+            <ul className="max-h-[14rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[18rem] lg:max-h-[24rem] sm:space-y-2">
               {(todayExams.data ?? []).map((e) => (
                 <li key={e.id}>
                   <NavCard
@@ -143,7 +143,7 @@ function Page() {
           {(notifications.data ?? []).length === 0 ? (
             <EmptyState title="No notifications" description="System and school notices will appear here." />
           ) : (
-            <ul className="max-h-[10.5rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[12rem] sm:space-y-2">
+            <ul className="max-h-[14rem] space-y-1.5 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-[18rem] lg:max-h-[24rem] sm:space-y-2">
               {(notifications.data ?? []).map((n) => (
                 <li key={n.id}>
                   <NavCard

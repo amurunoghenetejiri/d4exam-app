@@ -30,6 +30,7 @@ type ResultRow = {
   wrong_count: number | null; unanswered_count: number | null; status: string;
   security_review_status: string | null; released_at: string | null; created_at: string | null;
   students: {
+    full_name?: string | null;
     matric_number: string | null;
     student_id: string | null;
     profiles: { full_name: string | null } | null;
@@ -161,15 +162,52 @@ export function OfficerResultsPage() {
         `id, exam_id, student_id, attempt_id, total_score, max_score, percentage, grade, pass_fail,
            correct_count, wrong_count, unanswered_count, status, security_review_status, released_at, created_at`,
       ];
+      let rows: ResultRow[] = [];
       for (const sel of selects) {
         const { data, error } = await supabase
           .from("results")
           .select(sel)
           .eq("school_id", schoolId).eq("exam_id", selectedExamId).order("created_at", { ascending: false }).limit(200);
-        if (!error) return (data ?? []) as unknown as ResultRow[];
+        if (!error) {
+          rows = (data ?? []) as unknown as ResultRow[];
+          break;
+        }
         console.warn("[officer-results] exam results select failed", error);
       }
-      return [] as ResultRow[];
+      // Enrich missing names from students.full_name
+      const needIds = rows
+        .filter((r) => {
+          const s = r.students as { full_name?: string | null; profiles?: { full_name?: string | null } | null } | null;
+          const n = s?.full_name || s?.profiles?.full_name;
+          return !n && r.student_id;
+        })
+        .map((r) => r.student_id);
+      if (needIds.length) {
+        const unique = [...new Set(needIds)];
+        const { data: studs } = await supabase
+          .from("students")
+          .select("id, full_name, matric_number, student_id")
+          .in("id", unique);
+        const map = new Map<string, { full_name?: string | null; matric_number?: string | null; student_id?: string | null }>();
+        for (const s of studs ?? []) {
+          map.set(String((s as { id: string }).id), s as { full_name?: string | null; matric_number?: string | null; student_id?: string | null });
+        }
+        rows = rows.map((r) => {
+          const hit = map.get(r.student_id);
+          if (!hit) return r;
+          const prev = (r.students || {}) as Record<string, unknown>;
+          return {
+            ...r,
+            students: {
+              ...prev,
+              full_name: hit.full_name || prev.full_name || null,
+              matric_number: hit.matric_number || prev.matric_number || null,
+              student_id: hit.student_id || prev.student_id || null,
+            },
+          } as ResultRow;
+        });
+      }
+      return rows;
     },
   });
 
@@ -404,7 +442,7 @@ export function OfficerResultsPage() {
   const counts = resultsCountsQ.data ?? {};
 
   if (selectedExam && selectedResult) {
-    const name = selectedResult.students?.profiles?.full_name || selectedResult.students?.matric_number || "Student";
+    const name = (selectedResult.students as { full_name?: string | null } | null | undefined)?.full_name || selectedResult.students?.profiles?.full_name || selectedResult.students?.matric_number || "Student";
     const matric = selectedResult.students?.matric_number || selectedResult.students?.student_id || "—";
     const held = isHeld(selectedResult.status, selectedResult.released_at);
     const terminated = String(selectedResult.status || "").toLowerCase() === "terminated";
@@ -420,8 +458,8 @@ export function OfficerResultsPage() {
         <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-sm sm:rounded-xl sm:p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-slate-900">{name}</p>
-              <p className="truncate text-[10px] text-slate-500">{matric}</p>
+              <p className="truncate text-base font-extrabold text-slate-900">{name}</p>
+              <p className="truncate text-xs font-medium text-slate-500">{matric}</p>
               <p className="mt-0.5 truncate text-[10px] text-slate-500">{selectedExam.courses?.code} · {selectedExam.title}</p>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
@@ -532,8 +570,9 @@ export function OfficerResultsPage() {
           ) : (
             <ul className="divide-y divide-slate-50">
               {examResults.map((r) => {
-                const nm = (r.students as { full_name?: string | null } | null)?.full_name
-                  || r.students?.profiles?.full_name
+                const nm =
+                  (r.students as { full_name?: string | null } | null)?.full_name?.trim()
+                  || r.students?.profiles?.full_name?.trim()
                   || "Student";
                 const mat = r.students?.matric_number || r.students?.student_id || "—";
                 const h = isHeld(r.status, r.released_at);
