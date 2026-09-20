@@ -58,13 +58,24 @@ const InputSchema = z.object({
   maxResults: z.number().min(1).max(12).optional(),
 });
 
-export const searchStudyVideos = createServerFn({ method: "POST" }).handler(
-  async ({ data }): Promise<StudyHelpResult> => {
-    const parsed = InputSchema.safeParse(data ?? {});
-    if (!parsed.success) {
-      return { videos: [], query: "", cached: false, error: "Invalid request" };
+export const searchStudyVideos = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => {
+    try {
+      const raw =
+        data &&
+        typeof data === "object" &&
+        "data" in (data as object) &&
+        (data as { data: unknown }).data &&
+        typeof (data as { data: unknown }).data === "object"
+          ? (data as { data: unknown }).data
+          : data;
+      return InputSchema.parse(raw ?? {});
+    } catch {
+      return {} as z.infer<typeof InputSchema>;
     }
-    const input = parsed.data;
+  })
+  .handler(async ({ data }): Promise<StudyHelpResult> => {
+    const input = data ?? {};
     const query = buildQuery(input);
     const maxResults = input.maxResults ?? 8;
     const cacheKey = `${input.materialId || query}::${maxResults}`;
