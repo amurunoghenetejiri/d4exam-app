@@ -30,7 +30,6 @@ import { isMaterialOffline, saveMaterialOffline, getOfflineMaterial } from "@/li
 import { isOnlineNow } from "@/lib/offline-sync";
 import { supabase } from "@/integrations/supabase/client";
 import { StudyHelpPanel } from "@/components/materials/StudyHelp";
-import { isNativeShell } from "@/native/platform";
 
 export type ViewerMaterial = {
   id: string;

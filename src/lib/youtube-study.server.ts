@@ -3,7 +3,6 @@
  * API key is read only from process.env (never VITE_ / never client bundle).
  */
 import { createServerFn } from "@tanstack/react-start";
-import { z } from "zod";
 
 export type StudyVideo = {
   videoId: string;
@@ -23,7 +22,7 @@ export type StudyHelpResult = {
 };
 
 const memoryCache = new Map<string, { at: number; videos: StudyVideo[]; query: string }>();
-const CACHE_MS = 6 * 60 * 60 * 1000; // 6 hours
+const CACHE_MS = 6 * 60 * 60 * 1000;
 
 function buildQuery(input: {
   title?: string;
@@ -38,7 +37,6 @@ function buildQuery(input: {
     String(input.topic || "").trim(),
     String(input.description || "").trim().slice(0, 120),
   ].filter(Boolean);
-  // Light OCR snippet only — never dump full PDF text
   const ocr = String(input.ocrText || "")
     .replace(/\s+/g, " ")
     .trim()
@@ -48,34 +46,38 @@ function buildQuery(input: {
   return `${base} tutorial lecture explained`;
 }
 
-const InputSchema = z.object({
-  title: z.string().optional(),
-  course: z.string().optional(),
-  topic: z.string().optional(),
-  description: z.string().optional(),
-  ocrText: z.string().optional(),
-  materialId: z.string().optional(),
-  maxResults: z.number().min(1).max(12).optional(),
-});
+type StudyInput = {
+  title?: string;
+  course?: string;
+  topic?: string;
+  description?: string;
+  ocrText?: string;
+  materialId?: string;
+  maxResults?: number;
+};
 
-export const searchStudyVideos = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => {
-    try {
-      const raw =
-        data &&
-        typeof data === "object" &&
-        "data" in (data as object) &&
-        (data as { data: unknown }).data &&
-        typeof (data as { data: unknown }).data === "object"
-          ? (data as { data: unknown }).data
-          : data;
-      return InputSchema.parse(raw ?? {});
-    } catch {
-      return {} as z.infer<typeof InputSchema>;
-    }
-  })
-  .handler(async ({ data }): Promise<StudyHelpResult> => {
-    const input = data ?? {};
+function normalizeInput(data: unknown): StudyInput {
+  if (!data || typeof data !== "object") return {};
+  const obj = data as Record<string, unknown>;
+  const raw =
+    obj.data && typeof obj.data === "object"
+      ? (obj.data as Record<string, unknown>)
+      : obj;
+  const max = Number(raw.maxResults);
+  return {
+    title: raw.title != null ? String(raw.title) : undefined,
+    course: raw.course != null ? String(raw.course) : undefined,
+    topic: raw.topic != null ? String(raw.topic) : undefined,
+    description: raw.description != null ? String(raw.description) : undefined,
+    ocrText: raw.ocrText != null ? String(raw.ocrText) : undefined,
+    materialId: raw.materialId != null ? String(raw.materialId) : undefined,
+    maxResults: Number.isFinite(max) ? Math.min(12, Math.max(1, max)) : 8,
+  };
+}
+
+export const searchStudyVideos = createServerFn({ method: "POST" }).handler(
+  async (ctx): Promise<StudyHelpResult> => {
+    const input = normalizeInput((ctx as { data?: unknown }).data ?? ctx);
     const query = buildQuery(input);
     const maxResults = input.maxResults ?? 8;
     const cacheKey = `${input.materialId || query}::${maxResults}`;
@@ -131,7 +133,11 @@ export const searchStudyVideos = createServerFn({ method: "POST" })
             title?: string;
             channelTitle?: string;
             publishedAt?: string;
-            thumbnails?: { medium?: { url?: string }; high?: { url?: string }; default?: { url?: string } };
+            thumbnails?: {
+              medium?: { url?: string };
+              high?: { url?: string };
+              default?: { url?: string };
+            };
           };
         }>;
       };
