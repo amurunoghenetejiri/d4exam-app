@@ -45,6 +45,7 @@ import { embedExamMeta, parseExamMeta, assessmentKindLabel, type AssessmentKind 
 import { namedOfficersExamSubmitted as notifyOfficersExamSubmitted } from "@/lib/notify-named";
 import { ensureExamQuestionsLinked } from "@/lib/cbt-load-questions";
 import { toast } from "sonner";
+import { D4DateTimeField } from "@/components/ui/d4-datetime";
 import { cn } from "@/lib/utils";
 import type { ExamSecuritySettings, FaceViolationAction, ScreenShareMode } from "@/types";
 
@@ -250,14 +251,12 @@ function Page() {
 
   function onStartChange(v: string) {
     setStartAt(v);
-    if (v) setEndAt(endFromStart(v, durationMinutes || 60));
+    // End time stays blank until teacher sets it explicitly
   }
 
   function onDurationTextChange(raw: string) {
     if (raw === "" || /^\d+$/.test(raw)) {
       setDurationText(raw);
-      const n = Number.parseInt(raw, 10);
-      if (startAt && n >= 1) setEndAt(endFromStart(startAt, n));
     }
   }
 
@@ -579,15 +578,31 @@ function Page() {
             </div>
           )}
           {step === 2 && (
-            <div className="mx-auto max-w-xl space-y-4">
-              <div className="space-y-2">
-                <Label className="font-semibold">Start</Label>
-                <Input type="datetime-local" className="d4-datetime" value={startAt} onChange={(e) => onStartChange(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label className="font-semibold">End</Label>
-                <Input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
-              </div>
+            <div className="mx-auto max-w-2xl space-y-5">
+              <p className="text-sm text-slate-600">
+                Set when the examination window opens and closes. Use day, month, year, hour, minute and second.
+                The end time is <strong>not</strong> filled automatically — you choose it.
+              </p>
+              <D4DateTimeField
+                label="Exam start"
+                hint="When students may begin this examination"
+                value={startAt}
+                onChange={onStartChange}
+                required
+              />
+              <D4DateTimeField
+                label="Exam end"
+                hint="When the window closes — leave blank until you choose the exact end"
+                value={endAt}
+                onChange={setEndAt}
+                required
+              />
+              {startAt && endAt ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
+                  Window: {new Date(startAt).toLocaleString()} → {new Date(endAt).toLocaleString()}
+                  {durationMinutes > 0 ? ` · Candidate duration inside window: ${durationMinutes} min` : ""}
+                </div>
+              ) : null}
             </div>
           )}
           {step === 3 && (

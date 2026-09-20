@@ -291,8 +291,44 @@ export function OfficerResultsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolId, attemptsQ.dataUpdatedAt]);
 
+  async function examHasEssayQuestions(examId: string): Promise<boolean> {
+    try {
+      const { data: links } = await supabase.from("exam_questions").select("question_id").eq("exam_id", examId).limit(300);
+      const qids = (links ?? []).map((l) => String(l.question_id)).filter(Boolean);
+      if (!qids.length) return false;
+      const { data: qs } = await supabase.from("questions").select("id, question_type").in("id", qids);
+      return (qs ?? []).some((q) => {
+        const ty = String((q as { question_type?: string }).question_type || "").toLowerCase();
+        return ["essay", "short_answer", "short-answer", "theory", "descriptive", "numerical"].some(
+          (x) => ty === x || ty.includes(x.replace("-", "_")),
+        );
+      });
+    } catch {
+      return false;
+    }
+  }
+
   async function releaseResults(examId: string) {
     if (!schoolId || !user) return;
+    // Essay papers: block release until teacher has marked scripts
+    if (await examHasEssayQuestions(examId)) {
+      const { data: pendingRows } = await supabase
+        .from("results")
+        .select("id, security_review_status, status")
+        .eq("exam_id", examId)
+        .eq("school_id", schoolId)
+        .neq("status", "terminated");
+      const unmarked = (pendingRows ?? []).filter((r) => {
+        const sec = String((r as { security_review_status?: string }).security_review_status || "").toLowerCase();
+        return sec !== "teacher_marked" && sec !== "flagged";
+      });
+      if (unmarked.length > 0) {
+        toast.error(
+          `Cannot release yet — ${unmarked.length} script(s) still need teacher essay marking (Not marked).`,
+        );
+        return;
+      }
+    }
     if (!confirm("Release all held results to students? Flagged stay under review.")) return;
     setBusy(true);
     try {
@@ -379,6 +415,13 @@ export function OfficerResultsPage() {
 
   async function releaseOneResult(result: ResultRow) {
     if (!schoolId || !user) return;
+    if (await examHasEssayQuestions(result.exam_id)) {
+      const sec = String(result.security_review_status || "").toLowerCase();
+      if (sec !== "teacher_marked") {
+        toast.error("Cannot release — teacher has not marked this student's essay script yet.");
+        return;
+      }
+    }
     if (!confirm("Release this student's result?")) return;
     setBusy(true);
     try {

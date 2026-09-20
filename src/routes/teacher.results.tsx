@@ -43,9 +43,11 @@ type ResultRow = {
   percentage: number | null;
   pass_fail: string | null;
   status: string;
+  security_review_status?: string | null;
+  grade?: string | null;
 };
 
-type AttemptRow = { exam_id: string; status: string };
+type AttemptRow = { exam_id: string; status: string; submitted_at?: string | null };
 
 const PIE_COLORS = ["#10b981", "#ef4444", "#94a3b8"];
 
@@ -107,8 +109,12 @@ function Page() {
   const analytics = useMemo(() => {
     const results = resultsQ.data ?? [];
     const attempts = attemptsQ.data ?? [];
+    const statusOf = (a: AttemptRow) => (a.status || "").toLowerCase();
+    const inProgress = attempts.filter((a) => statusOf(a) === "in_progress").length;
+    const submitted = attempts.filter((a) => ["submitted", "flagged"].includes(statusOf(a))).length;
+    const terminated = attempts.filter((a) => statusOf(a) === "terminated").length;
     const wrote = attempts.filter((a) =>
-      ["submitted", "terminated", "flagged", "in_progress"].includes((a.status || "").toLowerCase()),
+      ["submitted", "terminated", "flagged", "in_progress"].includes(statusOf(a)),
     ).length;
     const registered = Math.max(wrote, results.length);
     const scores = results
@@ -117,6 +123,9 @@ function Page() {
     const passed = results.filter((r) => (r.pass_fail || "").toLowerCase() === "pass").length;
     const failed = results.filter((r) => (r.pass_fail || "").toLowerCase() === "fail").length;
     const pending = results.length - passed - failed;
+    const teacherMarked = results.filter(
+      (r) => String((r as { security_review_status?: string }).security_review_status || "").toLowerCase() === "teacher_marked",
+    ).length;
     const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
     const highest = scores.length ? Math.max(...scores) : null;
     const lowest = scores.length ? Math.min(...scores) : null;
@@ -131,25 +140,30 @@ function Page() {
       { name: "80–100", count: 0 },
     ];
     for (const s of scores) {
-      if (s < 40) buckets[0].count++;
-      else if (s < 50) buckets[1].count++;
-      else if (s < 60) buckets[2].count++;
-      else if (s < 70) buckets[3].count++;
-      else if (s < 80) buckets[4].count++;
-      else buckets[5].count++;
+      if (s < 40) buckets[0].count += 1;
+      else if (s < 50) buckets[1].count += 1;
+      else if (s < 60) buckets[2].count += 1;
+      else if (s < 70) buckets[3].count += 1;
+      else if (s < 80) buckets[4].count += 1;
+      else buckets[5].count += 1;
     }
 
     const pie = [
-      { name: "Passed", value: passed },
-      { name: "Failed", value: failed },
-      { name: "Pending", value: pending },
-    ].filter((p) => p.value > 0);
+      { name: "Pass", value: passed },
+      { name: "Fail", value: failed },
+      { name: "Pending", value: Math.max(0, pending) },
+    ].filter((x) => x.value > 0);
 
     return {
       registered,
       wrote,
+      inProgress,
+      submitted,
+      terminated,
+      teacherMarked,
       passed,
       failed,
+      pending,
       avg,
       highest,
       lowest,
@@ -216,13 +230,18 @@ function Page() {
           </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
-            <Kpi label="Registered / Wrote" value={`${analytics.registered} / ${analytics.wrote}`} />
+            <Kpi label="Participated" value={String(analytics.wrote)} />
+            <Kpi label="In progress" value={String(analytics.inProgress)} />
+            <Kpi label="Submitted" value={String(analytics.submitted)} />
+            <Kpi label="Terminated" value={String(analytics.terminated)} />
             <Kpi label="Passed" value={String(analytics.passed)} />
             <Kpi label="Failed" value={String(analytics.failed)} />
             <Kpi label="Average" value={analytics.avg != null ? `${Math.round(analytics.avg)}%` : "—"} />
             <Kpi label="Highest" value={analytics.highest != null ? `${Math.round(analytics.highest)}%` : "—"} />
             <Kpi label="Lowest" value={analytics.lowest != null ? `${Math.round(analytics.lowest)}%` : "—"} />
             <Kpi label="Pass rate" value={analytics.passRate != null ? `${analytics.passRate}%` : "—"} />
+            <Kpi label="Essay marked" value={String(analytics.teacherMarked)} />
+            <Kpi label="Results rows" value={String(analytics.resultCount)} />
           </div>
 
           {analytics.resultCount === 0 ? (

@@ -31,7 +31,7 @@ type AttemptRow = {
   answers: Record<string, string> | null;
   metadata: { score?: { totalScore?: number; maxScore?: number } } | null;
   examinations: { id: string; title: string; course_id: string | null; school_id: string } | null;
-  students: { id: string; matric_number: string | null; student_id: string; profiles: { full_name: string | null } | null } | null;
+  students: { id: string; full_name?: string | null; matric_number: string | null; student_id: string; profiles: { full_name: string | null } | null } | null;
 };
 
 type PaperQ = {
@@ -197,22 +197,35 @@ function Page() {
                 ? "D"
                 : "F";
 
-      await supabase.from("results").upsert(
-        {
-          school_id: teacher.schoolId,
-          exam_id: active.exam_id,
-          student_id: active.student_id,
-          attempt_id: active.id,
-          total_score: finalScore,
-          max_score: maxScore,
-          percentage,
-          grade,
-          pass_fail: percentage >= 40 ? "pass" : "fail",
-          status: "teacher_reviewed",
-          teacher_reviewed_at: new Date().toISOString(),
-        } as never,
-        { onConflict: "exam_id,student_id" },
-      );
+      const resultPayload: Record<string, unknown> = {
+        school_id: teacher.schoolId,
+        exam_id: active.exam_id,
+        student_id: active.student_id,
+        attempt_id: active.id,
+        total_score: finalScore,
+        max_score: maxScore,
+        percentage,
+        grade,
+        pass_fail: percentage >= 40 ? "pass" : "fail",
+        status: "pending",
+        teacher_reviewed_at: new Date().toISOString(),
+        security_review_status: "teacher_marked",
+      };
+      let { error: resErr } = await supabase.from("results").upsert(resultPayload as never, { onConflict: "exam_id,student_id" });
+      if (resErr) {
+        // Column may not exist — retry without security_review_status / teacher_reviewed_at
+        delete resultPayload.security_review_status;
+        delete resultPayload.teacher_reviewed_at;
+        const retry = await supabase.from("results").upsert(resultPayload as never, { onConflict: "exam_id,student_id" });
+        resErr = retry.error;
+      }
+      if (resErr) throw resErr;
+
+      // Flag attempt so officer release can require essay marking
+      try {
+        const meta = { ...(active.metadata || {}), essayMarked: true, essayMarkedAt: new Date().toISOString() };
+        await supabase.from("exam_attempts").update({ metadata: meta } as never).eq("id", active.id);
+      } catch { /* ignore */ }
 
       toast.success(`Marked. Final score ${finalScore}/${maxScore} (${percentage}%)`);
       await qc.invalidateQueries({ queryKey: ["teacher-marking-attempts"] });
@@ -249,10 +262,11 @@ function Page() {
             <ul className="max-h-[32rem] space-y-2 overflow-y-auto">
               {(attemptsQ.data ?? []).map((a) => {
                 const name =
-                  a.students?.full_name || students?.profiles?.full_name ||
-                  a.students?.matric_number ||
-                  a.students?.student_id ||
-                  "Student";
+                  (a.students as { full_name?: string | null } | null)?.full_name
+                  || a.students?.profiles?.full_name
+                  || a.students?.matric_number
+                  || a.students?.student_id
+                  || "Student";
                 return (
                   <li key={a.id}>
                     <button
