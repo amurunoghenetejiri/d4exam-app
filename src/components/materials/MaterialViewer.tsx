@@ -15,6 +15,9 @@ import {
   Save,
   Maximize2,
   Type,
+  Youtube,
+  GraduationCap,
+  UserRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +43,7 @@ export type ViewerMaterial = {
   file_name: string | null;
   file_mime: string | null;
   uploader_name?: string | null;
+  uploader_role?: string | null;
   created_at?: string;
   file_size?: number | null;
   course_id?: string;
@@ -96,7 +100,7 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
   const [error, setError] = useState<string | null>(null);
   const [annState, setAnnState] = useState<MaterialAnnState>(() => loadMaterialAnn(item.id));
   const [moreOpen, setMoreOpen] = useState(false);
-  const [chromeVisible, setChromeVisible] = useState(false);
+  const [chromeVisible, setChromeVisible] = useState(true);
   const [hintVisible, setHintVisible] = useState(true);
   const [goPageOpen, setGoPageOpen] = useState(false);
   const [goPage, setGoPage] = useState("");
@@ -594,6 +598,12 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
           <p className="truncate text-[11px] text-white/55">
             {[
               courseLabel,
+              (() => {
+                const r = String(item.uploader_role || "").toLowerCase();
+                if (r.includes("teacher")) return "Teacher";
+                if (r.includes("student")) return "Student";
+                return item.uploader_name || null;
+              })(),
               isPdf(item) ? `PDF${pages ? ` · ${pages} pages` : ""}` : isImage(item) ? "IMAGE" : "FILE",
               offlineSaved ? "Offline" : null,
             ]
@@ -681,6 +691,23 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
             Tap for options
           </div>
         )}
+
+        {role === "student" && !studyHelpOpen && (
+          <button
+            type="button"
+            data-reader-chrome
+            className="absolute bottom-20 right-3 z-30 inline-flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-2.5 text-xs font-bold text-white shadow-lg shadow-red-900/40 ring-2 ring-white/20 sm:bottom-24 sm:right-4"
+            onClick={(e) => {
+              e.stopPropagation();
+              setStudyHelpOpen(true);
+              setChromeVisible(true);
+            }}
+            aria-label="Open Study Help"
+          >
+            <Youtube className="h-4 w-4" />
+            Study Help
+          </button>
+        )}
       </div>
 
       <footer
@@ -731,6 +758,18 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
                 <Type className="mr-1 h-3.5 w-3.5" /> OCR
               </Button>
             )}
+            {role === "student" ? (
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 gap-1 rounded-full bg-red-600 px-2.5 text-[11px] font-bold text-white hover:bg-red-500 sm:px-3"
+                onClick={() => { setStudyHelpOpen(true); setChromeVisible(true); }}
+                aria-label="Study Help"
+              >
+                <Youtube className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Study Help</span>
+              </Button>
+            ) : null}
             <Button type="button" size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/10" onClick={() => void share()} aria-label="Share">
               <Share2 className="h-4 w-4" />
             </Button>

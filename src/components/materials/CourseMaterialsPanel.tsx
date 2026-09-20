@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Upload, Trash2, Loader2, Search, Filter, MoreVertical, Download, Calendar, Eye, Pencil, X, FileImage, FileText, BookOpen,
+  Upload, Trash2, Loader2, Search, Filter, MoreVertical, Download, Calendar, Eye, Pencil, X, FileImage, FileText, BookOpen, Youtube, GraduationCap, UserRound,
 } from "lucide-react";
 import { PageHeader, EmptyState } from "@/components/dashboard/kit";
 import { Button } from "@/components/ui/button";
@@ -311,7 +311,7 @@ export function CourseMaterialsPanel({
           description={
             role === "teacher"
               ? "Upload and manage materials you own — only your uploads appear here."
-              : "Notes, assignments, and study resources for your courses."
+              : "Open any material to read it. Students can use Study Help for related videos."
           }
         />
         {canUpload && (
@@ -320,6 +320,20 @@ export function CourseMaterialsPanel({
           </Button>
         )}
       </div>
+      {role === "student" ? (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-100 bg-red-50/80 px-3 py-2.5 text-xs text-red-900 sm:text-sm">
+          <Youtube className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+          <p>
+            <span className="font-bold">Study Help:</span> Open a material, then tap the{" "}
+            <span className="font-semibold">Study Help</span> button for related educational videos.
+            Teacher and Student badges show who uploaded each file.
+          </p>
+        </div>
+      ) : (
+        <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50/80 px-3 py-2.5 text-xs text-blue-900 sm:text-sm">
+          <span className="font-bold">My Materials:</span> Only materials you uploaded appear here. Students in your courses can see them tagged as <span className="font-semibold">Teacher</span>.
+        </div>
+      )}
 
       <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="relative min-w-0 flex-1">
@@ -426,16 +440,49 @@ export function CourseMaterialsPanel({
                 <button type="button" className="w-full text-left" onClick={() => setViewer(m)}>
                   <h3 className="line-clamp-2 text-sm font-bold text-slate-900">{m.title}</h3>
                   <p className="mt-1 line-clamp-2 text-xs text-slate-500">{m.description || course?.name || "—"}</p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                     <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold", meta.badge)}>{meta.label}</span>
-                    {course?.code && <span className="text-[10px] font-semibold text-slate-400">{course.code}</span>}
-                    <span className="ml-auto flex items-center gap-1 text-[10px] text-slate-400">
+                    {course?.code && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{course.code}</span>}
+                    {(() => {
+                      const r = String(m.uploader_role || "").toLowerCase();
+                      const isTeacher = r === "teacher" || r.includes("teacher");
+                      const isStudent = r === "student" || r.includes("student");
+                      if (isTeacher) {
+                        return (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">
+                            <GraduationCap className="h-3 w-3" /> Teacher
+                          </span>
+                        );
+                      }
+                      if (isStudent) {
+                        return (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                            <UserRound className="h-3 w-3" /> Student
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                          {m.uploader_role || "Uploader"}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                    <span className="truncate font-medium text-slate-600">
+                      {m.uploader_name ? `by ${m.uploader_name}` : "Uploaded"}
+                    </span>
+                    <span className="shrink-0 flex items-center gap-1 text-slate-400">
                       <Calendar className="h-3 w-3" /> {formatDate(m.created_at)}
                     </span>
                   </div>
-                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                    <span>{m.uploader_name || m.uploader_role}</span>
+                  <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400">
                     <span>{formatBytes(m.file_size)}{m.download_count ? ` · ${m.download_count} dl` : ""}</span>
+                    {role === "student" ? (
+                      <span className="inline-flex items-center gap-0.5 font-semibold text-red-600">
+                        <Youtube className="h-3 w-3" /> Study Help
+                      </span>
+                    ) : null}
                   </div>
                 </button>
               </div>
