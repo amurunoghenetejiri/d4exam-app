@@ -393,6 +393,7 @@ export function CbtExamPage() {
       if (left <= 0 && !finishingRef.current && !doneRef.current) {
         doneTerminatedRef.current = false;
         setDoneTerminated(false);
+        // Time-up: auto-submit this attempt immediately (must not leave in_progress)
         void finishAttempt(true, "auto_submit");
       }
     };
@@ -1033,6 +1034,17 @@ export function CbtExamPage() {
           })),
           answers: answersRef.current, terminated: isTerminated, resultVisibility: security.resultVisibility,
         });
+        // Guarantee attempt leaves in_progress (time-up / submit) so monitoring maps the live paper
+        if (attemptId) {
+          try {
+            await supabase.from("exam_attempts").update({
+              status: isTerminated ? "terminated" : "submitted",
+              submitted_at: new Date().toISOString(),
+              answers: answersRef.current,
+              updated_at: new Date().toISOString(),
+            } as never).eq("id", attemptId);
+          } catch { /* ignore */ }
+        }
         if (isTerminated) {
           setResultId(null);
           resultIdRef.current = null;

@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { logSecurityEvent } from "@/lib/cbt-security";
 import { notifyStudentOfficerWarning } from "@/lib/notify";
 import { toast } from "sonner";
+import { isNativeShell } from "@/native/platform";
 import {
   faceLabel,
   formatDuration,
@@ -247,9 +248,13 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
   const [view, setView] = useState<"grid" | "list">("grid");
   const [desktopView, setDesktopView] = useState(false);
 
-  // Chrome-style "Request desktop site": force wide viewport so layout matches laptop
+  // Chrome-style desktop site — native app only (not website/browser)
   useEffect(() => {
     if (typeof document === "undefined") return;
+    if (!isNativeShell()) {
+      if (desktopView) setDesktopView(false);
+      return;
+    }
     const meta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
     if (!meta) return;
     const prev = meta.getAttribute("content") || "width=device-width, initial-scale=1, viewport-fit=cover";
@@ -284,7 +289,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
   selectedIdRef.current = selectedId;
   const [readAlertIds, setReadAlertIds] = useState<Set<string>>(new Set());
   const [frames, setFrames] = useState<Record<string, FrameEntry>>({});
-  const [screenFrames, setScreenFrames] = useState<Record<string, { src: string; ts: number }>>({});
+  const [screenFrames, setScreenFrames] = useState<Record<string, { src: string; ts: number; examId?: string; studentId?: string }>>({});
   const [warningBusy, setWarningBusy] = useState(false);
   const [forcePausedIds, setForcePausedIds] = useState<Record<string, boolean>>({});
   const [actionBusy, setActionBusy] = useState(false);
@@ -338,7 +343,12 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
       onFrame: (p: LiveScreenFramePayload) => {
         const attemptId = p.attemptId || (p as { attempt_id?: string }).attempt_id;
         if (!attemptId || !p.frame) return;
-        const entry = { src: p.frame, ts: p.ts || Date.now() };
+        const entry = {
+          src: p.frame,
+          ts: p.ts || Date.now(),
+          examId: String(p.examId || (p as { exam_id?: string }).exam_id || "").trim() || undefined,
+          studentId: String(p.studentId || (p as { student_id?: string }).student_id || "").trim() || undefined,
+        };
         const sid = String(p.studentId || (p as { student_id?: string }).student_id || "");
         setScreenFrames((prev) => {
           const next = { ...prev, [attemptId]: entry };
@@ -427,15 +437,18 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
     queryFn: async () => {
       if (!schoolId) return [] as AttemptRow[];
       const selects = [
+        `id, exam_id, student_id, status, started_at, updated_at, ends_at, tab_switch_count, metadata,
+           examinations(title, status, courses(code, name)),
+           students(full_name, matric_number, student_id, profiles(full_name))`,
+        `id, exam_id, student_id, status, started_at, updated_at, ends_at, tab_switch_count, metadata,
+           examinations(title, status, courses(code, name)),
+           students(matric_number, student_id, profiles(full_name))`,
         `id, exam_id, student_id, status, started_at, updated_at, tab_switch_count, metadata,
            examinations(title, status, courses(code, name)),
            students(full_name, matric_number, student_id, profiles(full_name))`,
         `id, exam_id, student_id, status, started_at, updated_at, tab_switch_count, metadata,
            examinations(title, status, courses(code, name)),
            students(matric_number, student_id, profiles(full_name))`,
-        `id, exam_id, student_id, status, started_at, updated_at, tab_switch_count, metadata,
-           examinations(title, status, courses(code, name)),
-           students(full_name, matric_number, student_id)`,
         `id, exam_id, student_id, status, started_at, updated_at, tab_switch_count, metadata,
            examinations(title, status),
            students(matric_number, student_id)`,
@@ -465,13 +478,13 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
       if (!schoolId) return [] as AttemptRow[];
       const since = new Date(Date.now() - RECENT_SUBMIT_MS).toISOString();
       const selects = [
-        `id, exam_id, student_id, status, started_at, updated_at, tab_switch_count, metadata,
+        `id, exam_id, student_id, status, started_at, updated_at, ends_at, tab_switch_count, metadata,
              examinations(title, status, courses(code, name)),
              students(full_name, matric_number, student_id, profiles(full_name))`,
-        `id, exam_id, student_id, status, started_at, updated_at, tab_switch_count, metadata,
+        `id, exam_id, student_id, status, started_at, updated_at, ends_at, tab_switch_count, metadata,
              examinations(title, status, courses(code, name)),
              students(matric_number, student_id, profiles(full_name))`,
-        `id, exam_id, student_id, status, started_at, updated_at, tab_switch_count, metadata,
+        `id, exam_id, student_id, status, started_at, updated_at, ends_at, tab_switch_count, metadata,
              examinations(title, status),
              students(matric_number, student_id)`,
       ];
@@ -752,18 +765,64 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
       })
     }
     const merged = [...inProgress, ...recentDone, ...frameOnly];
-    // One card per student: prefer in-progress + live frame + most recent activity
+    // Resolve live frames only for the matching attempt/exam (never bleed onto an older paper)
+    const resolveCamFrame = (a: AttemptRow) => {
+      const byAttempt = frames[a.id];
+      if (byAttempt) return byAttempt;
+      const sid = String(a.student_id || "");
+      if (!sid) return null;
+      const byStudent = frames[`student:${sid}`];
+      if (!byStudent) return null;
+      const feid = String(byStudent.examId || "").trim();
+      const aeid = String(a.exam_id || "").trim();
+      // If frame carries examId, it must match this attempt's exam
+      if (feid && aeid && feid !== aeid) return null;
+      // Prefer frame only when this attempt is still active (not a finished paper)
+      const st = String(a.status || "").toLowerCase();
+      if (["submitted", "terminated", "flagged", "completed"].includes(st)) return null;
+      return byStudent;
+    };
+    const resolveScrFrame = (a: AttemptRow) => {
+      const byAttempt = screenFrames[a.id];
+      if (byAttempt) return byAttempt;
+      const sid = String(a.student_id || "");
+      if (!sid) return null;
+      const byStudent = screenFrames[`student:${sid}`];
+      if (!byStudent) return null;
+      const feid = String((byStudent as { examId?: string }).examId || "").trim();
+      const aeid = String(a.exam_id || "").trim();
+      if (feid && aeid && feid !== aeid) return null;
+      const st = String(a.status || "").toLowerCase();
+      if (["submitted", "terminated", "flagged", "completed"].includes(st)) return null;
+      return byStudent;
+    };
+    const isFinishedStatus = (a: AttemptRow) => {
+      const st = String(a.status || "").toLowerCase();
+      if (["submitted", "terminated", "flagged", "completed"].includes(st)) return true;
+      // Time-up / expired ends_at still left as in_progress in DB — treat as finished for ranking
+      const ends =
+        (a as { ends_at?: string | null }).ends_at ||
+        (a.metadata && typeof a.metadata === "object"
+          ? String((a.metadata as Record<string, unknown>).endsAt || (a.metadata as Record<string, unknown>).ends_at || "")
+          : "");
+      if (ends) {
+        const t = new Date(ends).getTime();
+        if (!Number.isNaN(t) && Date.now() > t + 15_000) return true;
+      }
+      return false;
+    };
+    // One card per student: ALWAYS prefer the newest active (in-progress) attempt
     const byStudent = new Map<string, AttemptRow>();
     const attemptRank = (a: AttemptRow) => {
-      const st = String(a.status || "").toLowerCase();
-      const isDone = ["submitted", "terminated", "flagged", "completed"].includes(st);
-      const frame = frames[a.id] || frames[`student:${a.student_id}`];
-      const frameTs = frame?.ts ?? 0;
-      const updated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+      const finished = isFinishedStatus(a);
       const started = a.started_at ? new Date(a.started_at).getTime() : 0;
-      const liveBoost = frame && isLiveCamFrameFresh(frame.ts, Date.now()) ? 1e15 : 0;
-      const progressBoost = isDone ? 0 : 1e14;
-      return progressBoost + liveBoost + Math.max(frameTs, updated, started);
+      const updated = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+      const frame = resolveCamFrame(a);
+      const liveBoost =
+        !finished && frame && isLiveCamFrameFresh(frame.ts, Date.now()) ? 1e10 : 0;
+      // Active attempts always outrank finished ones; among active, newest start wins
+      if (finished) return started + updated * 0.001;
+      return 2e15 + started + liveBoost + updated * 0.001;
     };
     for (const a of merged) {
       const key = String(a.student_id || a.id);
@@ -774,11 +833,12 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
     return unique
       .map((a) => {
         const basePresence = parsePresence(a.metadata);
-        const camFrame = frames[a.id] || frames[`student:${a.student_id}`] || null;
-        const scrFrame = screenFrames[a.id] || screenFrames[`student:${a.student_id}`] || null;
+        const camFrame = resolveCamFrame(a);
+        const scrFrame = resolveScrFrame(a);
         const frame = pickFeedFrame(feedMode, camFrame, scrFrame);
         const st = String(a.status || "").toLowerCase();
-        const isDone = ["submitted", "terminated", "flagged", "completed"].includes(st);
+        const isDone =
+          ["submitted", "terminated", "flagged", "completed"].includes(st) || isFinishedStatus(a);
         const camLive = Boolean(camFrame && isLiveCamFrameFresh(camFrame.ts, now));
         const scrLive = Boolean(scrFrame && isLiveScreenFrameFresh(scrFrame.ts, now));
         const hasLiveVideo = !isDone && (
@@ -944,7 +1004,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
     for (const c of cards) {
       const id = String(c.a.exam_id || "");
       if (!id) continue;
-      const label = [c.course, c.title].filter(Boolean).join(" · ") || "Exam";
+      const label = (c.title && c.title !== "Exam" ? c.title : c.course) || "Exam";
       if (!map.has(id)) map.set(id, label);
     }
     return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
@@ -1401,21 +1461,23 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
               <List className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> List
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setDesktopView((v) => !v)}
-            title={desktopView ? "Exit desktop view" : "Desktop view"}
-            aria-pressed={desktopView}
-            className={cn(
-              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition sm:h-8 sm:w-8",
-              desktopView
-                ? "border-primary bg-primary text-white shadow-sm"
-                : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50",
-            )}
-          >
-            <Monitor className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden />
-            <span className="sr-only">{desktopView ? "Exit desktop view" : "Desktop view"}</span>
-          </button>
+          {isNativeShell() ? (
+            <button
+              type="button"
+              onClick={() => setDesktopView((v) => !v)}
+              title={desktopView ? "Exit desktop view" : "Desktop view"}
+              aria-pressed={desktopView}
+              className={cn(
+                "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition sm:h-8 sm:w-8",
+                desktopView
+                  ? "border-primary bg-primary text-white shadow-sm"
+                  : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50",
+              )}
+            >
+              <Monitor className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden />
+              <span className="sr-only">{desktopView ? "Exit desktop view" : "Desktop view"}</span>
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="grid gap-3 lg:grid-cols-1 lg:gap-4">
@@ -1623,7 +1685,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
                         "relative w-full overflow-hidden rounded-xl bg-slate-900 shadow-inner ring-1 ring-black/10",
                         dual
                           ? "h-[13.5rem] sm:h-[18rem] lg:h-[min(42vh,28rem)] xl:h-[min(48vh,34rem)]"
-                          : "min-h-[12rem] sm:min-h-[18rem] lg:min-h-[min(58vh,40rem)] xl:min-h-[min(65vh,48rem)]",
+                          : "mx-auto aspect-square w-full max-w-[min(100%,22rem)] sm:max-w-[min(100%,26rem)] lg:max-w-[min(100%,28rem)]",
                       )}
                     >
                       {showCamFrame ? (
@@ -1670,7 +1732,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
                         // Match camera card height exactly in dual mode
                         dual
                           ? "h-[13.5rem] sm:h-[18rem] lg:h-[min(42vh,28rem)] xl:h-[min(48vh,34rem)]"
-                          : "min-h-[12rem] sm:min-h-[18rem] lg:min-h-[min(58vh,40rem)] xl:min-h-[min(65vh,48rem)]",
+                          : "mx-auto aspect-square w-full max-w-[min(100%,22rem)] sm:max-w-[min(100%,26rem)] lg:max-w-[min(100%,28rem)]",
                       )}
                     >
                       {showScrFrame ? (
@@ -1685,7 +1747,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
                         <div
                           className={cn(
                             "flex flex-col items-center justify-center gap-1.5 px-4 text-center text-white/60",
-                            dual ? "h-[13.5rem] sm:h-[18rem] lg:h-[min(42vh,28rem)] xl:h-[min(48vh,34rem)]" : "min-h-[14rem] sm:min-h-[20rem] lg:min-h-[28rem]",
+                            dual ? "h-[13.5rem] sm:h-[18rem] lg:h-[min(42vh,28rem)] xl:h-[min(48vh,34rem)]" : "h-full min-h-[12rem]",
                           )}
                         >
                           <Monitor className="h-10 w-10 opacity-30" />
