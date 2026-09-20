@@ -21,6 +21,7 @@ import { prefetchMaterialsOffline } from "@/lib/material-offline";
 import { isOnlineNow } from "@/lib/offline-sync";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 export type { MaterialType };
 
@@ -33,6 +34,7 @@ export function CourseMaterialsPanel({
   displayName: string;
 }) {
   const { data: session } = useSessionUser();
+  const t = useT();
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -307,7 +309,7 @@ export function CourseMaterialsPanel({
     <>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <PageHeader
-          title={role === "teacher" ? "My Materials" : "Learning Materials"}
+          title={role === "teacher" ? t("materials.myMaterials") : t("materials.title")}
           description={
             role === "teacher"
               ? "Upload and manage materials you own — only your uploads appear here."
@@ -316,7 +318,7 @@ export function CourseMaterialsPanel({
         />
         {canUpload && (
           <Button className="shrink-0 gap-1.5 font-semibold" onClick={openUpload}>
-            <Upload className="h-4 w-4" /> Upload Material
+            <Upload className="h-4 w-4" /> {t("materials.upload")}
           </Button>
         )}
       </div>
@@ -539,7 +541,7 @@ export function CourseMaterialsPanel({
               <Button type="button" variant="outline" className="flex-1" onClick={() => setUploadOpen(false)}>Cancel</Button>
               <Button type="button" className="flex-1 gap-1.5 font-semibold" disabled={busy} onClick={() => void (editItem ? saveEdit() : submitUpload())}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                {editItem ? "Save changes" : "Upload Material"}
+                {editItem ? "Save changes" : t("materials.upload")}
               </Button>
             </div>
           </div>

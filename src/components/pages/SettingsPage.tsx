@@ -39,6 +39,9 @@ import {
 import { SchoolLogo } from "@/components/brand/SchoolLogo";
 import { Loader2, Upload, Building2, Info, LifeBuoy, Shield, ChevronRight, CreditCard, ArrowLeft, HardDrive, Languages, Clock, Palette, Trash2 } from "lucide-react";
 import { InAppHelpLegal, helpLegalTitle, type HelpLegalDoc } from "@/components/pages/InAppHelpLegal";
+import { RoleManual, resolveManualRole } from "@/components/pages/RoleManual";
+import { BookOpen } from "lucide-react";
+
 import { PushSettingsCard } from "@/components/settings/PushSettingsCard";
 import { FingerprintLockCard } from "@/components/settings/FingerprintLockCard";
 import { ChangeAppPasswordCard } from "@/components/settings/ChangeAppPasswordCard";
@@ -54,6 +57,8 @@ export function SettingsPage({ scope }: { scope: string }) {
   const { data: session } = useSessionUser();
   const [saving, setSaving] = useState(false);
   const [helpDoc, setHelpDoc] = useState<HelpLegalDoc | null>(null);
+  const [showManual, setShowManual] = useState(false);
+
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>({ ...DEFAULT_NOTIFICATION_PREFS });
   const [displayPrefs, setDisplayPrefs] = useState<DisplayPrefs>({ ...DEFAULT_DISPLAY_PREFS });
   const [offlineInfo, setOfflineInfo] = useState({ count: 0, bytes: 0, lastSync: null as string | null });
@@ -113,6 +118,51 @@ export function SettingsPage({ scope }: { scope: string }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  useEffect(() => {
+    const open = Boolean(helpDoc || showManual);
+    try {
+      (window as unknown as { __d4SettingsOverlayOpen?: boolean }).__d4SettingsOverlayOpen = open;
+    } catch { /* */ }
+    if (open) {
+      try {
+        window.scrollTo({ top: 0, left: 0, behavior: "instant" as ScrollBehavior });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        const main = document.querySelector("main");
+        if (main) main.scrollTop = 0;
+      } catch { /* */ }
+    }
+    const onClose = () => {
+      setHelpDoc(null);
+      setShowManual(false);
+    };
+    window.addEventListener("d4-settings-overlay-close", onClose);
+    return () => {
+      window.removeEventListener("d4-settings-overlay-close", onClose);
+      try {
+        (window as unknown as { __d4SettingsOverlayOpen?: boolean }).__d4SettingsOverlayOpen = false;
+      } catch { /* */ }
+    };
+  }, [helpDoc, showManual]);
+
+  if (showManual) {
+    const manualRole = resolveManualRole(scope, session?.role);
+    return (
+      <>
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => setShowManual(false)}
+            className="inline-flex items-center gap-2 rounded-lg px-1 py-2 text-sm font-semibold text-primary hover:bg-slate-50"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to settings
+          </button>
+        </div>
+        <RoleManual role={manualRole} />
+      </>
+    );
   }
 
   if (helpDoc) {
@@ -263,6 +313,7 @@ export function SettingsPage({ scope }: { scope: string }) {
         </SectionCard>
         <SectionCard title="Help & legal" description="About, contact & support, privacy and pricing">
           <div className="flex flex-col gap-1">
+            <button type="button" onClick={() => { setShowManual(true); setHelpDoc(null); }} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><BookOpen className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">App manual — how to use D4EXAM</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
             <button type="button" onClick={() => setHelpDoc("about")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><Info className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">About Us</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
             <button type="button" onClick={() => setHelpDoc("support")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><LifeBuoy className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Contact & Support</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>
             <button type="button" onClick={() => setHelpDoc("privacy")} className="flex items-center gap-3 rounded-lg px-2 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"><Shield className="h-4 w-4 shrink-0 text-primary" /><span className="flex-1">Privacy Policy</span><ChevronRight className="h-4 w-4 text-slate-300" /></button>

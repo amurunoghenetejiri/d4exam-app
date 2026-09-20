@@ -542,3 +542,15 @@ html.d4-compact-tables .d4-cbt-root button,
 html.d4-compact-tables .d4-calculator button {
   min-height: 2.5rem;
 }
+
+html.d4-compact-tables table[data-d4-table] td,
+html.d4-compact-tables table[data-d4-table] th,
+html.d4-compact-tables .d4-td {
+  padding-top: 0.3rem !important;
+  padding-bottom: 0.3rem !important;
+  font-size: 0.8125rem;
+}
+html.d4-compact-tables [data-d4-row],
+html.d4-compact-tables .rounded-xl.border.bg-white {
+  /* list cards stay readable */
+}

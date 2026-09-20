@@ -66,6 +66,14 @@ export async function registerAndroidBackButton(): Promise<() => void> {
     handle = await App.addListener("backButton", ({ canGoBack }) => {
       try {
         const path = window.location.pathname || "/";
+        // Close Settings overlays (manual / help) before leaving the page
+        try {
+          const w = window as unknown as { __d4SettingsOverlayOpen?: boolean };
+          if (w.__d4SettingsOverlayOpen) {
+            window.dispatchEvent(new CustomEvent("d4-settings-overlay-close"));
+            return;
+          }
+        } catch { /* ignore */ }
         if (isActiveExamPath(path)) {
           // Close in-exam calculator first — do not leave the exam
           try {

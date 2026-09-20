@@ -84,12 +84,12 @@ function AccountRoleBadge({
 
 const NAV_I18N: Record<string, string> = {
   Dashboard: "nav.dashboard",
-  Home: "nav.dashboard",
-  "My Exams": "nav.examinations",
-  Exams: "nav.examinations",
+  Home: "nav.home",
+  "My Exams": "nav.myExams",
+  Exams: "nav.exams",
   Examinations: "nav.examinations",
   Results: "nav.results",
-  "My Courses": "nav.courses",
+  "My Courses": "nav.myCourses",
   Courses: "nav.courses",
   Materials: "nav.materials",
   Notifications: "nav.notifications",
@@ -106,7 +106,14 @@ const NAV_I18N: Record<string, string> = {
   "Question Bank": "nav.questionBank",
   Marking: "nav.marking",
   Submissions: "nav.submissions",
+  Account: "nav.account",
+  Logout: "nav.logout",
 };
+
+function translateNavLabel(label: string, tFn: (k: string) => string) {
+  const key = NAV_I18N[label];
+  return key ? tFn(key) : label;
+}
 
 function NavLinks({
   config,
@@ -119,10 +126,7 @@ function NavLinks({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const t = useT();
-  const translateNav = (label: string) => {
-    const key = NAV_I18N[label];
-    return key ? t(key) : label;
-  };
+  const translateNav = (label: string) => translateNavLabel(label, t);
   return (
     <nav className="flex flex-col gap-5 px-3 py-4" aria-label={`${config.label} navigation`}>
       {config.groups.map((group, gi) => (
@@ -292,6 +296,7 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const t = useT();
   const { data: session } = useSessionUser();
   const { data: school } = useSchoolIdentity(session?.schoolId);
 
@@ -568,7 +573,7 @@ export function AppShell({
                       className="cursor-pointer rounded-lg px-2.5 py-2"
                     >
                       <UserRound className="mr-2.5 h-4 w-4 text-slate-500" />
-                      <span className="text-sm font-medium text-slate-800">Profile</span>
+                      <span className="text-sm font-medium text-slate-800">{translateNavLabel("Profile", t)}</span>
                       <ChevronRight className="ml-auto h-4 w-4 text-slate-300" aria-hidden />
                     </Link>
                   </DropdownMenuItem>
@@ -578,7 +583,7 @@ export function AppShell({
                       className="cursor-pointer rounded-lg px-2.5 py-2"
                     >
                       <Settings className="mr-2.5 h-4 w-4 text-slate-500" />
-                      <span className="text-sm font-medium text-slate-800">Settings</span>
+                      <span className="text-sm font-medium text-slate-800">{translateNavLabel("Settings", t)}</span>
                       <ChevronRight className="ml-auto h-4 w-4 text-slate-300" aria-hidden />
                     </Link>
                   </DropdownMenuItem>
@@ -588,7 +593,7 @@ export function AppShell({
                     onClick={() => void signOut()}
                   >
                     <LogOut className="mr-2.5 h-4 w-4" />
-                    <span className="text-sm font-medium">Logout</span>
+                    <span className="text-sm font-medium">{translateNavLabel("Logout", t)}</span>
                   </DropdownMenuItem>
                 </div>
               </DropdownMenuContent>
@@ -649,7 +654,7 @@ export function AppShell({
                         />
                       ) : null}
                     </span>
-                    <span className="truncate px-1">{item.label}</span>
+                    <span className="truncate px-1">{translateNavLabel(item.label, t)}</span>
                   </Link>
                 </li>
               );

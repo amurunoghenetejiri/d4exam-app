@@ -238,7 +238,7 @@ export function DataTable<T extends { id: string }>({
   }
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[480px] text-left text-sm">
+      <table data-d4-table className="w-full min-w-[480px] text-left text-sm">
         <thead>
           <tr className="border-b border-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-500">
             {columns.map((c) => (
@@ -257,7 +257,7 @@ export function DataTable<T extends { id: string }>({
               {columns.map((c) => (
                 <td
                   key={c.key}
-                  className={cn("px-2 py-2.5 align-top sm:px-3 lg:px-4 lg:py-3", c.hideOnMobile && "hidden sm:table-cell")}
+                  className={cn("d4-td px-2 py-2.5 align-top sm:px-3 lg:px-4 lg:py-3", c.hideOnMobile && "hidden sm:table-cell")}
                 >
                   {c.render
                     ? c.render(row)
