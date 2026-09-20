@@ -473,33 +473,6 @@ export function CourseMaterialsPanel({
                       <Calendar className="h-2.5 w-2.5" /> {formatDate(m.created_at)}
                     </span>
                   </div>
-                  <div className="mt-1.5 flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary hover:bg-primary/15"
-                      onClick={() => setViewer(m)}
-                    >
-                      Open
-                    </button>
-                    {m.file_url && (
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
-                        onClick={() => void downloadMaterial(m)}
-                      >
-                        Download
-                      </button>
-                    )}
-                    {m.file_url && (
-                      <button
-                        type="button"
-                        className="rounded-lg px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
-                        onClick={() => void shareMaterial(m)}
-                      >
-                        Share
-                      </button>
-                    )}
-                  </div>
                 </div>
               </div>
             );
@@ -509,12 +482,12 @@ export function CourseMaterialsPanel({
 
       {uploadOpen && (
         <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
-          <div className="flex max-h-[min(92vh,100dvh)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl" style={{ paddingBottom: "env(safe-area-inset-bottom,0px)" }}>
+          <div className="flex h-[min(94dvh,94vh)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:h-auto sm:max-h-[90vh] sm:rounded-2xl">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
               <h3 className="text-base font-bold">{editItem ? "Edit material" : "Upload material"}</h3>
               <button type="button" onClick={() => setUploadOpen(false)} aria-label="Close"><X className="h-5 w-5 text-slate-400" /></button>
             </div>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 pb-6">
               {!editItem && (
                 <div
                   className={cn("rounded-xl border-2 border-dashed p-4 text-center", dragOver ? "border-primary bg-primary/5" : "border-slate-200")}
@@ -562,7 +535,7 @@ export function CourseMaterialsPanel({
                 <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-primary transition-all" style={{ width: `${progress}%` }} /></div>
               )}
             </div>
-            <div className="flex gap-2 border-t border-slate-100 p-4">
+            <div className="flex shrink-0 gap-2 border-t border-slate-100 bg-white p-4" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom, 0px))" }}>
               <Button type="button" variant="outline" className="flex-1" onClick={() => setUploadOpen(false)}>Cancel</Button>
               <Button type="button" className="flex-1 gap-1.5 font-semibold" disabled={busy} onClick={() => void (editItem ? saveEdit() : submitUpload())}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}

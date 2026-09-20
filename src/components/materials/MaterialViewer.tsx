@@ -71,8 +71,29 @@ function isPdf(m: ViewerMaterial) {
 
 function isImage(m: ViewerMaterial) {
   const mime = (m.file_mime || "").toLowerCase();
-  const name = (m.file_name || m.file_url || "").toLowerCase();
+  const name = (m.file_name || m.file_url || m.title || "").toLowerCase();
   return mime.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(name);
+}
+
+function isText(m: ViewerMaterial) {
+  const mime = (m.file_mime || "").toLowerCase();
+  const name = (m.file_name || m.file_url || m.title || "").toLowerCase();
+  if (mime.startsWith("text/")) return true;
+  if (mime.includes("json") || mime.includes("xml") || mime.includes("javascript")) return true;
+  return /\.(txt|md|csv|tsv|json|xml|log|html?|css|js|ts|tsx|jsx|rtf)$/i.test(name);
+}
+
+function isOffice(m: ViewerMaterial) {
+  const mime = (m.file_mime || "").toLowerCase();
+  const name = (m.file_name || m.file_url || m.title || "").toLowerCase();
+  return (
+    mime.includes("word") ||
+    mime.includes("officedocument") ||
+    mime.includes("msword") ||
+    mime.includes("spreadsheet") ||
+    mime.includes("presentation") ||
+    /\.(docx?|xlsx?|pptx?|odt|ods|odp)$/i.test(name)
+  );
 }
 
 function typeLabel(t: string) {
@@ -107,6 +128,10 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
   const [ocrOpen, setOcrOpen] = useState(false);
   const [studyHelpOpen, setStudyHelpOpen] = useState(false);
   const [studySplit, setStudySplit] = useState(false);
+  const [textContent, setTextContent] = useState<string | null>(null);
+  const [pdfMode, setPdfMode] = useState<"vertical" | "horizontal">("vertical");
+  const [dlBusy, setDlBusy] = useState(false);
+
 
   const [ocrBusy, setOcrBusy] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
@@ -285,6 +310,24 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
 
   // Prefer offline blob when network is down or remote URL unavailable
   const activeUrl = offlineSrc || item.file_url;
+  useEffect(() => {
+    let cancelled = false;
+    setTextContent(null);
+    if (!activeUrl || !isText(item)) return;
+    void (async () => {
+      try {
+        const res = await fetch(activeUrl);
+        const txt = await res.text();
+        if (!cancelled) setTextContent(txt);
+      } catch {
+        if (!cancelled) setTextContent(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeUrl, item.id, item.file_mime, item.file_name]);
+
 
   useEffect(() => {
     if (!activeUrl || !isPdf(item)) return;
@@ -320,9 +363,9 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
       const doc = pdfDocRef.current;
       const pg = await doc.getPage(page);
       const base = pg.getViewport({ scale: 1 });
-      const maxW = Math.min((wrapRef.current?.clientWidth || 900) - 16, 1400);
-      const maxH = Math.max((wrapRef.current?.clientHeight || 700) - 16, 200);
-      const fit = Math.min(maxW / base.width, maxH / base.height);
+      const maxW = Math.max((wrapRef.current?.clientWidth || 900) - 8, 280);
+      // Fit width so PDF fills the viewport edge-to-edge (not a small card in a void)
+      const fit = maxW / base.width;
       const dpr = Math.min(typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1, 2.5);
       const scale = fit * zoom * dpr;
       const viewport = pg.getViewport({ scale });
@@ -368,18 +411,46 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
     }
   }
 
-  function download() {
+  async function download() {
     const href = offlineSrc || item.file_url;
-    if (!href) return;
-    const a = document.createElement("a");
-    a.href = href;
-    a.download = item.file_name || item.title || "material";
-    a.target = "_blank";
-    a.rel = "noreferrer";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    toast.success("Download started");
+    if (!href) {
+      toast.error("No file available to download");
+      return;
+    }
+    setDlBusy(true);
+    try {
+      const res = await fetch(href, { mode: "cors" });
+      if (!res.ok) throw new Error("Fetch failed");
+      const blob = await res.blob();
+      const name = item.file_name || `${item.title || "material"}.bin`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast.success("Downloading to your device…");
+    } catch {
+      // fallback: open URL (works for public storage)
+      try {
+        const a = document.createElement("a");
+        a.href = href;
+        a.download = item.file_name || item.title || "material";
+        a.target = "_blank";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        toast.success("Download started");
+      } catch {
+        toast.error("Could not download this file");
+      }
+    } finally {
+      setDlBusy(false);
+    }
   }
 
   async function shareFileOrLink() {
@@ -673,18 +744,81 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
         )}
 
         {activeUrl && isPdf(item) && !error && (
-          <div className="flex h-full w-full items-center justify-center overflow-auto p-2 sm:p-4">
-            <canvas ref={canvasRef} className="mx-auto block max-w-full bg-white shadow-2xl" />
+          <div
+            className={cn(
+              "h-full w-full bg-slate-900",
+              pdfMode === "vertical" ? "overflow-y-auto overscroll-contain" : "overflow-x-auto overflow-y-hidden",
+            )}
+            onScroll={(e) => {
+              if (pdfMode !== "vertical" || pages <= 1) return;
+              const el = e.currentTarget;
+              const ratio = el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight);
+              const next = Math.min(pages, Math.max(1, Math.round(ratio * pages) + 1));
+              if (next !== page) setPage(next);
+            }}
+          >
+            <div className={cn("flex min-h-full w-full", pdfMode === "vertical" ? "flex-col items-stretch" : "flex-row items-center")}>
+              <div className="mx-auto w-full max-w-4xl bg-white shadow-none sm:shadow-2xl">
+                <canvas ref={canvasRef} className="block w-full bg-white" />
+              </div>
+            </div>
           </div>
         )}
 
-        {activeUrl && !isPdf(item) && !isImage(item) && (
+        {activeUrl && isText(item) && (
+          <div className="h-full w-full overflow-y-auto bg-[#0f172a] px-3 py-4 sm:px-6">
+            <div className="mx-auto max-w-3xl rounded-xl bg-white p-4 text-left shadow-lg sm:p-6">
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">
+                {item.file_name || "Text file"}
+              </p>
+              {textContent == null ? (
+                <p className="text-sm text-slate-500">Loading text…</p>
+              ) : (
+                <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-slate-800">
+                  {textContent}
+                </pre>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeUrl && isOffice(item) && (
+          <div className="mx-auto max-w-md rounded-xl bg-white p-8 text-center text-slate-800 shadow">
+            <File className="mx-auto h-12 w-12 text-slate-400" />
+            <p className="mt-3 font-semibold">Office document</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Preview this file type on your device, or open with an online viewer.
+            </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <Button data-reader-chrome onClick={() => void download()} disabled={dlBusy}>
+                <Download className="mr-1 h-4 w-4" /> {dlBusy ? "Downloading…" : "Download"}
+              </Button>
+              {item.file_url && (
+                <Button
+                  variant="outline"
+                  data-reader-chrome
+                  onClick={() =>
+                    window.open(
+                      `https://docs.google.com/gview?embedded=1&url=${encodeURIComponent(item.file_url!)}`,
+                      "_blank",
+                      "noopener,noreferrer",
+                    )
+                  }
+                >
+                  Open preview
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeUrl && !isPdf(item) && !isImage(item) && !isText(item) && !isOffice(item) && (
           <div className="mx-auto max-w-md rounded-xl bg-white p-8 text-center text-slate-800 shadow">
             <File className="mx-auto h-12 w-12 text-slate-400" />
             <p className="mt-3 font-semibold">Preview not available for this file type</p>
             <p className="mt-1 text-sm text-slate-500">Download to open on your device.</p>
-            <Button className="mt-4" data-reader-chrome onClick={download}>
-              <Download className="mr-1 h-4 w-4" /> Download
+            <Button className="mt-4" data-reader-chrome onClick={() => void download()} disabled={dlBusy}>
+              <Download className="mr-1 h-4 w-4" /> {dlBusy ? "Downloading…" : "Download"}
             </Button>
           </div>
         )}
@@ -782,7 +916,7 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
             <Button type="button" size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/10" onClick={() => void share()} aria-label="Share">
               <Share2 className="h-4 w-4" />
             </Button>
-            <Button type="button" size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/10" onClick={download} aria-label="Download">
+            <Button type="button" size="icon" variant="ghost" className="h-10 w-10 text-white hover:bg-white/10" onClick={() => void download()} aria-label="Download">
               <Download className="h-4 w-4" />
             </Button>
             <div className="relative">
@@ -796,6 +930,11 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
                       <Type className="h-4 w-4 opacity-70" /> Convert handwriting (OCR)
                     </button>
                   )}
+                  {isPdf(item) ? (
+                    <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-white/10" onClick={() => { setPdfMode((m) => (m === "vertical" ? "horizontal" : "vertical")); setMoreOpen(false); }}>
+                      <Type className="h-4 w-4" /> {pdfMode === "vertical" ? "Page mode: Horizontal" : "Page mode: Vertical"}
+                    </button>
+                  ) : null}
                   {role === "student" ? (
                     <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-white/10" onClick={() => { setMoreOpen(false); setStudyHelpOpen(true); setChromeVisible(true); }}>
                       <Bookmark className="h-4 w-4 opacity-70" /> Study Help

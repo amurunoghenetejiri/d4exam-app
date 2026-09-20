@@ -10,9 +10,11 @@ import {
   Minimize2,
   Play,
   RefreshCw,
+  Search,
   WifiOff,
   X,
   Youtube,
+  ArrowLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { searchStudyVideos, type StudyVideo } from "@/lib/youtube-study.server";
@@ -116,21 +118,19 @@ function BrandedPlayer({
   onClose,
   fullscreen,
   onToggleFullscreen,
+  onSearch,
 }: {
   video: StudyVideo;
   relatedLabel: string;
   onClose: () => void;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
+  onSearch?: () => void;
 }) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const playerRef = useRef<YtPlayer | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const feedbackTimer = useRef<number>(0);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const lastTap = useRef<{ t: number; side: "L" | "R" | null }>({ t: 0, side: null });
-  const longPress = useRef<number>(0);
-  const rateBefore = useRef(1);
-  const swipe = useRef<{ x: number; y: number; vol: number } | null>(null);
 
   const showFb = useCallback((text: string) => {
     setFeedback(text);
@@ -138,144 +138,47 @@ function BrandedPlayer({
     feedbackTimer.current = window.setTimeout(() => setFeedback(null), 700);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      await loadYtApi();
-      if (cancelled || !hostRef.current || !window.YT?.Player) return;
-      try {
-        playerRef.current?.destroy();
-      } catch {
-        /* */
-      }
-      hostRef.current.innerHTML = "";
-      const mount = document.createElement("div");
-      mount.id = `d4-yt-${video.videoId}-${Date.now()}`;
-      hostRef.current.appendChild(mount);
-      playerRef.current = new window.YT.Player(mount, {
-        videoId: video.videoId,
-        playerVars: {
-          rel: 0,
-          modestbranding: 1,
-          playsinline: 1,
-          origin: typeof window !== "undefined" ? window.location.origin : "",
-        },
-        events: {
-          onReady: () => {
-            /* ready */
-          },
-        },
-      });
-    })();
-    return () => {
-      cancelled = true;
-      try {
-        playerRef.current?.destroy();
-      } catch {
-        /* */
-      }
-      playerRef.current = null;
-    };
-  }, [video.videoId]);
-
+  // PostMessage seek approx via youtube embed is limited; show feedback for UX
   function onPointerDown(e: React.PointerEvent) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = e.clientX - rect.left;
     const side: "L" | "R" = x < rect.width / 2 ? "L" : "R";
     const now = Date.now();
     if (now - lastTap.current.t < 280 && lastTap.current.side === side) {
-      const p = playerRef.current;
-      if (p) {
-        try {
-          const t = p.getCurrentTime();
-          if (side === "L") {
-            p.seekTo(Math.max(0, t - 10), true);
-            showFb("−10");
-          } else {
-            p.seekTo(t + 10, true);
-            showFb("+10");
-          }
-        } catch {
-          /* */
-        }
+      showFb(side === "L" ? "−10" : "+10");
+      // Best-effort: focus iframe so user can use native controls
+      try {
+        iframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({
+            event: "command",
+            func: "seekTo",
+            args: [side === "L" ? -10 : 10, true],
+          }),
+          "*",
+        );
+      } catch {
+        /* */
       }
       lastTap.current = { t: 0, side: null };
     } else {
       lastTap.current = { t: now, side };
     }
-
-    // long-press 2x
-    rateBefore.current = 1;
-    try {
-      rateBefore.current = playerRef.current?.getPlaybackRate() ?? 1;
-    } catch {
-      /* */
-    }
-    window.clearTimeout(longPress.current);
-    longPress.current = window.setTimeout(() => {
-      try {
-        playerRef.current?.setPlaybackRate(2);
-        showFb("2×");
-      } catch {
-        /* */
-      }
-    }, 450);
-
-    try {
-      swipe.current = {
-        x: e.clientX,
-        y: e.clientY,
-        vol: playerRef.current?.getVolume?.() ?? 80,
-      };
-    } catch {
-      swipe.current = { x: e.clientX, y: e.clientY, vol: 80 };
-    }
   }
 
-  function onPointerMove(e: React.PointerEvent) {
-    if (!swipe.current) return;
-    const dy = swipe.current.y - e.clientY;
-    if (Math.abs(dy) < 12) return;
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    // left third = brightness (best-effort), right third = volume
-    if (x > rect.width * 0.66) {
-      const next = Math.min(100, Math.max(0, swipe.current.vol + dy / 3));
-      try {
-        playerRef.current?.setVolume(next);
-        showFb(`Vol ${Math.round(next)}`);
-      } catch {
-        /* */
-      }
-    } else if (x < rect.width * 0.33) {
-      // Brightness: CSS filter on container as soft fallback (native brightness needs plugin)
-      const host = hostRef.current?.parentElement;
-      if (host) {
-        const b = Math.min(1.4, Math.max(0.4, 1 + dy / 400));
-        host.style.filter = `brightness(${b})`;
-        showFb(`Bright ${Math.round(b * 100)}%`);
-      }
-    }
-  }
-
-  function onPointerUp() {
-    window.clearTimeout(longPress.current);
-    try {
-      playerRef.current?.setPlaybackRate(rateBefore.current || 1);
-    } catch {
-      /* */
-    }
-    swipe.current = null;
-  }
+  const embedSrc = `https://www.youtube.com/embed/${video.videoId}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1&autoplay=1`;
 
   return (
     <div
-      className={cn(
-        "flex flex-col overflow-hidden bg-[#0b1220] text-white",
-        fullscreen ? "fixed inset-0 z-[220]" : "relative h-full w-full",
-      )}
+      className={
+        fullscreen
+          ? "fixed inset-0 z-[230] flex flex-col bg-[#0b1220] text-white"
+          : "relative flex h-full min-h-0 w-full flex-col bg-[#0b1220] text-white"
+      }
     >
-      <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
+      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 px-2 py-2 sm:px-3">
+        <button type="button" className="rounded-lg p-2 text-white/80 hover:bg-white/10" onClick={onClose} aria-label="Back">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
         <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-red-600">
           <Youtube className="h-4 w-4" />
         </div>
@@ -283,45 +186,44 @@ function BrandedPlayer({
           <p className="truncate text-xs font-black tracking-wide">D4EXAM Study Help</p>
           <p className="truncate text-[10px] text-white/55">{relatedLabel}</p>
         </div>
-        <a
-          href={video.url}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-lg p-2 text-white/70 hover:bg-white/10"
-          aria-label="Open on YouTube"
-        >
+        {onSearch ? (
+          <button type="button" className="rounded-lg p-2 text-white/80 hover:bg-white/10" onClick={onSearch} aria-label="Search videos">
+            <Search className="h-5 w-5" />
+          </button>
+        ) : null}
+        <a href={video.url} target="_blank" rel="noreferrer" className="rounded-lg p-2 text-white/70 hover:bg-white/10" aria-label="Open on YouTube">
           <ExternalLink className="h-4 w-4" />
         </a>
-        <button
-          type="button"
-          className="rounded-lg p-2 text-white/70 hover:bg-white/10"
-          onClick={onToggleFullscreen}
-          aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen video"}
-        >
+        <button type="button" className="rounded-lg p-2 text-white/70 hover:bg-white/10" onClick={onToggleFullscreen} aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}>
           {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </button>
-        <button type="button" className="rounded-lg p-2 text-white/70 hover:bg-white/10" onClick={onClose} aria-label="Close">
-          <X className="h-4 w-4" />
-        </button>
       </div>
-      <div className="min-w-0 px-3 pb-1">
+      <div className="min-w-0 shrink-0 px-3 pb-1">
         <p className="truncate text-sm font-bold">{video.title}</p>
         <p className="truncate text-[11px] text-white/50">{video.channel}</p>
       </div>
       <div
-        className="relative mx-3 mb-3 aspect-video overflow-hidden rounded-xl bg-black ring-1 ring-white/10"
+        className="relative mx-3 mb-3 min-h-0 flex-1 overflow-hidden rounded-xl bg-black ring-1 ring-white/10"
+        style={{ minHeight: fullscreen ? "60vh" : "200px" }}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
       >
-        <div ref={hostRef} className="h-full w-full" />
-        <Feedback text={feedback} />
-        <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex justify-between text-[9px] font-semibold text-white/40">
-          <span>Double-tap ±10s</span>
-          <span>Hold 2× · Swipe vol</span>
-        </div>
+        <iframe
+          ref={iframeRef}
+          title={video.title}
+          src={embedSrc}
+          className="absolute inset-0 h-full w-full border-0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+          allowFullScreen
+        />
+        {feedback ? (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+            <span className="rounded-xl bg-black/70 px-4 py-2 text-lg font-black text-white">{feedback}</span>
+          </div>
+        ) : null}
       </div>
+      <p className="shrink-0 px-3 pb-3 text-center text-[10px] text-white/35">
+        Use player controls to pause, seek, and change quality · Fullscreen supports landscape & portrait
+      </p>
     </div>
   );
 }
@@ -347,6 +249,10 @@ export function StudyHelpPanel({
   const [active, setActive] = useState<StudyVideo | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQ, setSearchQ] = useState("");
+  const [customQuery, setCustomQuery] = useState<string | null>(null);
+
 
   const relatedLabel = useMemo(() => {
     return [courseLabel, topic, title].filter(Boolean).slice(0, 2).join(" · ") || title;
@@ -401,13 +307,13 @@ export function StudyHelpPanel({
       }
       const res = await searchStudyVideos({
         data: {
-          materialId,
-          title,
-          course: courseLabel || "",
-          topic: topic || "",
-          description: description || "",
-          ocrText: ocrText || "",
-          maxResults: 8,
+          materialId: customQuery ? `search:${customQuery}` : materialId,
+          title: customQuery || title,
+          course: customQuery ? "" : courseLabel || "",
+          topic: customQuery || topic || "",
+          description: customQuery ? "" : description || "",
+          ocrText: customQuery ? "" : ocrText || "",
+          maxResults: 12,
         },
       });
       const list = res?.videos ?? [];
@@ -430,9 +336,9 @@ export function StudyHelpPanel({
   }
 
   useEffect(() => {
-    void load(false);
+    void load(Boolean(customQuery));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [materialId]);
+  }, [materialId, customQuery]);
 
   const shown = showAll ? videos : videos.slice(0, compact ? 3 : 4);
 
@@ -440,13 +346,17 @@ export function StudyHelpPanel({
     return (
       <BrandedPlayer
         video={active}
-        relatedLabel={relatedLabel}
+        relatedLabel={customQuery || relatedLabel}
         onClose={() => {
           setActiveVideo(null);
           onCloseEmbed?.();
         }}
         fullscreen={fullscreen}
         onToggleFullscreen={() => setFullscreen((f) => !f)}
+        onSearch={() => {
+          setFullscreen(false);
+          setSearchOpen(true);
+        }}
       />
     );
   }
@@ -459,8 +369,11 @@ export function StudyHelpPanel({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-extrabold text-slate-900">Study Help</p>
-          <p className="truncate text-[11px] text-slate-500">{relatedLabel}</p>
+          <p className="truncate text-[11px] text-slate-500">{customQuery ? `Search: ${customQuery}` : relatedLabel}</p>
         </div>
+        <Button type="button" size="icon" variant="ghost" className="h-8 w-8" onClick={() => setSearchOpen((s) => !s)} aria-label="Search">
+          <Search className="h-4 w-4" />
+        </Button>
         <Button
           type="button"
           size="icon"
@@ -473,6 +386,30 @@ export function StudyHelpPanel({
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
         </Button>
       </div>
+      {searchOpen && (
+        <form
+          className="flex gap-2 border-b border-slate-100 bg-white px-3 py-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const q = searchQ.trim();
+            if (!q) return;
+            setCustomQuery(q);
+            setSearchOpen(false);
+            setShowAll(true);
+          }}
+        >
+          <input
+            value={searchQ}
+            onChange={(e) => setSearchQ(e.target.value)}
+            placeholder="Search any educational topic…"
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none ring-primary focus:ring-2"
+            autoFocus
+          />
+          <Button type="submit" size="sm" className="shrink-0 font-bold">
+            Search
+          </Button>
+        </form>
+      )}
 
       {offline && (
         <div className="flex items-start gap-2 border-b border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-900">
@@ -496,7 +433,7 @@ export function StudyHelpPanel({
       )}
 
       {videos.length > 0 && (
-        <ul className="divide-y divide-slate-100">
+        <ul className="max-h-[50vh] divide-y divide-slate-100 overflow-y-auto overscroll-contain sm:max-h-[60vh]">
           {shown.map((v) => (
             <li key={v.videoId}>
               <button
@@ -535,10 +472,15 @@ export function StudyHelpPanel({
           <div className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-2xl shadow-2xl sm:rounded-2xl">
             <BrandedPlayer
               video={active}
-              relatedLabel={relatedLabel}
+              relatedLabel={customQuery || relatedLabel}
               onClose={() => setActiveVideo(null)}
               fullscreen={fullscreen}
               onToggleFullscreen={() => setFullscreen((f) => !f)}
+              onSearch={() => {
+                setFullscreen(false);
+                setActiveVideo(null);
+                setSearchOpen(true);
+              }}
             />
           </div>
         </div>
