@@ -149,7 +149,7 @@ function Page() {
                       logoUrl={s.logo_url}
                       schoolName={s.name}
                       size="md"
-                      className="shrink-0"
+                      className="shrink-0 rounded-full object-cover ring-2 ring-slate-100"
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">

@@ -101,6 +101,7 @@ export function ProfilePage() {
   const { data: school } = useSchoolIdentity(user?.schoolId);
   const { data: student } = useStudentContext();
   const qc = useQueryClient();
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
@@ -213,6 +214,48 @@ export function ProfilePage() {
                     {avatar}
                   </span>
                 )}
+                {isSuperAdmin ? (
+                  <label className="mt-2 inline-flex cursor-pointer items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-bold text-slate-700 shadow-sm hover:bg-slate-50">
+                    {photoBusy ? "Uploading..." : "Upload photo"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={photoBusy}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !user.profileId) return;
+                        setPhotoBusy(true);
+                        try {
+                          const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+                          const path = `profiles/${user.profileId}/avatar-${Date.now()}.${ext}`;
+                          const buckets = ["avatars", "public", "school-logos"];
+                          let publicUrl: string | null = null;
+                          for (const bucket of buckets) {
+                            const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true });
+                            if (!error) {
+                              const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+                              publicUrl = data.publicUrl;
+                              break;
+                            }
+                          }
+                          if (!publicUrl) throw new Error("Upload failed");
+                          const { error: updErr } = await supabase
+                            .from("profiles")
+                            .update({ profile_photo_url: publicUrl } as never)
+                            .eq("id", user.profileId);
+                          if (updErr) throw updErr;
+                          toast.success("Profile photo updated");
+                          void qc.invalidateQueries({ queryKey: ["session-user"] });
+                        } catch (err) {
+                          toast.error((err as Error).message || "Could not upload photo");
+                        } finally {
+                          setPhotoBusy(false);
+                        }
+                      }}
+                    />
+                  </label>
+                ) : null}
               </div>
 
               <h2 className="mt-3 max-w-full break-words text-base font-extrabold leading-snug text-slate-900 sm:mt-3.5 sm:text-lg [overflow-wrap:anywhere]">
@@ -230,10 +273,12 @@ export function ProfilePage() {
           </div>
 
           <div className="px-4 pb-4 pt-1 sm:px-5 sm:pb-5">
-            <ProfileField
-              label={user.identifierLabel || "Matric number"}
-              value={user.identifier || student?.matric || "—"}
-            />
+            {!isSuperAdmin ? (
+              <ProfileField
+                label={user.identifierLabel || "Matric number"}
+                value={user.identifier || student?.matric || "—"}
+              />
+            ) : null}
             <ProfileField label="Email" value={user.email || "—"} />
             <ProfileField
               label="Status"
@@ -250,7 +295,7 @@ export function ProfilePage() {
                 </span>
               }
             />
-            {user.schoolCode ? <ProfileField label="School code" value={user.schoolCode} /> : null}
+            {user.schoolCode && !isSuperAdmin ? <ProfileField label="School code" value={user.schoolCode} /> : null}
             {student?.departmentName ? (
               <ProfileField label="Department" value={student.departmentName} />
             ) : null}

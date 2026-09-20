@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function schoolInitials(name?: string | null): string {
   const n = (name || "").trim();
@@ -32,6 +32,9 @@ export function SchoolLogo({
   priority?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false);
+  }, [logoUrl]);
   const dims = {
     xs: "h-6 w-6",
     sm: "h-8 w-8",

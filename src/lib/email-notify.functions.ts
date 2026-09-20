@@ -114,3 +114,53 @@ export const notifyTeacherCoursesAssigned = createServerFn({ method: "POST" })
       return { ok: false as const, error: "send failed" };
     }
   });
+
+export const sendPlatformMessage = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        email: z.string().email().optional(),
+        authUserId: z.string().optional(),
+        title: z.string().min(1),
+        body: z.string().min(1),
+        viaEmail: z.boolean(),
+        viaNotification: z.boolean(),
+        recipientName: z.string().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const results: string[] = [];
+    if (data.viaEmail && data.email) {
+      try {
+        const { sendEmail } = await import("@/lib/email.server");
+        const { getAppOrigin } = await import("@/lib/app-url");
+        const r = await sendEmail({
+          to: data.email,
+          subject: data.title,
+          html: `<div style="font-family:system-ui;padding:16px"><h2>${data.title}</h2><p>${data.body.replace(/\n/g, "<br/>")}</p><p style="color:#64748b;font-size:12px">Message from D4EXAM Super Admin · ${getAppOrigin()}</p></div>`,
+          text: data.body,
+        });
+        if (r.ok) results.push("email");
+        else results.push(`email_failed:${r.error}`);
+      } catch (e) {
+        results.push(`email_failed:${(e as Error).message}`);
+      }
+    }
+    if (data.viaNotification && data.authUserId) {
+      try {
+        const { notifyUser } = await import("@/lib/notify");
+        await notifyUser({
+          recipientUserId: data.authUserId,
+          title: data.title,
+          message: data.body,
+          type: "platform_message",
+          link: "/notifications",
+        });
+        results.push("notification");
+      } catch (e) {
+        results.push(`notification_failed:${(e as Error).message}`);
+      }
+    }
+    return { ok: results.some((x) => x === "email" || x === "notification"), results };
+  });
