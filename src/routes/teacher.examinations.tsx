@@ -302,6 +302,10 @@ function Page() {
         return false;
       }
     }
+    if (s === 2 && startAt && !endAt) {
+      toast.error("Set the exam end date and time");
+      return false;
+    }
     if (s === 2 && startAt && endAt && new Date(endAt) <= new Date(startAt)) {
       toast.error("End must be after start");
       return false;
@@ -319,7 +323,7 @@ function Page() {
       const metaBlob = `[[D4_EXAM_META]]${JSON.stringify({ questionsToAnswer, assessmentKind })}`;
       const secBlob = `[[D4_SECURITY_JSON]]${JSON.stringify(sec)}`;
       let desc: string | null = [plain, metaBlob, secBlob].filter(Boolean).join("\n") || null;
-      const computedEnd = endAt || (startAt ? endFromStart(startAt, durationMinutes) : "");
+      const computedEnd = endAt || ""; // Teacher must set end time explicitly — do not auto-fill
       const payload = {
         school_id: teacher.schoolId,
         course_id: courseId,
@@ -578,7 +582,7 @@ function Page() {
             <div className="mx-auto max-w-xl space-y-4">
               <div className="space-y-2">
                 <Label className="font-semibold">Start</Label>
-                <Input type="datetime-local" value={startAt} onChange={(e) => onStartChange(e.target.value)} />
+                <Input type="datetime-local" className="d4-datetime" value={startAt} onChange={(e) => onStartChange(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label className="font-semibold">End</Label>

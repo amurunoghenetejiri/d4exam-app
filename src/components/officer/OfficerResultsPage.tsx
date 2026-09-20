@@ -174,35 +174,53 @@ export function OfficerResultsPage() {
         }
         console.warn("[officer-results] exam results select failed", error);
       }
-      // Enrich missing names from students.full_name
-      const needIds = rows
-        .filter((r) => {
-          const s = r.students as { full_name?: string | null; profiles?: { full_name?: string | null } | null } | null;
-          const n = s?.full_name || s?.profiles?.full_name;
-          return !n && r.student_id;
-        })
-        .map((r) => r.student_id);
-      if (needIds.length) {
-        const unique = [...new Set(needIds)];
+      // Always enrich names from students (+ profiles) so officers see full name
+      const allIds = [...new Set(rows.map((r) => r.student_id).filter(Boolean))];
+      if (allIds.length) {
         const { data: studs } = await supabase
           .from("students")
-          .select("id, full_name, matric_number, student_id")
-          .in("id", unique);
-        const map = new Map<string, { full_name?: string | null; matric_number?: string | null; student_id?: string | null }>();
+          .select("id, full_name, matric_number, student_id, profile_id")
+          .in("id", allIds);
+        const map = new Map<string, { full_name?: string | null; matric_number?: string | null; student_id?: string | null; profile_id?: string | null }>();
         for (const s of studs ?? []) {
-          map.set(String((s as { id: string }).id), s as { full_name?: string | null; matric_number?: string | null; student_id?: string | null });
+          map.set(String((s as { id: string }).id), s as { full_name?: string | null; matric_number?: string | null; student_id?: string | null; profile_id?: string | null });
+        }
+        const profileIds = [...new Set(
+          (studs ?? [])
+            .map((s) => (s as { profile_id?: string | null }).profile_id)
+            .filter((x): x is string => Boolean(x)),
+        )];
+        const profileMap = new Map<string, string>();
+        if (profileIds.length) {
+          const { data: profiles } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", profileIds);
+          for (const pr of profiles ?? []) {
+            const pid = String((pr as { id: string }).id);
+            const fn = String((pr as { full_name?: string | null }).full_name || "").trim();
+            if (fn) profileMap.set(pid, fn);
+          }
         }
         rows = rows.map((r) => {
           const hit = map.get(r.student_id);
-          if (!hit) return r;
           const prev = (r.students || {}) as Record<string, unknown>;
+          const fromProfile = hit?.profile_id ? profileMap.get(hit.profile_id) : undefined;
+          const full =
+            (hit?.full_name || "").trim()
+            || fromProfile
+            || (typeof prev.full_name === "string" ? prev.full_name : "")
+            || ((prev.profiles as { full_name?: string } | null)?.full_name || "");
           return {
             ...r,
             students: {
               ...prev,
-              full_name: hit.full_name || prev.full_name || null,
-              matric_number: hit.matric_number || prev.matric_number || null,
-              student_id: hit.student_id || prev.student_id || null,
+              full_name: full || null,
+              matric_number: hit?.matric_number || prev.matric_number || null,
+              student_id: hit?.student_id || prev.student_id || null,
+              profiles: full
+                ? { full_name: full }
+                : (prev.profiles as { full_name: string | null } | null) || null,
             },
           } as ResultRow;
         });

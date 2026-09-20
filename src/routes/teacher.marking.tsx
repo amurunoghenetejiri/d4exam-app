@@ -64,7 +64,41 @@ function Page() {
         .select("id")
         .eq("school_id", teacher.schoolId)
         .in("course_id", teacher.courseIds);
-      const examIds = (exams ?? []).map((e) => e.id as string);
+      let examIds = (exams ?? []).map((e) => e.id as string);
+      if (!examIds.length) return [];
+
+      // Only exams that include at least one essay / short_answer / theory question
+      try {
+        const { data: links } = await supabase
+          .from("exam_questions")
+          .select("exam_id, question_id")
+          .in("exam_id", examIds)
+          .limit(2000);
+        const qids = [...new Set((links ?? []).map((l) => String(l.question_id)).filter(Boolean))];
+        if (qids.length) {
+          const { data: qs } = await supabase
+            .from("questions")
+            .select("id, question_type")
+            .in("id", qids);
+          const essayIds = new Set(
+            (qs ?? [])
+              .filter((q) => {
+                const ty = String((q as { question_type?: string }).question_type || "").toLowerCase();
+                return ["essay", "short_answer", "short-answer", "theory", "descriptive", "numerical"].some((x) => ty.includes(x.replace("-", "_")) || ty === x);
+              })
+              .map((q) => String((q as { id: string }).id)),
+          );
+          const essayExamIds = new Set(
+            (links ?? [])
+              .filter((l) => essayIds.has(String(l.question_id)))
+              .map((l) => String(l.exam_id)),
+          );
+          if (essayExamIds.size) examIds = examIds.filter((id) => essayExamIds.has(id));
+          else examIds = [];
+        }
+      } catch {
+        /* keep all if filter fails */
+      }
       if (!examIds.length) return [];
 
       const { data, error } = await supabase
@@ -72,7 +106,7 @@ function Page() {
         .select(
           `id, exam_id, student_id, status, submitted_at, answers, metadata,
            examinations(id, title, course_id, school_id),
-           students(id, matric_number, student_id, profiles(full_name))`,
+           students(id, full_name, matric_number, student_id, profiles(full_name))`,
         )
         .eq("school_id", teacher.schoolId)
         .in("exam_id", examIds)
@@ -215,7 +249,7 @@ function Page() {
             <ul className="max-h-[32rem] space-y-2 overflow-y-auto">
               {(attemptsQ.data ?? []).map((a) => {
                 const name =
-                  a.students?.profiles?.full_name ||
+                  a.students?.full_name || students?.profiles?.full_name ||
                   a.students?.matric_number ||
                   a.students?.student_id ||
                   "Student";
@@ -253,7 +287,7 @@ function Page() {
           title={active ? "Mark script" : "Select a script"}
           description={
             active
-              ? `${active.students?.profiles?.full_name || "Student"} · objective auto-score: ${objectiveScore}`
+              ? `${active.students?.full_name || students?.profiles?.full_name || "Student"} · objective auto-score: ${objectiveScore}`
               : "Choose a submitted attempt on the left"
           }
         >

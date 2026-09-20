@@ -22,8 +22,8 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/teacher/results")({
   head: () => ({
     meta: [
-      { title: "Exam Analytics — D4EXAM" },
-      { name: "description", content: "Performance analytics for completed examinations." },
+      { title: "Results / Exam Analysis — D4EXAM" },
+      { name: "description", content: "Results and detailed exam performance analysis." },
     ],
   }),
   component: Page,
@@ -171,7 +171,7 @@ function Page() {
   return (
     <>
       <PageHeader
-        title="Exam Analytics"
+        title="Results / Exam Analysis"
         description={`Performance for exams on your courses · ${teacher.fullName}`}
       />
 

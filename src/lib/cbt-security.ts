@@ -153,7 +153,7 @@ export function scoreObjectiveAnswers(
     originalOptions?: string[];
     marks?: number | null;
   }[],
-  answers: Record<string, number>,
+  answers: Record<string, number | string>,
 ) {
   let correct = 0;
   let wrong = 0;
@@ -165,7 +165,12 @@ export function scoreObjectiveAnswers(
     const marks = Number(q.marks) || 1;
     maxMarks += marks;
     const idx = answers[q.id];
-    if (idx == null || Number.isNaN(Number(idx))) {
+    if (idx == null || typeof idx === "string" || Number.isNaN(Number(idx))) {
+      // Essay/text answers are not auto-scored here
+      if (typeof idx === "string" && idx.trim()) {
+        // leave maxMarks counted but no auto points
+        continue;
+      }
       unanswered += 1;
       continue;
     }

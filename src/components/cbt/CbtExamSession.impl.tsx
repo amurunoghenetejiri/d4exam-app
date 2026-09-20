@@ -103,8 +103,8 @@ export function CbtExamPage() {
   const [doneForceSubmit, setDoneForceSubmit] = useState(false);
   const [index, setIndex] = useState(0);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
-  const answersRef = useRef<Record<string, number>>({});
+  const [answers, setAnswers] = useState<Record<string, number | string>>({});
+  const answersRef = useRef<Record<string, number | string>>({});
   answersRef.current = answers;
   const flushAttemptProgress = useCallback(async () => {
     const aid = attemptIdRef.current;
@@ -920,7 +920,12 @@ export function CbtExamPage() {
 
   const TOTAL = questions.length;
   const q = questions[index];
-  const answeredCount = Object.keys(answers).length;
+  const answeredCount = Object.keys(answers).filter((k) => {
+    const v = answers[k];
+    if (v == null) return false;
+    if (typeof v === "string") return v.trim().length > 0;
+    return true;
+  }).length;
 
 
   // Push live answered count to officer quickly when answers change
@@ -1502,7 +1507,12 @@ export function CbtExamPage() {
           <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Questions</p>
           <div className="mt-3 grid grid-cols-5 gap-2">
             {questions.map((qq, i) => {
-              const answered = answers[qq.id] != null;
+              const answered = (() => {
+                const v = answers[qq.id];
+                if (v == null) return false;
+                if (typeof v === "string") return v.trim().length > 0;
+                return true;
+              })();
               const isFlag = flagged.has(qq.id);
               const isCurrent = i === index;
               return (
@@ -1531,27 +1541,82 @@ export function CbtExamPage() {
             </button>
           </div>
           <h1 className="mt-4 text-lg font-bold leading-snug text-slate-900 sm:text-xl">{q?.question_text}</h1>
-          <ul className="mt-6 space-y-3">
-            {(q?.options ?? []).map((opt, oi) => {
-              const selected = q ? answers[q.id] === oi : false;
-              const locked = q ? lockedAnswerIds.has(q.id) : false;
+          {(() => {
+            const qType = String((q as { question_type?: string } | null)?.question_type || "").toLowerCase();
+            const isEssay =
+              qType === "essay" ||
+              qType === "short_answer" ||
+              qType === "short-answer" ||
+              qType === "numerical" ||
+              qType === "theory" ||
+              qType === "descriptive";
+            const locked = q ? lockedAnswerIds.has(q.id) : false;
+            if (isEssay && q) {
+              const textVal = typeof answers[q.id] === "string" ? String(answers[q.id]) : "";
               return (
-                <li key={oi}>
-                  <button type="button" disabled={locked}
-                    onClick={() => {
-                      if (!q || lockedAnswerIds.has(q.id)) return;
-                      setAnswers((a) => ({ ...a, [q.id]: oi }));
+                <div className="mt-6">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {qType === "numerical" ? "Enter your numerical answer" : "Write your answer"}
+                  </p>
+                  <textarea
+                    value={textVal}
+                    disabled={locked}
+                    rows={qType === "numerical" ? 3 : 10}
+                    inputMode={qType === "numerical" ? "decimal" : "text"}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="sentences"
+                    spellCheck={false}
+                    placeholder={
+                      qType === "numerical"
+                        ? "Type numbers only…"
+                        : "Type your answer here. Paste is disabled — you must type."
+                    }
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      toast.message("Paste is disabled — type your answer");
                     }}
-                    className={cn("flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left text-sm transition",
-                      locked ? "border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed line-through" : selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-slate-200 hover:border-primary/40")}>
-                    <span className={cn("mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border text-xs font-bold",
-                      selected ? "border-primary bg-primary text-white" : "border-slate-300 text-slate-500")}>{String.fromCharCode(65 + oi)}</span>
-                    <span>{opt}</span>
-                  </button>
-                </li>
+                    onDrop={(e) => e.preventDefault()}
+                    onChange={(e) => {
+                      if (locked) return;
+                      const raw = e.target.value;
+                      const next = qType === "numerical" ? raw.replace(/[^0-9.\-]/g, "") : raw;
+                      setAnswers((a) => ({ ...a, [q.id]: next }));
+                    }}
+                    className={cn(
+                      "w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-relaxed text-slate-900 shadow-sm outline-none ring-primary focus:ring-2",
+                      locked && "cursor-not-allowed bg-slate-50 opacity-60",
+                    )}
+                  />
+                  <p className="mt-1.5 text-[11px] text-slate-400">
+                    {textVal.trim().length} characters · Copy/paste blocked
+                  </p>
+                </div>
               );
-            })}
-          </ul>
+            }
+            return (
+              <ul className="mt-6 space-y-3">
+                {(q?.options ?? []).map((opt, oi) => {
+                  const selected = q ? answers[q.id] === oi : false;
+                  return (
+                    <li key={oi}>
+                      <button type="button" disabled={locked}
+                        onClick={() => {
+                          if (!q || lockedAnswerIds.has(q.id)) return;
+                          setAnswers((a) => ({ ...a, [q.id]: oi }));
+                        }}
+                        className={cn("flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left text-sm transition",
+                          locked ? "border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed line-through" : selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-slate-200 hover:border-primary/40")}>
+                        <span className={cn("mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border text-xs font-bold",
+                          selected ? "border-primary bg-primary text-white" : "border-slate-300 text-slate-500")}>{String.fromCharCode(65 + oi)}</span>
+                        <span>{opt}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()}
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
             <Button variant="outline" className="rounded-lg font-semibold" disabled={index === 0} onClick={() => setIndex((i) => Math.max(0, i - 1))}>
               <ChevronLeft className="mr-1 h-4 w-4" /> Previous

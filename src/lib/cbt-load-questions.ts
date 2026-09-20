@@ -12,6 +12,7 @@ import { pickExamQuestions, seededShuffle } from "@/lib/exam-meta";
 export type CbtQuestionRow = {
   id: string;
   question_text: string;
+  question_type: string;
   marks: number;
   correct_answer: string | null;
   options: string[];
@@ -370,6 +371,7 @@ export function prepareStudentPaper(
       return {
         id: String(q.id),
         question_text: text,
+        question_type: String(q.question_type || "mcq"),
         marks: Number(q.marks) || 1,
         correct_answer: q.correct_answer,
         options: optionTexts,
