@@ -309,6 +309,31 @@ export const createSchoolUser = createServerFn({ method: "POST" })
     const { createPerson } = await import("@/lib/users.server");
     const result = await createPerson(schoolId, data as unknown as Parameters<typeof createPerson>[1], { db: context.supabase as never });
 
+    // Welcome email (never block account creation)
+    try {
+      const email = String((result as { email?: string }).email || (data as { email?: string }).email || "").trim();
+      if (email && email.includes("@") && !email.endsWith(".local")) {
+        const { data: school } = await context.supabase
+          .from("schools")
+          .select("name, school_code, code")
+          .eq("id", schoolId)
+          .maybeSingle();
+        const sch = school as { name?: string; school_code?: string; code?: string } | null;
+        const { sendStaffWelcomeEmail } = await import("@/lib/email.server");
+        void sendStaffWelcomeEmail({
+          to: email,
+          fullName: `${(data as { firstName?: string }).firstName || ""} ${(data as { lastName?: string }).lastName || ""}`.trim() || "Staff",
+          role: String((data as { role?: string }).role || "teacher"),
+          schoolName: sch?.name || null,
+          schoolCode: sch?.school_code || sch?.code || null,
+          identifier: String((result as { identifier?: string }).identifier || (data as { identifier?: string }).identifier || ""),
+          password: String((result as { password?: string }).password || (data as { identifier?: string }).identifier || ""),
+        });
+      }
+    } catch (e) {
+      console.warn("[email] staff welcome skipped", e);
+    }
+
     try {
       await context.supabase.from("audit_logs").insert({
         school_id: schoolId,

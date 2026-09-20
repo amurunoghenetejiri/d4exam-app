@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionUser } from "@/lib/session";
 import { isSyntheticStudentEmail } from "@/lib/student-email";
+import { notifyStudentEmailLinked } from "@/lib/email-notify.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +48,14 @@ export function StudentEmailCapture() {
       }
       setDone(true);
       void qc.invalidateQueries({ queryKey: ["session-user"] });
+      try {
+        void notifyStudentEmailLinked({
+          data: {
+            email: value,
+            studentName: session!.fullName || "Student",
+          },
+        });
+      } catch { /* ignore */ }
     } catch (e) {
       setError((e as Error).message || "Could not save email.");
     } finally {

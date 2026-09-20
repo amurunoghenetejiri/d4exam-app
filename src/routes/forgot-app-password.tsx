@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Mail, Shield } from "lucide-react";
 import { useSessionUser } from "@/lib/session";
 import { setFingerprintLocked } from "@/lib/fingerprint-lock";
+import { notifyAppPasswordHelp } from "@/lib/email-notify.functions";
 
 export const Route = createFileRoute("/forgot-app-password")({
   head: () => ({
@@ -61,6 +62,11 @@ function ForgotAppPasswordPage() {
         setEmail(session.email);
         setEmailLocked(true);
         setStep("confirm");
+        try {
+          void notifyAppPasswordHelp({
+            data: { email: session.email, fullName: session.fullName || undefined },
+          });
+        } catch { /* ignore */ }
         return;
       }
       setErr(

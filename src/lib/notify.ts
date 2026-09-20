@@ -841,7 +841,30 @@ export async function notifyOfficersExamSubmitted(opts: {
         };
       }),
     );
-  } catch (e) {
+  
+    try {
+      const { sendOfficerExamSubmittedEmail } = await import("@/lib/email.server");
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("auth_user_id, full_name, email")
+        .in("auth_user_id", officers);
+      const courseLabel = opts.courseCode || opts.courseTitle || opts.courseLabel || null;
+      for (const pr of profs ?? []) {
+        const row = pr as { email?: string | null; full_name?: string | null };
+        const em = (row.email || "").trim();
+        if (!em || !em.includes("@") || em.endsWith(".local")) continue;
+        void sendOfficerExamSubmittedEmail({
+          to: em,
+          officerName: row.full_name,
+          teacherName,
+          examTitle: opts.examTitle,
+          courseLabel,
+        });
+      }
+    } catch (ee) {
+      console.warn("[email] officer exam submitted", ee);
+    }
+} catch (e) {
     console.warn("[notify] notifyOfficersExamSubmitted failed", e);
   }
 }

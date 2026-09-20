@@ -14,6 +14,7 @@ import { useRows } from "@/lib/queries";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { notifyTeacherCoursesAssigned } from "@/lib/email-notify.functions";
 
 export const Route = createFileRoute("/admin/teachers")({
   head: () => ({
@@ -188,6 +189,18 @@ function Page() {
       toast.success(
         `Courses saved for ${selectedTeacher.profiles?.full_name ?? "teacher"}: ${names || "none"}`,
       );
+      try {
+        const em = String((selectedTeacher.profiles as { email?: string } | null)?.email || "").trim();
+        if (em.includes("@") && names) {
+          void notifyTeacherCoursesAssigned({
+            data: {
+              email: em,
+              fullName: selectedTeacher.profiles?.full_name || "Teacher",
+              courseLabels: names.split(", ").filter(Boolean),
+            },
+          });
+        }
+      } catch { /* ignore */ }
       setPendingCourses(null);
       await qc.invalidateQueries({ queryKey: ["rows"] });
       await linksQ.refetch();

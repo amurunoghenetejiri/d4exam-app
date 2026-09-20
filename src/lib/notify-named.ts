@@ -158,6 +158,28 @@ export async function namedStudentsResultsReleased(opts: {
       };
     }),
   );
+  // Email (best-effort)
+  try {
+    const { sendResultReleasedEmail } = await import("@/lib/email.server");
+    const { data: profs } = await supabase
+      .from("profiles")
+      .select("auth_user_id, full_name, email")
+      .in("auth_user_id", authIds);
+    for (const pr of profs ?? []) {
+      const row = pr as { auth_user_id?: string; full_name?: string | null; email?: string | null };
+      const em = (row.email || "").trim();
+      if (!em || !em.includes("@") || em.endsWith(".local")) continue;
+      void sendResultReleasedEmail({
+        to: em,
+        studentName: names.get(row.auth_user_id || "") || row.full_name || "Student",
+        examTitle: opts.examTitle,
+        courseLabel: opts.courseCode || opts.courseTitle || null,
+      });
+    }
+  } catch (e) {
+    console.warn("[email] result release", e);
+  }
+
 }
 
 export async function namedTeacherExamDecision(opts: {

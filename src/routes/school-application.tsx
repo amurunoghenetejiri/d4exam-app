@@ -1,3 +1,4 @@
+import { notifySchoolApplicationReceived } from "@/lib/email-notify.functions";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { PublicLayout } from "@/components/layout/PublicLayout";
@@ -185,6 +186,19 @@ function Page() {
       } catch { /* ignore */ }
       try {
         void notifySuperAdminsOfApplication(schoolName.trim() + (isTrial ? " (Trial/Demo)" : ""), data.id as string, savedCode);
+      } catch { /* ignore */ }
+      try {
+        const to = (applicantEmail.trim() || officialEmail.trim()).toLowerCase();
+        if (to.includes("@")) {
+          void notifySchoolApplicationReceived({
+            data: {
+              email: to,
+              applicantName: applicantName.trim() || "Applicant",
+              schoolName: schoolName.trim(),
+              trackingCode: savedCode,
+            },
+          });
+        }
       } catch { /* ignore */ }
     } catch (err) {
       setError((err as Error).message || "Could not submit application.");

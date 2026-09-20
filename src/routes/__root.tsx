@@ -31,6 +31,8 @@ import { registerAndroidBackButton } from "@/native/backButton";
 import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
 import { DisplayPrefsBootstrap } from "@/components/DisplayPrefsBootstrap";
 import { startAccountVaultKeepAlive } from "@/lib/account-switcher";
+import { notifyWelcomeRole } from "@/lib/email-notify.functions";
+import { isSyntheticStudentEmail } from "@/lib/student-email";
 
 function NativeBootstrap() {
   const { data: session } = useSessionUser();
@@ -87,6 +89,23 @@ function WebPushBootstrap() {
   const { data: session } = useSessionUser();
   useEffect(() => {
     if (!session?.userId) return;
+    // One-time welcome email per account (idempotent via localStorage)
+    try {
+      const key = `d4_welcome_email_sent_${session.userId}`;
+      if (typeof localStorage !== "undefined" && !localStorage.getItem(key)) {
+        const em = (session.email || "").trim();
+        if (em.includes("@") && !isSyntheticStudentEmail(em)) {
+          localStorage.setItem(key, "1");
+          void notifyWelcomeRole({
+            data: {
+              email: em,
+              fullName: session.fullName || undefined,
+              role: session.role || "student",
+            },
+          });
+        }
+      }
+    } catch { /* ignore */ }
     if (isNativeShell()) return;
     void initWebPushIfNeeded(session.userId, session.role);
     const onVis = () => {
