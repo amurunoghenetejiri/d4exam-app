@@ -8,6 +8,8 @@ export type ExamMeta = {
   questionsToAnswer: number | null;
   /** What the teacher is creating — defaults to examination */
   assessmentKind?: AssessmentKind | null;
+  /** Optional explicit question ids chosen from the bank for this paper */
+  selectedQuestionIds?: string[] | null;
 };
 
 export function embedExamMeta(
@@ -50,7 +52,10 @@ export function parseExamMeta(description: string | null | undefined): ExamMeta 
       kindRaw === "test" || kindRaw === "assignment" || kindRaw === "examination"
         ? (kindRaw as AssessmentKind)
         : "examination";
-    return { questionsToAnswer: n, assessmentKind };
+    const selectedQuestionIds = Array.isArray((parsed as { selectedQuestionIds?: unknown }).selectedQuestionIds)
+      ? ((parsed as { selectedQuestionIds: unknown[] }).selectedQuestionIds.map(String).filter(Boolean) as string[])
+      : null;
+    return { questionsToAnswer: n, assessmentKind, selectedQuestionIds };
   } catch {
     return { questionsToAnswer: null, assessmentKind: "examination" };
   }

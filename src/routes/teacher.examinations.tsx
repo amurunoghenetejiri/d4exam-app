@@ -150,6 +150,7 @@ function Page() {
   const [description, setDescription] = useState("");
   const [durationText, setDurationText] = useState("60");
   const [questionsText, setQuestionsText] = useState("20");
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [security, setSecurity] = useState<ExamSecuritySettings>({ ...DEFAULT_EXAM_SECURITY });
@@ -177,6 +178,35 @@ function Page() {
     },
   });
   const bankCount = bankCountQ.data ?? 0;
+
+  const bankListQ = useQuery({
+    queryKey: ["teacher-bank-list", teacher?.schoolId, courseId],
+    enabled: Boolean(teacher?.schoolId && courseId),
+    queryFn: async () => {
+      if (!teacher || !courseId) return [] as { id: string; question_text: string; question_type: string | null; marks: number | null }[];
+      const { data, error } = await supabase
+        .from("questions")
+        .select("id, question_text, question_type, marks")
+        .eq("school_id", teacher.schoolId)
+        .eq("course_id", courseId)
+        .in("status", ["active", "approved"])
+        .order("created_at", { ascending: true })
+        .limit(200);
+      if (error) {
+        // fallback without status filter
+        const r2 = await supabase
+          .from("questions")
+          .select("id, question_text, question_type, marks")
+          .eq("school_id", teacher.schoolId)
+          .eq("course_id", courseId)
+          .order("created_at", { ascending: true })
+          .limit(200);
+        return (r2.data ?? []) as { id: string; question_text: string; question_type: string | null; marks: number | null }[];
+      }
+      return (data ?? []) as { id: string; question_text: string; question_type: string | null; marks: number | null }[];
+    },
+  });
+  const bankList = bankListQ.data ?? [];
 
   const listQ = useQuery({
     queryKey: ["teacher-exams", teacher?.schoolId, teacher?.courseIds, lockedCourseId, session?.userId],
@@ -242,6 +272,7 @@ function Page() {
     setDescription(instructions);
     setDurationText(String(e.duration_minutes || 60));
     setQuestionsText(String(meta.questionsToAnswer ?? 20));
+    setSelectedQuestionIds(Array.isArray((meta as { selectedQuestionIds?: string[] }).selectedQuestionIds) ? (meta as { selectedQuestionIds?: string[] }).selectedQuestionIds! : []);
     setStartAt(toLocalInput(e.scheduled_start));
     setEndAt(toLocalInput(e.scheduled_end));
     setSecurity(normalizeSecuritySettings(sec));
@@ -296,7 +327,11 @@ function Page() {
         toast.error("Questions to answer must be at least 1");
         return false;
       }
-      if (forSubmit && bankCount > 0 && questionsToAnswer > bankCount) {
+      if (selectedQuestionIds.length > 0 && questionsToAnswer > selectedQuestionIds.length) {
+        toast.error(`You selected only ${selectedQuestionIds.length} question(s). Lower "Students must answer".`);
+        return false;
+      }
+      if (forSubmit && selectedQuestionIds.length === 0 && bankCount > 0 && questionsToAnswer > bankCount) {
         toast.error(`Bank has only ${bankCount} active questions.`);
         return false;
       }
@@ -319,7 +354,7 @@ function Page() {
     try {
       const plain = stripInternalMarkers(description.trim() || "");
       const sec = normalizeSecuritySettings(security);
-      const metaBlob = `[[D4_EXAM_META]]${JSON.stringify({ questionsToAnswer, assessmentKind })}`;
+      const metaBlob = `[[D4_EXAM_META]]${JSON.stringify({ questionsToAnswer, assessmentKind, selectedQuestionIds: selectedQuestionIds.length ? selectedQuestionIds : undefined })}`;
       const secBlob = `[[D4_SECURITY_JSON]]${JSON.stringify(sec)}`;
       let desc: string | null = [plain, metaBlob, secBlob].filter(Boolean).join("\n") || null;
       const computedEnd = endAt || ""; // Teacher must set end time explicitly — do not auto-fill
@@ -361,6 +396,7 @@ function Page() {
             courseId,
             schoolId: teacher.schoolId,
             maxQuestions: questionsToAnswer > 0 ? questionsToAnswer : null,
+            questionIds: selectedQuestionIds.length ? selectedQuestionIds : null,
           });
         } catch (linkErr) {
           console.warn("[teacher] ensureExamQuestionsLinked", linkErr);
@@ -432,6 +468,9 @@ function Page() {
             courseId: row.course_id,
             schoolId: teacher.schoolId,
             maxQuestions: (meta.questionsToAnswer && meta.questionsToAnswer > 0) ? meta.questionsToAnswer : null,
+            questionIds: Array.isArray((meta as { selectedQuestionIds?: string[] }).selectedQuestionIds)
+              ? (meta as { selectedQuestionIds?: string[] }).selectedQuestionIds
+              : null,
           });
         } catch (linkErr) {
           console.warn("[teacher] ensureExamQuestionsLinked", linkErr);
@@ -535,7 +574,7 @@ function Page() {
                 {lockedCourse ? (
                   <p className="rounded-lg border bg-slate-50 px-3 py-2 text-sm font-semibold">{lockedCourse.code} — {lockedCourse.name}</p>
                 ) : (
-                  <Select value={courseId} onValueChange={setCourseId}>
+                  <Select value={courseId} onValueChange={(v) => { setCourseId(v); setSelectedQuestionIds([]); }}>
                     <SelectTrigger><SelectValue placeholder="Select course" /></SelectTrigger>
                     <SelectContent>
                       {teacher.courses.map((c) => (
@@ -574,35 +613,72 @@ function Page() {
                   <Input type="text" inputMode="numeric" value={questionsText} onChange={(e) => onQuestionsTextChange(e.target.value)} />
                 </div>
               </div>
-              <p className="text-xs text-slate-500">Bank: <strong>{bankCount}</strong> questions</p>
+              <p className="text-xs text-slate-500">
+                Bank: <strong>{bankCount}</strong> questions
+                {selectedQuestionIds.length > 0 ? (
+                  <> · Selected for this paper: <strong>{selectedQuestionIds.length}</strong></>
+                ) : null}
+              </p>
+              {courseId && bankList.length > 0 ? (
+                <div className="space-y-2 rounded-xl border border-slate-200 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Label className="font-semibold">Pick questions for this exam (optional)</Label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-primary hover:underline"
+                        onClick={() => setSelectedQuestionIds(bankList.map((q) => q.id))}
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs font-semibold text-slate-500 hover:underline"
+                        onClick={() => setSelectedQuestionIds([])}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Select which bank items belong to this paper. Then set &quot;Students must answer&quot; to how many each student gets (drawn randomly from your selection). Leave empty to use the full bank.
+                  </p>
+                  <ul className="max-h-48 space-y-1 overflow-y-auto overscroll-contain pr-1">
+                    {bankList.map((q, i) => {
+                      const on = selectedQuestionIds.includes(q.id);
+                      return (
+                        <li key={q.id}>
+                          <label className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50">
+                            <input
+                              type="checkbox"
+                              className="mt-1 h-4 w-4 accent-primary"
+                              checked={on}
+                              onChange={() => {
+                                setSelectedQuestionIds((prev) =>
+                                  on ? prev.filter((x) => x !== q.id) : [...prev, q.id],
+                                );
+                              }}
+                            />
+                            <span className="min-w-0 text-xs text-slate-800">
+                              <span className="font-bold text-slate-500">{i + 1}.</span>{" "}
+                              <span className="line-clamp-2">{q.question_text || "Question"}</span>
+                              <span className="mt-0.5 block text-[10px] font-medium uppercase text-slate-400">
+                                {q.question_type || "mcq"} · {q.marks ?? 1} mark(s)
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           )}
           {step === 2 && (
-            <div className="mx-auto max-w-2xl space-y-5">
-              <p className="text-sm text-slate-600">
-                Set when the examination window opens and closes. Use day, month, year, hour, minute and second.
-                The end time is <strong>not</strong> filled automatically — you choose it.
-              </p>
-              <D4DateTimeField
-                label="Exam start"
-                hint="When students may begin this examination"
-                value={startAt}
-                onChange={onStartChange}
-                required
-              />
-              <D4DateTimeField
-                label="Exam end"
-                hint="When the window closes — leave blank until you choose the exact end"
-                value={endAt}
-                onChange={setEndAt}
-                required
-              />
-              {startAt && endAt ? (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-900">
-                  Window: {new Date(startAt).toLocaleString()} → {new Date(endAt).toLocaleString()}
-                  {durationMinutes > 0 ? ` · Candidate duration inside window: ${durationMinutes} min` : ""}
-                </div>
-              ) : null}
+            <div className="mx-auto max-w-md space-y-4">
+              <D4DateTimeField label="Start time" value={startAt} onChange={onStartChange} required />
+              <D4DateTimeField label="End time" value={endAt} onChange={setEndAt} required />
             </div>
           )}
           {step === 3 && (

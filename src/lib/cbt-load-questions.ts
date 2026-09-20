@@ -301,9 +301,36 @@ export async function ensureExamQuestionsLinked(opts: {
   courseId: string;
   schoolId: string;
   maxQuestions?: number | null;
+  /** Explicit bank questions chosen by teacher for this paper */
+  questionIds?: string[] | null;
 }): Promise<number> {
-  const { examId, courseId, schoolId } = opts;
+  const { examId, courseId, schoolId, questionIds } = opts;
   if (!examId || !courseId) return 0;
+
+  // If teacher picked specific questions, (re)link exactly those
+  if (questionIds && questionIds.length > 0) {
+    const unique = [...new Set(questionIds.map(String).filter(Boolean))];
+    const qRows = await fetchQuestionsByIds(unique);
+    const marksById = new Map(qRows.map((q) => [q.id, q.marks ?? 1]));
+    try {
+      await sbLoose.from("exam_questions").delete().eq("exam_id", examId);
+    } catch {
+      /* ignore */
+    }
+    const rows = unique.map((qid, i) => ({
+      exam_id: examId,
+      question_id: qid,
+      marks: marksById.get(qid) ?? 1,
+      question_order: i + 1,
+    }));
+    const { error } = await sbLoose.from("exam_questions").insert(rows);
+    if (error) {
+      console.warn("[cbt] ensureExamQuestionsLinked selected", error.message);
+      return 0;
+    }
+    return rows.length;
+  }
+
   const existing = await supabase.from("exam_questions").select("question_id").eq("exam_id", examId).limit(1);
   if (!existing.error && (existing.data?.length ?? 0) > 0) return 0;
   let qs: { id: string; marks: number | null }[] | null = null;
@@ -321,10 +348,6 @@ export async function ensureExamQuestionsLinked(opts: {
       qs = res.data;
       break;
     }
-  }
-  if (!qs?.length) {
-    const res = (await sbLoose.from("questions").select("id, marks").eq("course_id", courseId).limit(300)) as { data: { id: string; marks: number | null }[] | null; error: { message: string } | null };
-    if (!res.error && res.data?.length) qs = res.data;
   }
   if (!qs?.length) return 0;
   const limit = opts.maxQuestions && opts.maxQuestions > 0 ? opts.maxQuestions : qs.length;

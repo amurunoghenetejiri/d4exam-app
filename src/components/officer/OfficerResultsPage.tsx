@@ -174,57 +174,105 @@ export function OfficerResultsPage() {
         }
         console.warn("[officer-results] exam results select failed", error);
       }
-      // Always enrich names from students (+ profiles) so officers see full name
+      // Always enrich names — multi-strategy (students.full_name, profiles, attempts)
       const allIds = [...new Set(rows.map((r) => r.student_id).filter(Boolean))];
       if (allIds.length) {
-        const { data: studs } = await supabase
-          .from("students")
-          .select("id, full_name, matric_number, student_id, profile_id")
-          .in("id", allIds);
-        const map = new Map<string, { full_name?: string | null; matric_number?: string | null; student_id?: string | null; profile_id?: string | null }>();
-        for (const s of studs ?? []) {
-          map.set(String((s as { id: string }).id), s as { full_name?: string | null; matric_number?: string | null; student_id?: string | null; profile_id?: string | null });
-        }
-        const profileIds = [...new Set(
-          (studs ?? [])
-            .map((s) => (s as { profile_id?: string | null }).profile_id)
-            .filter((x): x is string => Boolean(x)),
-        )];
-        const profileMap = new Map<string, string>();
-        if (profileIds.length) {
-          const { data: profiles } = await supabase
-            .from("profiles")
-            .select("id, full_name")
-            .in("id", profileIds);
-          for (const pr of profiles ?? []) {
-            const pid = String((pr as { id: string }).id);
-            const fn = String((pr as { full_name?: string | null }).full_name || "").trim();
-            if (fn) profileMap.set(pid, fn);
+        const nameByStudentId = new Map<string, { full_name: string; matric: string | null; sid: string | null }>();
+
+        // Strategy 1: students table by id
+        {
+          const { data: studs } = await supabase
+            .from("students")
+            .select("id, full_name, matric_number, student_id, profile_id")
+            .in("id", allIds);
+          const profileIds: string[] = [];
+          for (const s of studs ?? []) {
+            const id = String((s as { id: string }).id);
+            const fn = String((s as { full_name?: string | null }).full_name || "").trim();
+            const mat = (s as { matric_number?: string | null }).matric_number ?? null;
+            const sid = (s as { student_id?: string | null }).student_id ?? null;
+            const pid = (s as { profile_id?: string | null }).profile_id;
+            if (pid) profileIds.push(String(pid));
+            if (fn) nameByStudentId.set(id, { full_name: fn, matric: mat, sid });
+            else nameByStudentId.set(id, { full_name: "", matric: mat, sid });
+          }
+          if (profileIds.length) {
+            const { data: profiles } = await supabase
+              .from("profiles")
+              .select("id, full_name, first_name, last_name")
+              .in("id", [...new Set(profileIds)]);
+            const pmap = new Map<string, string>();
+            for (const pr of profiles ?? []) {
+              const pid = String((pr as { id: string }).id);
+              const full = String((pr as { full_name?: string }).full_name || "").trim();
+              const first = String((pr as { first_name?: string | null }).first_name || "").trim();
+              const last = String((pr as { last_name?: string | null }).last_name || "").trim();
+              const composed = full || [first, last].filter(Boolean).join(" ");
+              if (composed) pmap.set(pid, composed);
+            }
+            for (const s of studs ?? []) {
+              const id = String((s as { id: string }).id);
+              const pid = (s as { profile_id?: string | null }).profile_id;
+              const cur = nameByStudentId.get(id);
+              if (cur && !cur.full_name && pid && pmap.get(String(pid))) {
+                cur.full_name = pmap.get(String(pid))!;
+              }
+            }
           }
         }
+
+        // Strategy 2: fill gaps via exam_attempts → students embed
+        const missing = allIds.filter((id) => !nameByStudentId.get(id)?.full_name);
+        if (missing.length && selectedExamId) {
+          const { data: atts } = await supabase
+            .from("exam_attempts")
+            .select("student_id, students(id, full_name, matric_number, student_id, profiles(full_name, first_name, last_name))")
+            .eq("exam_id", selectedExamId)
+            .in("student_id", missing)
+            .limit(300);
+          for (const a of atts ?? []) {
+            const sid = String((a as { student_id: string }).student_id);
+            const st = (a as { students?: Record<string, unknown> | null }).students;
+            if (!st) continue;
+            const fn =
+              String(st.full_name || "").trim()
+              || String((st.profiles as { full_name?: string } | null)?.full_name || "").trim()
+              || [
+                  String((st.profiles as { first_name?: string } | null)?.first_name || "").trim(),
+                  String((st.profiles as { last_name?: string } | null)?.last_name || "").trim(),
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+            if (fn) {
+              nameByStudentId.set(sid, {
+                full_name: fn,
+                matric: (st.matric_number as string | null) ?? nameByStudentId.get(sid)?.matric ?? null,
+                sid: (st.student_id as string | null) ?? nameByStudentId.get(sid)?.sid ?? null,
+              });
+            }
+          }
+        }
+
         rows = rows.map((r) => {
-          const hit = map.get(r.student_id);
+          const hit = nameByStudentId.get(r.student_id);
           const prev = (r.students || {}) as Record<string, unknown>;
-          const fromProfile = hit?.profile_id ? profileMap.get(hit.profile_id) : undefined;
           const full =
             (hit?.full_name || "").trim()
-            || fromProfile
-            || (typeof prev.full_name === "string" ? prev.full_name : "")
-            || ((prev.profiles as { full_name?: string } | null)?.full_name || "");
+            || (typeof prev.full_name === "string" ? prev.full_name.trim() : "")
+            || String((prev.profiles as { full_name?: string } | null)?.full_name || "").trim();
           return {
             ...r,
             students: {
               ...prev,
               full_name: full || null,
-              matric_number: hit?.matric_number || prev.matric_number || null,
-              student_id: hit?.student_id || prev.student_id || null,
-              profiles: full
-                ? { full_name: full }
-                : (prev.profiles as { full_name: string | null } | null) || null,
+              matric_number: hit?.matric || prev.matric_number || null,
+              student_id: hit?.sid || prev.student_id || null,
+              profiles: full ? { full_name: full } : (prev.profiles as { full_name: string | null } | null) || null,
             },
           } as ResultRow;
         });
       }
+
       return rows;
     },
   });
@@ -503,7 +551,11 @@ export function OfficerResultsPage() {
   const counts = resultsCountsQ.data ?? {};
 
   if (selectedExam && selectedResult) {
-    const name = (selectedResult.students as { full_name?: string | null } | null | undefined)?.full_name || selectedResult.students?.profiles?.full_name || selectedResult.students?.matric_number || "Student";
+    const name = (
+      (selectedResult.students as { full_name?: string | null } | null | undefined)?.full_name?.trim()
+      || selectedResult.students?.profiles?.full_name?.trim()
+      || "Student"
+    );
     const matric = selectedResult.students?.matric_number || selectedResult.students?.student_id || "—";
     const held = isHeld(selectedResult.status, selectedResult.released_at);
     const terminated = String(selectedResult.status || "").toLowerCase() === "terminated";

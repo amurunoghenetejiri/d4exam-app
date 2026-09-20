@@ -1,114 +1,69 @@
 /**
- * D4EXAM-branded date & time picker — day, month, year, hour, minute, second.
- * Value is stored as local datetime string suitable for `new Date(value)`.
+ * Compact date-time popup: tap the field → calendar + hour/min/sec wheels.
  */
-import { useMemo } from "react";
-import { CalendarClock } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Calendar as CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
-
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-function daysInMonth(year: number, month1to12: number) {
-  return new Date(year, month1to12, 0).getDate();
-}
-
-export function parseLocalParts(value: string | null | undefined): {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-} | null {
+export function parseLocalParts(value: string | null | undefined): Date | null {
   if (!value || !String(value).trim()) return null;
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) {
-    // datetime-local style YYYY-MM-DDTHH:mm[:ss]
-    const m = String(value).match(
-      /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/,
-    );
-    if (!m) return null;
-    return {
-      year: Number(m[1]),
-      month: Number(m[2]),
-      day: Number(m[3]),
-      hour: Number(m[4]),
-      minute: Number(m[5]),
-      second: Number(m[6] || 0),
-    };
-  }
-  return {
-    year: d.getFullYear(),
-    month: d.getMonth() + 1,
-    day: d.getDate(),
-    hour: d.getHours(),
-    minute: d.getMinutes(),
-    second: d.getSeconds(),
-  };
+  if (!Number.isNaN(d.getTime())) return d;
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return null;
+  return new Date(
+    Number(m[1]),
+    Number(m[2]) - 1,
+    Number(m[3]),
+    Number(m[4]),
+    Number(m[5]),
+    Number(m[6] || 0),
+  );
 }
 
-export function toLocalIso(parts: {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-}): string {
-  const maxDay = daysInMonth(parts.year, parts.month);
-  const day = Math.min(parts.day, maxDay);
-  return `${parts.year}-${pad(parts.month)}-${pad(day)}T${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}`;
+export function toLocalIso(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function SelectBox({
+function Wheel({
   label,
   value,
-  options,
+  max,
   onChange,
-  wide,
 }: {
   label: string;
-  value: number | "";
-  options: { value: number; label: string }[];
+  value: number;
+  max: number;
   onChange: (n: number) => void;
-  wide?: boolean;
 }) {
   return (
-    <label className={cn("flex min-w-0 flex-col gap-1", wide && "sm:col-span-2")}>
-      <span className="text-[10px] font-bold uppercase tracking-wider text-sky-200/90">{label}</span>
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
       <select
-        value={value === "" ? "" : value}
+        value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className={cn(
-          "h-10 w-full rounded-lg border border-white/15 bg-[#0b1b3a] px-2 text-sm font-semibold text-white shadow-inner",
-          "outline-none focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/30",
-          "appearance-none",
-        )}
+        className="h-9 w-14 rounded-md border border-slate-200 bg-white text-center text-sm font-semibold text-slate-900 outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
       >
-        <option value="" disabled className="bg-[#0b1b3a] text-slate-400">
-          —
-        </option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value} className="bg-[#0b1b3a] text-white">
-            {o.label}
+        {Array.from({ length: max }, (_, i) => (
+          <option key={i} value={i}>
+            {pad(i)}
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }
 
 export function D4DateTimeField({
   label,
-  hint,
   value,
   onChange,
   required,
@@ -119,125 +74,107 @@ export function D4DateTimeField({
   onChange: (next: string) => void;
   required?: boolean;
 }) {
-  const parts = parseLocalParts(value);
-  const now = new Date();
-  const year = parts?.year ?? now.getFullYear();
-  const month = parts?.month ?? now.getMonth() + 1;
-  const day = parts?.day ?? now.getDate();
-  const hour = parts?.hour ?? 0;
-  const minute = parts?.minute ?? 0;
-  const second = parts?.second ?? 0;
+  const [open, setOpen] = useState(false);
+  const date = parseLocalParts(value);
+  const display = useMemo(() => {
+    if (!date) return "Tap to set date & time";
+    return date.toLocaleString(undefined, {
+      weekday: "short",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }, [date]);
 
-  const years = useMemo(() => {
-    const y0 = now.getFullYear() - 1;
-    return Array.from({ length: 6 }, (_, i) => y0 + i);
-  }, [now.getFullYear()]);
-
-  const dayMax = daysInMonth(year, month);
-
-  function emit(patch: Partial<{ year: number; month: number; day: number; hour: number; minute: number; second: number }>) {
-    const next = {
-      year: patch.year ?? year,
-      month: patch.month ?? month,
-      day: patch.day ?? day,
-      hour: patch.hour ?? hour,
-      minute: patch.minute ?? minute,
-      second: patch.second ?? second,
-    };
-    next.day = Math.min(next.day, daysInMonth(next.year, next.month));
-    onChange(toLocalIso(next));
+  function applyParts(nextDate: Date) {
+    onChange(toLocalIso(nextDate));
   }
 
-  const preview = parts
-    ? new Date(toLocalIso({ year, month, day, hour, minute, second })).toLocaleString(undefined, {
-        weekday: "short",
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-    : "Not set";
+  function onPickDay(day: Date | undefined) {
+    if (!day) return;
+    const base = date ?? new Date();
+    const next = new Date(
+      day.getFullYear(),
+      day.getMonth(),
+      day.getDate(),
+      base.getHours(),
+      base.getMinutes(),
+      base.getSeconds(),
+    );
+    applyParts(next);
+  }
+
+  function setTimePart(part: "h" | "m" | "s", n: number) {
+    const base = date ?? new Date();
+    const next = new Date(base);
+    if (part === "h") next.setHours(n);
+    if (part === "m") next.setMinutes(n);
+    if (part === "s") next.setSeconds(n);
+    applyParts(next);
+  }
+
+  function useNow() {
+    applyParts(new Date());
+  }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <Label className="font-semibold text-slate-800">
         {label}
         {required ? <span className="text-red-500"> *</span> : null}
       </Label>
-      {hint ? <p className="text-xs text-slate-500">{hint}</p> : null}
-      <div className="overflow-hidden rounded-2xl border border-[#0b1b3a]/30 bg-gradient-to-br from-[#0b1b3a] via-[#122548] to-[#0b1b3a] p-3 shadow-md shadow-slate-900/10 sm:p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 text-sky-200">
-            <CalendarClock className="h-4 w-4" />
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "flex h-11 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left text-sm shadow-sm transition hover:border-slate-300",
+              !date && "text-slate-400",
+              date && "font-medium text-slate-900",
+            )}
+          >
+            <CalendarIcon className="h-4 w-4 shrink-0 text-slate-500" />
+            <span className="min-w-0 flex-1 truncate">{display}</span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto max-w-[min(100vw-1.5rem,22rem)] p-3" align="start">
+          <Calendar
+            mode="single"
+            selected={date ?? undefined}
+            onSelect={onPickDay}
+            defaultMonth={date ?? new Date()}
+            className="rounded-lg"
+          />
+          <div className="mt-3 flex items-end justify-center gap-3 border-t border-slate-100 pt-3">
+            <Wheel label="Hour" value={date?.getHours() ?? 0} max={24} onChange={(n) => setTimePart("h", n)} />
+            <Wheel label="Min" value={date?.getMinutes() ?? 0} max={60} onChange={(n) => setTimePart("m", n)} />
+            <Wheel label="Sec" value={date?.getSeconds() ?? 0} max={60} onChange={(n) => setTimePart("s", n)} />
           </div>
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-sky-300/90">D4EXAM schedule</p>
-            <p className="truncate text-sm font-semibold text-white">{preview}</p>
-          </div>
-          {value ? (
-            <button
+          <div className="mt-3 flex gap-2">
+            <Button type="button" variant="outline" size="sm" className="flex-1" onClick={useNow}>
+              Now
+            </Button>
+            <Button
               type="button"
-              className="ml-auto shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-sky-200/90 hover:bg-white/10"
-              onClick={() => onChange("")}
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => {
+                onChange("");
+                setOpen(false);
+              }}
             >
               Clear
-            </button>
-          ) : null}
-        </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          <SelectBox
-            label="Day"
-            value={parts ? day : ""}
-            onChange={(n) => emit({ day: n })}
-            options={Array.from({ length: dayMax }, (_, i) => ({
-              value: i + 1,
-              label: pad(i + 1),
-            }))}
-          />
-          <SelectBox
-            label="Month"
-            value={parts ? month : ""}
-            onChange={(n) => emit({ month: n })}
-            options={MONTHS.map((m, i) => ({ value: i + 1, label: m }))}
-            wide
-          />
-          <SelectBox
-            label="Year"
-            value={parts ? year : ""}
-            onChange={(n) => emit({ year: n })}
-            options={years.map((y) => ({ value: y, label: String(y) }))}
-          />
-          <SelectBox
-            label="Hour"
-            value={parts ? hour : ""}
-            onChange={(n) => emit({ hour: n })}
-            options={Array.from({ length: 24 }, (_, i) => ({
-              value: i,
-              label: pad(i),
-            }))}
-          />
-          <SelectBox
-            label="Min"
-            value={parts ? minute : ""}
-            onChange={(n) => emit({ minute: n })}
-            options={Array.from({ length: 60 }, (_, i) => ({
-              value: i,
-              label: pad(i),
-            }))}
-          />
-          <SelectBox
-            label="Sec"
-            value={parts ? second : ""}
-            onChange={(n) => emit({ second: n })}
-            options={Array.from({ length: 60 }, (_, i) => ({
-              value: i,
-              label: pad(i),
-            }))}
-          />
-        </div>
-      </div>
+            </Button>
+            <Button type="button" size="sm" className="flex-1 font-semibold" onClick={() => setOpen(false)}>
+              Done
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
