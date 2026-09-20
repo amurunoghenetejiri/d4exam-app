@@ -415,6 +415,17 @@ export function CbtExamPage() {
     }
   }, [done, shutdownMedia]);
 
+
+  /** Never leave CBT unusable behind a stuck fullscreen gate */
+  useEffect(() => {
+    if (!started || done || paused) return;
+    if (!fsGate) return;
+    const t = window.setTimeout(() => {
+      setFsGate(false);
+    }, 8_000);
+    return () => window.clearTimeout(t);
+  }, [started, done, paused, fsGate]);
+
   /** Keep fingerprint app-lock from interrupting an active CBT session */
   useEffect(() => {
     const active = Boolean(started && !done && !previewMode);
@@ -1113,6 +1124,9 @@ export function CbtExamPage() {
         if (!share.ok) {
           holdExamScreenShare(false);
           examSafeToast.error(share.message || "Screen sharing is required for this examination.");
+          setStarted(false);
+          startedRef.current = false;
+          setFsGate(false);
           return;
         }
         // reuse keeps MediaProjection alive across Gate → CBT navigation
@@ -1131,8 +1145,18 @@ export function CbtExamPage() {
       }
       try { primeHaptics(); haptic("start"); } catch { /* ignore */ }
       if (security.fullscreen) {
-        const ok = await requestExamFullscreen();
-        if (!ok) { examSafeToast.message("Please allow fullscreen to continue the exam"); setFsGate(true); }
+        try {
+          const ok = await requestExamFullscreen();
+          if (!ok) {
+            // Never freeze CBT: show tip but keep exam usable (critical on Capacitor WebView)
+            examSafeToast.message("Stay on this screen for the duration of the exam.");
+            setFsGate(false);
+          } else {
+            setFsGate(false);
+          }
+        } catch {
+          setFsGate(false);
+        }
       }
       if (!previewMode && student?.studentId && examQ.data?.school_id) {
         // Load existing attempt for stable question set
@@ -1186,6 +1210,8 @@ export function CbtExamPage() {
         try {
           const ea = (existingFull as { ends_at?: string | null } | null)?.ends_at;
           const sa = (existingFull as { started_at?: string | null } | null)?.started_at;
+          const mins = Math.max(1, Number(examQ.data?.duration_minutes ?? 60));
+          const nowMs = Date.now();
           let endsMs: number | null = null;
           if (ea) {
             const ends = new Date(String(ea)).getTime();
@@ -1193,17 +1219,22 @@ export function CbtExamPage() {
           }
           if (endsMs == null && sa) {
             const startMs = new Date(String(sa)).getTime();
-            const mins = Math.max(1, Number(examQ.data?.duration_minutes ?? 60));
             if (!Number.isNaN(startMs)) endsMs = startMs + mins * 60_000;
           }
-          if (endsMs != null) {
+          if (endsMs != null && endsMs > nowMs + 2_000) {
+            // Valid remaining time — continue from saved clock
             endsAtRef.current = endsMs;
-            setSeconds(Math.max(0, Math.ceil((endsMs - Date.now()) / 1000)));
+            setSeconds(Math.max(1, Math.ceil((endsMs - nowMs) / 1000)));
             if (!ea && attemptIdRef.current) {
               void supabase.from("exam_attempts").update({
                 ends_at: new Date(endsMs).toISOString(),
               } as never).eq("id", attemptIdRef.current);
             }
+          } else if (endsMs != null && endsMs <= nowMs + 2_000) {
+            // Stale/expired ends_at while still opening exam: start a FRESH full duration
+            // (true time-up while writing is handled by the live timer + auto_submit)
+            endsAtRef.current = null;
+            setSeconds(null);
           }
         } catch { /* ignore */ }
 // Build paper now so we can lock order
@@ -1249,20 +1280,26 @@ export function CbtExamPage() {
       {
         const durationSec = Math.max(60, Number(examQ.data?.duration_minutes ?? 60) * 60);
         const now = Date.now();
-        if (endsAtRef.current != null) {
-          setSeconds(Math.max(0, Math.ceil((endsAtRef.current - now) / 1000)));
+        // If saved ends_at already expired, discard and allocate a full fresh window
+        if (endsAtRef.current != null && endsAtRef.current <= now + 2_000) {
+          endsAtRef.current = null;
+        }
+        if (endsAtRef.current != null && endsAtRef.current > now + 2_000) {
+          setSeconds(Math.max(1, Math.ceil((endsAtRef.current - now) / 1000)));
         } else {
           let ends = now + durationSec * 1000;
           const schedEnd = examQ.data?.scheduled_end ? new Date(String(examQ.data.scheduled_end)).getTime() : NaN;
-          if (!Number.isNaN(schedEnd) && schedEnd > now) {
+          // Only clamp to scheduled_end when it still leaves meaningful time
+          if (!Number.isNaN(schedEnd) && schedEnd > now + 60_000) {
             ends = Math.min(ends, schedEnd);
           }
           endsAtRef.current = ends;
-          setSeconds(Math.max(0, Math.ceil((ends - now) / 1000)));
+          setSeconds(Math.max(1, Math.ceil((ends - now) / 1000)));
           if (attemptIdRef.current) {
             void supabase.from("exam_attempts").update({
               ends_at: new Date(ends).toISOString(),
               status: "in_progress",
+              updated_at: new Date().toISOString(),
             } as never).eq("id", attemptIdRef.current);
           }
         }

@@ -20,12 +20,12 @@ export type HapticKind =
 
 const DURATION: Record<HapticKind, number> = {
   start: 220,
-  none: 300,       // gentle — no face
-  unclear: 350,
-  light: 300,
+  none: 280,       // soft pulse — no face
+  unclear: 320,
+  light: 280,
   tab_switch: 420,
-  multi: 1400,     // harder / stronger than no-face
-  strong: 1400,
+  multi: 1600,     // hard triple-pulse — multiple faces
+  strong: 1600,
   camera_blocked: 900,
   officer_pause: 700,
   officer_submit: 600,
@@ -140,9 +140,9 @@ export function haptic(kind: HapticKind) {
   const now = Date.now();
   // Multi always gets priority — must fire even if a soft "none" just ran
   const isMulti = kind === "multi" || kind === "strong";
-  const gap = isMulti ? 120 : 320;
+  const gap = isMulti ? 450 : 900; // none softer cadence; multi still noticeable
   if (now - lastFireAt < gap && !isMulti) return;
-  if (isMulti && now - lastFireAt < 80) return;
+  if (isMulti && now - lastFireAt < 400) return;
   lastFireAt = now;
   primed = true;
   const ms = DURATION[kind] ?? 1500;

@@ -20,6 +20,7 @@ function haptic(kind: SecurityAlertKind) {
 }
 
 const ALERT_COOLDOWN_MS = 2800;
+const MULTI_ALERT_COOLDOWN_MS = 1600;
 
 const ALERT_COPY: Record<
   SecurityAlertKind,
@@ -92,7 +93,7 @@ export function ExamCameraPip({
   const lastAlertRef = useRef(0);
   const lastStateRef = useRef<FaceState>("unavailable");
   const pendingRef = useRef<{ state: FaceState; since: number } | null>(null);
-  const STABILITY_MS = 500;
+  const STABILITY_MS = 280;
   const ownStreamRef = useRef<MediaStream | null>(null);
   const acquiringRef = useRef(false);
   const dragState = useRef<{
@@ -354,7 +355,11 @@ export function ExamCameraPip({
       }
       if (now - pend.since < STABILITY_MS) return;
       pendingRef.current = null;
-      if (prev === next) return;
+      if (prev === next) {
+        // Keep vibrating while violation persists (multi stronger, none softer)
+        if (next === "none" || next === "multi") fireAlert(next, faceCount);
+        return;
+      }
       setFaceStatus(next);
       lastStateRef.current = next;
       faceWarnRef.current += 1;
@@ -385,38 +390,43 @@ export function ExamCameraPip({
     };
 
     const tick = async () => {
-      if (cancelled || !videoRef.current || !faceEngineRef.current) return;
+      if (cancelled || !videoRef.current || !faceEngineRef.current) {
+        if (!cancelled) timer = window.setTimeout(() => void tick(), 250);
+        return;
+      }
       try {
         const v = videoRef.current;
         if (v.readyState < 2 || v.videoWidth < 16) {
-          if (Date.now() - startedAt > 1200) {
+          if (Date.now() - startedAt > 1000) {
             nullStreak += 1;
-            if (nullStreak >= 3) applyState("none", 0);
+            if (nullStreak >= 2) applyState("none", 0);
           }
         } else {
-          const n = await faceEngineRef.current.count(v);
+          // Never hang the UI if MediaPipe stalls
+          const n = await Promise.race([
+            faceEngineRef.current.count(v),
+            new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 700)),
+          ]);
           if (cancelled) return;
           if (n == null) {
             nullStreak += 1;
-            if (Date.now() - startedAt > 600 && nullStreak >= 2) {
-              applyState("none", 0);
-            } else if (nullStreak >= 6) {
-              applyState("unclear", null);
-            }
+            if (nullStreak >= 3) applyState("none", 0);
+            else if (nullStreak >= 8) applyState("unclear", null);
           } else {
             nullStreak = 0;
             if (n <= 0) applyState("none", 0);
-            else if (n > 1) applyState("multi", n);
+            else if (n >= 2) applyState("multi", n);
             else applyState("ok", 1);
           }
         }
       } catch {
         if (!cancelled) {
           nullStreak += 1;
-          if (nullStreak >= 10) applyState("unclear", null);
+          if (nullStreak >= 5) applyState("none", 0);
         }
+      } finally {
+        if (!cancelled) timer = window.setTimeout(() => void tick(), 120);
       }
-      if (!cancelled) timer = window.setTimeout(() => void tick(), 100);
     };
 
     const bootEngine = async () => {
