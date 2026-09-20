@@ -497,6 +497,7 @@ export function CbtExamPage() {
       tabSwitchCount: tabSwitchCountRef.current,
       faceStatus: faceStatusForLiveRef.current,
       cameraActive: Boolean(mediaStreamRef.current || liveStream),
+        screenActive: Boolean(screenStreamRef.current || screenStream),
     }),
   });
 
