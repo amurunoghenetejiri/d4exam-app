@@ -95,7 +95,6 @@ export const teacherNav: RoleConfig = {
       items: [
         { label: "Live Monitor", to: "/teacher/live-exams", icon: Radio },
         { label: "Exam Security", to: "/teacher/exam-security", icon: ShieldCheck },
-        { label: "Integrity", to: "/teacher/integrity", icon: ShieldCheck },
       ],
     },
     {
@@ -103,7 +102,7 @@ export const teacherNav: RoleConfig = {
       items: [
         { label: "Submissions", to: "/teacher/submissions", icon: ClipboardList },
         { label: "Marking Center", to: "/teacher/marking", icon: PenSquare },
-        { label: "Results", to: "/teacher/results", icon: BarChart3 },
+        { label: "Results / Exam Analysis", to: "/teacher/results", icon: BarChart3 },
       ],
     },
     {

@@ -80,7 +80,7 @@ function Page() {
       ["count", "examinations"],
       ["officer-dash-live", schoolId],
       ["officer-dash-integrity", schoolId],
-      ["rows", "examinations"],
+      ["rows", "examinations"], ["officer-dash-exams", schoolId],
       ["rows", "integrity_events"],
     ],
     enabled,
@@ -170,14 +170,36 @@ function Page() {
     enabled,
   );
 
-  const exams = useRows<Exam>({
-    table: "examinations",
-    select: "id, title, status, scheduled_start, courses(code)",
-    filters: schoolId ? [{ column: "school_id", value: schoolId }] : [],
-    order: { column: "created_at", ascending: false },
-    limit: 12,
+  const examsQ = useQuery({
+    queryKey: ["officer-dash-exams", schoolId],
     enabled,
+    staleTime: 2_000,
+    refetchInterval: 8_000,
+    queryFn: async () => {
+      if (!schoolId) return [] as Exam[];
+      const { data, error } = await supabase
+        .from("examinations")
+        .select("id, title, status, scheduled_start, courses(code)")
+        .eq("school_id", schoolId)
+        .order("updated_at", { ascending: false })
+        .limit(40);
+      if (error) {
+        console.warn("[officer-dash] exams", error);
+        return [] as Exam[];
+      }
+      const list = (data ?? []) as Exam[];
+      // Pending / changes first, then rest (still by updated_at)
+      const rank = (s: string) => {
+        const x = (s || "").toLowerCase();
+        if (x === "pending_approval") return 0;
+        if (x === "changes_requested") return 1;
+        if (x === "scheduled" || x === "approved") return 2;
+        return 3;
+      };
+      return [...list].sort((a, b) => rank(a.status) - rank(b.status));
+    },
   });
+  const exams = { data: examsQ.data, isLoading: examsQ.isLoading };
 
   type IntegrityRow = {
     id: string;
@@ -248,7 +270,7 @@ function Page() {
 
       <div className="mt-4 grid gap-4 sm:mt-6 sm:gap-6 lg:grid-cols-2">
         <SectionCard
-          title="School examinations"
+          title="Examinations (pending first)"
           action={
             <Button variant="ghost" size="sm" className="font-semibold text-primary" asChild>
               <Link to="/officer/approvals">Approvals</Link>

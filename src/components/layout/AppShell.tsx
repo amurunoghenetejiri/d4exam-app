@@ -89,6 +89,7 @@ const NAV_I18N: Record<string, string> = {
   Exams: "nav.exams",
   Examinations: "nav.examinations",
   Results: "nav.results",
+  "Results / Exam Analysis": "nav.resultsAnalysis",
   "My Courses": "nav.myCourses",
   Courses: "nav.courses",
   Materials: "nav.materials",

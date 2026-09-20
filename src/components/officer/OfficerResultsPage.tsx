@@ -16,6 +16,7 @@ import {
 } from "@/lib/notify";
 import { namedStudentsResultsReleased } from "@/lib/notify-named";
 import { cn } from "@/lib/utils";
+import { resolveStudentNamesForOfficer } from "@/lib/officer-student-names.functions";
 import { humanEventLabel, relativeTime } from "@/lib/live-monitor";
 
 type ExamRow = {
@@ -174,105 +175,34 @@ export function OfficerResultsPage() {
         }
         console.warn("[officer-results] exam results select failed", error);
       }
-      // Always enrich names — multi-strategy (students.full_name, profiles, attempts)
+      // Resolve names server-side (reliable), then client fallback
       const allIds = [...new Set(rows.map((r) => r.student_id).filter(Boolean))];
-      if (allIds.length) {
-        const nameByStudentId = new Map<string, { full_name: string; matric: string | null; sid: string | null }>();
-
-        // Strategy 1: students table by id
-        {
-          const { data: studs } = await supabase
-            .from("students")
-            .select("id, full_name, matric_number, student_id, profile_id")
-            .in("id", allIds);
-          const profileIds: string[] = [];
-          for (const s of studs ?? []) {
-            const id = String((s as { id: string }).id);
-            const fn = String((s as { full_name?: string | null }).full_name || "").trim();
-            const mat = (s as { matric_number?: string | null }).matric_number ?? null;
-            const sid = (s as { student_id?: string | null }).student_id ?? null;
-            const pid = (s as { profile_id?: string | null }).profile_id;
-            if (pid) profileIds.push(String(pid));
-            if (fn) nameByStudentId.set(id, { full_name: fn, matric: mat, sid });
-            else nameByStudentId.set(id, { full_name: "", matric: mat, sid });
-          }
-          if (profileIds.length) {
-            const { data: profiles } = await supabase
-              .from("profiles")
-              .select("id, full_name, first_name, last_name")
-              .in("id", [...new Set(profileIds)]);
-            const pmap = new Map<string, string>();
-            for (const pr of profiles ?? []) {
-              const pid = String((pr as { id: string }).id);
-              const full = String((pr as { full_name?: string }).full_name || "").trim();
-              const first = String((pr as { first_name?: string | null }).first_name || "").trim();
-              const last = String((pr as { last_name?: string | null }).last_name || "").trim();
-              const composed = full || [first, last].filter(Boolean).join(" ");
-              if (composed) pmap.set(pid, composed);
-            }
-            for (const s of studs ?? []) {
-              const id = String((s as { id: string }).id);
-              const pid = (s as { profile_id?: string | null }).profile_id;
-              const cur = nameByStudentId.get(id);
-              if (cur && !cur.full_name && pid && pmap.get(String(pid))) {
-                cur.full_name = pmap.get(String(pid))!;
-              }
-            }
-          }
+      if (allIds.length && schoolId) {
+        try {
+          const map = await resolveStudentNamesForOfficer({
+            data: { schoolId, studentIds: allIds },
+          });
+          rows = rows.map((r) => {
+            const hit = map?.[r.student_id];
+            const prev = (r.students || {}) as Record<string, unknown>;
+            const full = (hit?.full_name || "").trim()
+              || (typeof prev.full_name === "string" ? prev.full_name.trim() : "")
+              || String((prev.profiles as { full_name?: string } | null)?.full_name || "").trim();
+            return {
+              ...r,
+              students: {
+                ...prev,
+                full_name: full || null,
+                matric_number: hit?.matric_number || prev.matric_number || null,
+                student_id: hit?.student_id || prev.student_id || null,
+                profiles: full ? { full_name: full } : (prev.profiles as { full_name: string | null } | null) || null,
+              },
+            } as ResultRow;
+          });
+        } catch (e) {
+          console.warn("[officer-results] name resolve failed", e);
         }
-
-        // Strategy 2: fill gaps via exam_attempts → students embed
-        const missing = allIds.filter((id) => !nameByStudentId.get(id)?.full_name);
-        if (missing.length && selectedExamId) {
-          const { data: atts } = await supabase
-            .from("exam_attempts")
-            .select("student_id, students(id, full_name, matric_number, student_id, profiles(full_name, first_name, last_name))")
-            .eq("exam_id", selectedExamId)
-            .in("student_id", missing)
-            .limit(300);
-          for (const a of atts ?? []) {
-            const sid = String((a as { student_id: string }).student_id);
-            const st = (a as { students?: Record<string, unknown> | null }).students;
-            if (!st) continue;
-            const fn =
-              String(st.full_name || "").trim()
-              || String((st.profiles as { full_name?: string } | null)?.full_name || "").trim()
-              || [
-                  String((st.profiles as { first_name?: string } | null)?.first_name || "").trim(),
-                  String((st.profiles as { last_name?: string } | null)?.last_name || "").trim(),
-                ]
-                  .filter(Boolean)
-                  .join(" ");
-            if (fn) {
-              nameByStudentId.set(sid, {
-                full_name: fn,
-                matric: (st.matric_number as string | null) ?? nameByStudentId.get(sid)?.matric ?? null,
-                sid: (st.student_id as string | null) ?? nameByStudentId.get(sid)?.sid ?? null,
-              });
-            }
-          }
-        }
-
-        rows = rows.map((r) => {
-          const hit = nameByStudentId.get(r.student_id);
-          const prev = (r.students || {}) as Record<string, unknown>;
-          const full =
-            (hit?.full_name || "").trim()
-            || (typeof prev.full_name === "string" ? prev.full_name.trim() : "")
-            || String((prev.profiles as { full_name?: string } | null)?.full_name || "").trim();
-          return {
-            ...r,
-            students: {
-              ...prev,
-              full_name: full || null,
-              matric_number: hit?.matric || prev.matric_number || null,
-              student_id: hit?.sid || prev.student_id || null,
-              profiles: full ? { full_name: full } : (prev.profiles as { full_name: string | null } | null) || null,
-            },
-          } as ResultRow;
-        });
       }
-
       return rows;
     },
   });

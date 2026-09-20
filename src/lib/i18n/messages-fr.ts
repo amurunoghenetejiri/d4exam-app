@@ -5,6 +5,7 @@ export const messagesFr: Record<string, string> = {
   "nav.examinations": "Examens",
   "nav.exams": "Examens",
   "nav.myExams": "Mes examens",
+  "nav.resultsAnalysis": "Résultats / Analyse",
   "nav.results": "Résultats",
   "nav.materials": "Supports de cours",
   "nav.courses": "Cours",

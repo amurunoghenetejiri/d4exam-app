@@ -130,21 +130,28 @@ function Page() {
         .from("examinations")
         .select(full)
         .eq("school_id", schoolId)
-        .order("created_at", { ascending: false })
+        .order("updated_at", { ascending: false })
         .limit(100);
       if (res.error) {
         res = await supabase
           .from("examinations")
           .select(basic)
           .eq("school_id", schoolId)
-          .order("created_at", { ascending: false })
+          .order("updated_at", { ascending: false })
           .limit(100);
       }
       if (res.error) {
         console.warn("[officer-approvals] list", res.error);
         return [] as ExamRow[];
       }
-      return (Array.isArray(res.data) ? res.data : []) as ExamRow[];
+      const list = (Array.isArray(res.data) ? res.data : []) as ExamRow[];
+      const rank = (s: string) => {
+        const x = (s || "").toLowerCase();
+        if (x === "pending_approval") return 0;
+        if (x === "changes_requested") return 1;
+        return 2;
+      };
+      return [...list].sort((a, b) => rank(String(a.status)) - rank(String(b.status)));
     },
   });
 

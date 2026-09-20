@@ -221,7 +221,7 @@ function Page() {
         )
         .eq("school_id", teacher.schoolId)
         .in("course_id", lockedCourseId ? [lockedCourseId] : teacher.courseIds)
-        .order("created_at", { ascending: false })
+        .order("updated_at", { ascending: false })
         .limit(100);
       if (error) throw error;
       return ((data ?? []) as ExamRow[]).filter((e) => {
