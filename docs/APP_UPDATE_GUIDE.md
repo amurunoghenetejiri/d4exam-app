@@ -23,7 +23,7 @@ If the Release step fails, upload manually:
 ## First install (student / officer phone)
 
 ### From the website (Android only)
-1. Open `https://d4exam-platform.vercel.app` in **Chrome on Android**
+1. Open `https://d4exam.name.ng` in **Chrome on Android**
 2. Bottom banner: **Install D4EXAM app**
 3. Tap **Install app**
 4. If Android asks, allow install from Chrome / browser

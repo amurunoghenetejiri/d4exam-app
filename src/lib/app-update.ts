@@ -16,7 +16,7 @@ export type AppVersionConfig = {
   installMessage: string;
 };
 
-const PRODUCTION_ORIGIN = "https://d4exam-platform.vercel.app";
+const PRODUCTION_ORIGIN = "https://d4exam.name.ng";
 
 const DEFAULT_CONFIG: AppVersionConfig = {
   minVersion: "1.0.0",

@@ -190,6 +190,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "author", content: "D4EXAM" },
       { name: "theme-color", content: "#0b1b3a" },
       { property: "og:type", content: "website" },
+      { property: "og:url", content: "https://d4exam.name.ng" },
+      { property: "og:site_name", content: "D4EXAM" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [

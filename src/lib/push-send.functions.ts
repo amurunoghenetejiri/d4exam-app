@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getAppOrigin } from "@/lib/app-url";
 import { createClient } from "@supabase/supabase-js";
 import { createSign } from "node:crypto";
 
@@ -19,12 +20,7 @@ function adminClient() {
 }
 
 function appOrigin() {
-  return (
-    process.env["APP_URL"] ||
-    process.env["VITE_APP_URL"] ||
-    process.env["PUBLIC_APP_URL"] ||
-    "https://d4exam-platform.vercel.app"
-  ).replace(/\/$/, "");
+  return getAppOrigin();
 }
 
 type PushInput = {

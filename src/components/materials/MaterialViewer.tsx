@@ -33,6 +33,7 @@ import { isMaterialOffline, saveMaterialOffline, getOfflineMaterial } from "@/li
 import { isOnlineNow } from "@/lib/offline-sync";
 import { supabase } from "@/integrations/supabase/client";
 import { StudyHelpPanel } from "@/components/materials/StudyHelp";
+import { getAppOrigin } from "@/lib/app-url";
 
 export type ViewerMaterial = {
   id: string;
@@ -403,7 +404,7 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
 
   function materialDeepLink() {
     try {
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const origin = getAppOrigin();
       const path = role === "teacher" ? "/teacher/materials" : "/student/materials";
       return `${origin}${path}?m=${encodeURIComponent(item.id)}`;
     } catch {

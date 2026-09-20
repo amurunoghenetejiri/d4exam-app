@@ -14,10 +14,11 @@ const config: CapacitorConfig = {
   appName: "D4EXAM",
   webDir: "dist",
   server: {
-    url: "https://d4exam-platform.vercel.app",
+    url: "https://d4exam.name.ng",
     androidScheme: "https",
     errorPath: "offline.html",
     allowNavigation: [
+      "d4exam.name.ng",
       "d4exam-platform.vercel.app",
       "*.vercel.app",
       "*.supabase.co",

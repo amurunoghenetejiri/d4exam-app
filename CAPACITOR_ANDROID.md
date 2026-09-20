@@ -31,7 +31,7 @@ If secrets are empty, the build still works when `.env` is present in the repo (
 | **Offline shell** | Browser cache | App opens from disk; `offline.html` if a remote resource fails |
 | **Needs network** | Yes for data | Yes for login, live exams, push, new data. Shell UI loads offline. |
 
-The App is **not** a second website. It is a native shell that loads a **local SPA**. It does **not** open `d4exam-platform.vercel.app`.
+The App is **not** a second website. It is a native shell that loads a **local SPA**. It does **not** open `d4exam.name.ng`.
 
 ---
 

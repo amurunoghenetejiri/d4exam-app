@@ -3,6 +3,7 @@
  * RESEND_API_KEY on Vercel enables sending.
  * Build-verified helper for school approval emails.
  */
+import { getAppOrigin, loginUrl as canonicalLoginUrl } from "@/lib/app-url";
 
 export type SendEmailResult = { ok: true; id?: string } | { ok: false; error: string };
 
@@ -26,7 +27,7 @@ export async function sendEmail(params: {
   const from =
     process.env["EMAIL_FROM"] ||
     process.env["RESEND_FROM"] ||
-    "D4EXAM <onboarding@resend.dev>";
+    "D4EXAM <noreply@d4exam.name.ng>";
 
   if (!apiKey) {
     console.error("[email] RESEND_API_KEY is not set — cannot send email");
@@ -76,12 +77,8 @@ export async function sendSchoolApprovalEmail(params: {
   officialEmail?: string | null;
   phone?: string | null;
 }): Promise<SendEmailResult> {
-  const appUrl = (
-    process.env["APP_URL"] ||
-    process.env["VITE_APP_URL"] ||
-    "https://platform.vercel.app"
-  ).replace(/\/$/, "");
-  const loginUrl = `${appUrl}/login`;
+  const appUrl = getAppOrigin();
+  const loginUrl = canonicalLoginUrl();
 
   const subject = `Your school is approved on D4EXAM — ${params.schoolName}`;
 
