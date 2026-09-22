@@ -174,7 +174,7 @@ export const notifySuperAdminsApplicationEmail = createServerFn({ method: "POST"
         schoolName: z.string().min(1),
         trackingCode: z.string().min(1),
         applicantName: z.string().optional(),
-        applicantEmail: z.string().email().optional().or(z.literal("")).optional(),
+        applicantEmail: z.string().email().optional().nullable(),
         applicationId: z.string().optional(),
       })
       .parse(d),

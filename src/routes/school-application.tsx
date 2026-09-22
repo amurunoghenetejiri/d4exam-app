@@ -150,7 +150,6 @@ function Page() {
         }
       }
 
-      }
       const trialHours = 48;
       const trialEndsAt = isTrial ? new Date(Date.now() + trialHours * 60 * 60 * 1000).toISOString() : null;
       const code = makeTrackingCode();
