@@ -15,8 +15,8 @@ firebase.initializeApp({
 
 var messaging = firebase.messaging();
 
-var SHELL_CACHE = "d4exam-shell-v5";
-var RUNTIME_CACHE = "d4exam-runtime-v5";
+var SHELL_CACHE = "d4exam-shell-v6";
+var RUNTIME_CACHE = "d4exam-runtime-v6";
 var SHELL_URLS = [
   "/",
   "/index.html",
@@ -111,12 +111,12 @@ self.addEventListener("fetch", function (event) {
       caches.match(req).then(function (cached) {
         var fetchPromise = fetch(req)
           .then(function (res) {
-            if (res && res.ok) {
+            try {
               var copy = res.clone();
               caches.open(RUNTIME_CACHE).then(function (c) {
                 c.put(req, copy);
               });
-            }
+            } catch (e) {}
             return res;
           })
           .catch(function () {
