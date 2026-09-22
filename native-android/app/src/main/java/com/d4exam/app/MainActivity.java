@@ -13,20 +13,16 @@ import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebViewClient;
 
 /**
- * D4EXAM MainActivity — Capacitor WebView application (not Chrome).
+ * D4EXAM MainActivity — native Capacitor shell (bundled assets, not the website).
  *
- * Online: loads https://d4exam.name.ng inside this WebView so login and all
- * routes work. Offline: errorPath offline.html still inside the WebView.
- *
- * BridgeWebViewClient keeps D4EXAM / Supabase / Firebase in-app (never Chrome).
- * Plugins: ExamImmersive, ScreenShare (MediaProjection), Capgo biometric, push.
+ * Loads local webDir content. API hosts (Supabase / Google / Firebase) stay in-app.
+ * Does not open d4exam.name.ng or Vercel in Chrome for normal navigation.
  */
 public class MainActivity extends BridgeActivity {
   @Override
   public void onCreate(Bundle savedInstanceState) {
     registerPlugin(ExamImmersivePlugin.class);
     registerPlugin(ScreenSharePlugin.class);
-    // server.url loads D4EXAM inside this WebView; never hand off to Chrome.
     super.onCreate(savedInstanceState);
     applyChromeColors();
     installInAppNavigationClient();
@@ -39,10 +35,6 @@ public class MainActivity extends BridgeActivity {
     installInAppNavigationClient();
   }
 
-  /**
-   * Keep D4EXAM + auth/API hosts inside the WebView. Only unknown external
-   * hosts use Capacitor's default handling (may open browser).
-   */
   private void installInAppNavigationClient() {
     try {
       Bridge bridge = getBridge();
@@ -57,27 +49,31 @@ public class MainActivity extends BridgeActivity {
                 return super.shouldOverrideUrlLoading(view, request);
               }
               if (shouldStayInApp(request.getUrl())) {
-                // false = load in this WebView (never Chrome)
                 return false;
               }
               return super.shouldOverrideUrlLoading(view, request);
             }
           });
     } catch (Throwable ignored) {
-      // Never block launch
     }
   }
 
   private static boolean shouldStayInApp(Uri uri) {
     try {
       String scheme = uri.getScheme() != null ? uri.getScheme().toLowerCase() : "";
-      if ("file".equals(scheme) || "about".equals(scheme) || "data".equals(scheme)
-          || "capacitor".equals(scheme) || "http".equals(scheme) || "https".equals(scheme)) {
-        // continue host checks for http(s)
+      if ("file".equals(scheme)
+          || "about".equals(scheme)
+          || "data".equals(scheme)
+          || "capacitor".equals(scheme)
+          || "https".equals(scheme)
+          || "http".equals(scheme)) {
+        // ok
       } else {
         return false;
       }
-      if ("file".equals(scheme) || "about".equals(scheme) || "data".equals(scheme)
+      if ("file".equals(scheme)
+          || "about".equals(scheme)
+          || "data".equals(scheme)
           || "capacitor".equals(scheme)) {
         return true;
       }
@@ -85,9 +81,7 @@ public class MainActivity extends BridgeActivity {
       if (host == null) return true;
       host = host.toLowerCase();
       if (host.equals("localhost") || host.equals("127.0.0.1")) return true;
-      if (host.contains("d4exam.name.ng")) return true;
-      if (host.contains("d4exam-platform.vercel.app")) return true;
-      if (host.endsWith("vercel.app") && host.contains("d4exam")) return true;
+      // Backend / media only — not the marketing website
       if (host.contains("supabase.co")) return true;
       if (host.contains("googleapis.com") || host.contains("gstatic.com")) return true;
       if (host.contains("firebaseio.com")
