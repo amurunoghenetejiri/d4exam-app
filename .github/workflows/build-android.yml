@@ -49,33 +49,30 @@ jobs:
           # Ensure Capgo biometric is present for Capacitor 8
           bun add @capgo/capacitor-native-biometric@^8.6.4 || true
 
-      - name: Build bundled offline app shell (online runtime stays Vercel)
+      - name: Build bundled D4EXAM SPA shell (standalone APK — no remote website shell)
         run: |
           set -euo pipefail
-          # Real local SPA shell so the app can launch in airplane mode.
-          # Online launches still use server.url (Vercel) — see MainActivity.
-          if ! node scripts/prepare-capacitor-dist.mjs; then
-            echo "WARN: local SPA build failed — falling back to minimal shell"
-            mkdir -p dist
-            printf '%s\n' '<!DOCTYPE html><html><head><meta charset="utf-8"/><title>D4EXAM</title></head><body><p>Loading…</p></body></html>' > dist/index.html
-          fi
+          # Production APK must ship a real local SPA (not a Chrome/website wrapper).
+          node scripts/prepare-capacitor-dist.mjs
           mkdir -p dist
           if [ -f public/offline.html ]; then cp -f public/offline.html dist/offline.html; fi
           if [ -f public/logo.png ]; then cp -f public/logo.png dist/logo.png; fi
           test -f dist/index.html
-          ls -la dist | head -30
-          echo "dist ready (online shell = https://d4exam-platform.vercel.app, offline shell = bundled)"
+          test -d dist/assets || test -f dist/assets/capacitor-app.js || ls dist/assets 2>/dev/null | head
+          ls -la dist | head -40
+          echo "dist ready — standalone Capacitor shell (no server.url)"
 
-      - name: Verify capacitor uses Vercel shell URL
+      - name: Verify capacitor is standalone (no remote server.url)
         run: |
           set -euo pipefail
           CFG="capacitor.config.ts"
-          if ! grep -E 'url: "https://(d4exam\.name\.ng|d4exam-platform\.vercel\.app)"' "$CFG"; then
-            echo "FATAL: capacitor.config.ts must point at d4exam.name.ng (or Vercel)"
-            head -40 "$CFG" || true
+          if grep -E 'url:\s*"https?://' "$CFG"; then
+            echo "FATAL: capacitor.config.ts must NOT set server.url (standalone APK required)"
+            head -50 "$CFG" || true
             exit 1
           fi
-          echo "OK: Capacitor server.url points at production"
+          grep -q 'webDir' "$CFG"
+          echo "OK: Capacitor loads bundled webDir/dist only"
 
       - name: Ensure complete Android platform
         run: |

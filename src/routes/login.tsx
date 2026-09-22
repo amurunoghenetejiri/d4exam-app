@@ -12,6 +12,8 @@ import {
   type AppRole,
 } from "@/lib/session";
 import { signInWithSchoolCode } from "@/lib/auth.functions";
+import { clientSignInWithSchoolCode } from "@/lib/auth.client-login";
+import { isNativeShell } from "@/native/platform";
 import { ensureLoginAccount } from "@/lib/ensure-login.functions";
 import { saveCurrentAccountToVault, consumeAddAccountFlow, listSavedAccounts } from "@/lib/account-switcher";
 
@@ -320,6 +322,27 @@ function LoginPage() {
       const looksEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ident);
 
       try {
+        // Native APK: client Supabase login first (bundled shell has no SSR server fns)
+        if (isNativeShell()) {
+          const nativeResult = await clientSignInWithSchoolCode({
+            schoolCode: schoolCode || "",
+            identifier: ident,
+            password: pass,
+          });
+          if (nativeResult && "ok" in nativeResult && nativeResult.ok && nativeResult.accessToken) {
+            const { error: sessErr } = await supabase.auth.setSession({
+              access_token: nativeResult.accessToken,
+              refresh_token: nativeResult.refreshToken || "",
+            });
+            if (!sessErr && (await resolveRoleAndGoHome())) {
+              navigated = true;
+              return;
+            }
+          } else if (nativeResult && "error" in nativeResult && nativeResult.error) {
+            lastServerMsg = String(nativeResult.error);
+          }
+        }
+
         // Cap server login so UI never hangs (client fallback still runs)
         const result = await Promise.race([
           loginFn({
