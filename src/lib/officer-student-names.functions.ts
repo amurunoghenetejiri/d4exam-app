@@ -6,6 +6,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 export const resolveStudentNamesForOfficer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
+  .inputValidator((data: { schoolId: string; studentIds: string[] }) => data)
   .handler(
     async ({
       data,
