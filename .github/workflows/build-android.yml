@@ -20,7 +20,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -33,7 +37,13 @@ jobs:
 
       - name: Install JS deps
         run: |
-          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          if [ -f bun.lock ] || [ -f bun.lockb ]; then
+            bun install --frozen-lockfile || bun install
+          elif [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
       - name: Write client env for build
         env:
@@ -42,7 +52,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then
-            echo "WARNING: VITE_SUPABASE_* secrets not set — build may lack API config"
+            echo "WARNING: VITE_SUPABASE_* secrets not set — login in APK may fail until secrets are added"
           fi
           {
             echo "VITE_SUPABASE_URL=${VITE_SUPABASE_URL}"

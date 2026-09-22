@@ -27,7 +27,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -40,7 +44,13 @@ jobs:
 
       - name: Install JS deps
         run: |
-          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+          if [ -f bun.lock ] || [ -f bun.lockb ]; then
+            bun install --frozen-lockfile || bun install
+          elif [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
       - name: Write client env
         env:
@@ -66,10 +76,13 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag_name }}" ]; then
             TAG="${{ inputs.tag_name }}"
           fi
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="v0.0.0-$(date +%Y%m%d%H%M)"
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           mkdir -p release-out
-          cp android/app/build/outputs/apk/debug/*.apk release-out/d4exam-${TAG}.apk || \
-            cp android/app/build/outputs/apk/debug/app-debug.apk release-out/d4exam-${TAG}.apk
+          cp android/app/build/outputs/apk/debug/*.apk "release-out/d4exam-${TAG}.apk" 2>/dev/null || \
+            cp android/app/build/outputs/apk/debug/app-debug.apk "release-out/d4exam-${TAG}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
