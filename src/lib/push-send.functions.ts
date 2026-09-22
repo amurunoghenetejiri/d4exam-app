@@ -414,7 +414,7 @@ export const sendTestNotificationToSelf = createServerFn({ method: "POST" })
       }
     }
 
-    let push: unknown = { sent: 0, skipped: true, reason: "not attempted" };
+    let push: Record<string, unknown> | null = { sent: 0, skipped: true, reason: "not attempted" };
     try {
       push = await dispatchPushToUser({
         data: {
