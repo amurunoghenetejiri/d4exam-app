@@ -13,23 +13,20 @@ import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebViewClient;
 
 /**
- * D4EXAM MainActivity — standalone Capacitor Android application.
+ * D4EXAM MainActivity — Capacitor WebView application (not Chrome).
  *
- * Loads BUNDLED assets from the APK (webDir/dist). Does NOT open Chrome and
- * does NOT depend on loading https://d4exam.name.ng as the app shell.
+ * Online: loads https://d4exam.name.ng inside this WebView so login and all
+ * routes work. Offline: errorPath offline.html still inside the WebView.
  *
- * BridgeWebViewClient keeps D4EXAM / Supabase / Firebase hosts inside the
- * WebView when the SPA navigates or fetches (never ACTION_VIEW → Chrome).
- *
- * Native plugins: ExamImmersive, ScreenShare (MediaProjection), plus Capgo
- * biometric / push / camera via Capacitor bridge.
+ * BridgeWebViewClient keeps D4EXAM / Supabase / Firebase in-app (never Chrome).
+ * Plugins: ExamImmersive, ScreenShare (MediaProjection), Capgo biometric, push.
  */
 public class MainActivity extends BridgeActivity {
   @Override
   public void onCreate(Bundle savedInstanceState) {
     registerPlugin(ExamImmersivePlugin.class);
     registerPlugin(ScreenSharePlugin.class);
-    // Bundled local shell (capacitor.config has no server.url).
+    // server.url loads D4EXAM inside this WebView; never hand off to Chrome.
     super.onCreate(savedInstanceState);
     applyChromeColors();
     installInAppNavigationClient();

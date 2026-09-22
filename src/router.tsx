@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { createRouter } from "@tanstack/react-router";
+import { createRouter, createHashHistory, createBrowserHistory } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { isOnlineNow } from "@/lib/offline-sync";
 
@@ -124,9 +124,37 @@ export const getRouter = () => {
     },
   });
 
+  // Capacitor local shell: hash history so /login and menu links always navigate.
+  // Online WebView (server.url) uses normal browser history on https://d4exam.name.ng.
+  let history: ReturnType<typeof createBrowserHistory> | ReturnType<typeof createHashHistory> | undefined;
+  try {
+    if (typeof window !== "undefined") {
+      const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+      const ua = navigator.userAgent || "";
+      const native =
+        Boolean(cap?.isNativePlatform?.()) ||
+        (/; wv\)/i.test(ua) && /Android/i.test(ua)) ||
+        /Capacitor/i.test(ua);
+      // Only hash when serving from local capacitor host (bundled), not when on d4exam.name.ng
+      const host = window.location.hostname || "";
+      const localShell =
+        native &&
+        (host === "localhost" ||
+          host === "127.0.0.1" ||
+          host === "" ||
+          window.location.protocol === "file:");
+      if (localShell) {
+        history = createHashHistory();
+      }
+    }
+  } catch {
+    /* default history */
+  }
+
   const router = createRouter({
     routeTree,
     context: { queryClient },
+    history,
     scrollRestoration: true,
     defaultPreloadStaleTime: 5 * 60_000,
     defaultPreload: "intent",

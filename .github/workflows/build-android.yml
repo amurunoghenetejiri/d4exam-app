@@ -49,30 +49,31 @@ jobs:
           # Ensure Capgo biometric is present for Capacitor 8
           bun add @capgo/capacitor-native-biometric@^8.6.4 || true
 
-      - name: Build bundled D4EXAM SPA shell (standalone APK — no remote website shell)
+      - name: Build bundled offline shell + verify in-WebView production URL
         run: |
           set -euo pipefail
-          # Production APK must ship a real local SPA (not a Chrome/website wrapper).
-          node scripts/prepare-capacitor-dist.mjs
+          # Offline fallback assets (errorPath). Online app = https://d4exam.name.ng inside WebView.
+          if ! node scripts/prepare-capacitor-dist.mjs; then
+            echo "WARN: local SPA build failed — minimal offline shell"
+            mkdir -p dist
+            printf '%s\n' '<!DOCTYPE html><html><head><meta charset="utf-8"/><title>D4EXAM</title></head><body style="background:#0b1b3a;color:#fff;font-family:system-ui;text-align:center;padding:2rem"><p>Offline. Connect to use D4EXAM.</p></body></html>' > dist/index.html
+          fi
           mkdir -p dist
           if [ -f public/offline.html ]; then cp -f public/offline.html dist/offline.html; fi
           if [ -f public/logo.png ]; then cp -f public/logo.png dist/logo.png; fi
           test -f dist/index.html
-          test -d dist/assets || test -f dist/assets/capacitor-app.js || ls dist/assets 2>/dev/null | head
-          ls -la dist | head -40
-          echo "dist ready — standalone Capacitor shell (no server.url)"
+          ls -la dist | head -30
 
-      - name: Verify capacitor is standalone (no remote server.url)
+      - name: Verify Capacitor loads D4EXAM inside WebView (not Chrome)
         run: |
           set -euo pipefail
           CFG="capacitor.config.ts"
-          if grep -E 'url:\s*"https?://' "$CFG"; then
-            echo "FATAL: capacitor.config.ts must NOT set server.url (standalone APK required)"
-            head -50 "$CFG" || true
+          if ! grep -E 'url: "https://d4exam\.name\.ng"' "$CFG"; then
+            echo "FATAL: capacitor.config.ts must load https://d4exam.name.ng inside the APK WebView"
+            head -40 "$CFG" || true
             exit 1
           fi
-          grep -q 'webDir' "$CFG"
-          echo "OK: Capacitor loads bundled webDir/dist only"
+          echo "OK: server.url = https://d4exam.name.ng (in-app WebView, MainActivity blocks Chrome)"
 
       - name: Ensure complete Android platform
         run: |

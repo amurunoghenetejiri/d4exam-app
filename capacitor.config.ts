@@ -1,25 +1,25 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 /**
- * D4EXAM Capacitor — standalone Android application.
+ * D4EXAM Capacitor Android shell.
  *
- * Production APK loads the BUNDLED web assets from webDir (dist/), not Chrome
- * and not a remote website redirect.
+ * Online: loads https://d4exam.name.ng INSIDE the Capacitor WebView (same APK,
+ * not Chrome). This keeps TanStack routing, login, and all pages working.
  *
- * - Offline: local index.html + offline.html work without internet.
- * - Online: Supabase + HTTPS API calls to d4exam.name.ng / *.supabase.co.
- * - Native plugins (biometric, push, camera, screen share) bind to this WebView.
+ * Offline: errorPath offline.html + bundled dist/ for cold start assets.
+ * MainActivity.shouldStayInApp prevents Android from opening Chrome for D4EXAM hosts.
  *
- * The public website https://d4exam.name.ng remains a separate deployment.
+ * Native plugins (biometric, push, camera, screen share) attach to this WebView.
  */
 const config: CapacitorConfig = {
   appId: "com.d4exam.app",
   appName: "D4EXAM",
   webDir: "dist",
   server: {
-    // Local-only shell (no remote server.url — prevents website/Chrome behavior)
+    url: "https://d4exam.name.ng",
     androidScheme: "https",
-    hostname: "localhost",
+    cleartext: false,
+    errorPath: "offline.html",
     allowNavigation: [
       "d4exam.name.ng",
       "*.d4exam.name.ng",
@@ -41,7 +41,7 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 2500,
+      launchShowDuration: 2000,
       launchAutoHide: true,
       backgroundColor: "#0b1b3a",
       androidSplashResourceName: "splash",
@@ -49,7 +49,7 @@ const config: CapacitorConfig = {
       showSpinner: false,
       splashFullScreen: true,
       splashImmersive: true,
-      launchFadeOutDuration: 300,
+      launchFadeOutDuration: 250,
     },
     StatusBar: {
       style: "DARK",
