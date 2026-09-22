@@ -185,6 +185,8 @@ jobs:
         run: |
           set -euo pipefail
           bunx cap sync android
+          python3 scripts/ensure-capacitor-plugins.py
+          python3 scripts/force-local-capacitor-assets.py || true
           if [ -f android/variables.gradle ]; then
             sed -i 's/compileSdkVersion *= *[0-9]*/compileSdkVersion = 36/' android/variables.gradle
             sed -i 's/targetSdkVersion *= *[0-9]*/targetSdkVersion = 36/' android/variables.gradle
@@ -214,14 +216,13 @@ jobs:
             fi
           fi
           # Native biometric must be linked after sync
-          if ! grep -qi 'native-biometric\|NativeBiometric\|capgo' android/capacitor.settings.gradle android/app/capacitor.build.gradle 2>/dev/null; then
-            echo "WARN: biometric plugin may not appear in gradle files — listing:"
+          if ! grep -qi 'capgo-native-biometric\|native-biometric\|NativeBiometric' android/capacitor.settings.gradle android/app/capacitor.build.gradle 2>/dev/null; then
+            echo "FATAL: biometric plugin missing from gradle"
             cat android/capacitor.settings.gradle || true
             cat android/app/capacitor.build.gradle || true
-            ls node_modules/@capgo/capacitor-native-biometric 2>/dev/null || echo "MISSING node_modules biometric package"
-          else
-            echo "OK: biometric plugin referenced in gradle"
+            exit 1
           fi
+          echo "OK: biometric plugin linked"
           chmod +x android/gradlew
           grep -q 'ExamImmersivePlugin' android/app/src/main/java/com/d4exam/app/MainActivity.java
           echo "OK: sync complete — Vercel WebView shell + biometric"

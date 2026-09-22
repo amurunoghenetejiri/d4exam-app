@@ -8,6 +8,7 @@
     "errorPath": "offline.html",
     "allowNavigation": [
       "d4exam.name.ng",
+      "*.d4exam.name.ng",
       "d4exam-platform.vercel.app",
       "*.vercel.app",
       "*.supabase.co",
@@ -15,7 +16,8 @@
       "*.gstatic.com",
       "*.firebaseio.com",
       "*.firebasestorage.app",
-      "*.firebaseapp.com"
+      "*.firebaseapp.com",
+      "localhost"
     ]
   },
   "android": {
@@ -38,7 +40,11 @@
       "overlaysWebView": false
     },
     "PushNotifications": {
-      "presentationOptions": ["badge", "sound", "alert"]
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
     },
     "LocalNotifications": {
       "smallIcon": "ic_stat_d4exam",

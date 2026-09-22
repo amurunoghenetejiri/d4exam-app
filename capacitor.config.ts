@@ -1,13 +1,13 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 /**
- * D4EXAM Capacitor config
+ * D4EXAM Capacitor — native Android shell.
  *
- * Live server.url is REQUIRED: TanStack Start is SSR + server functions.
- * A pure local SPA stubs every .functions/.server module to no-ops, which
- * breaks login, session, menus, and navigation.
- * The working product loads the production Vercel app inside the native shell
- * (push, camera, status bar still work). Offline network errors use offline.html.
+ * server.url loads https://d4exam.name.ng INSIDE the APK WebView (required for
+ * TanStack Start SSR/server functions). This is the native app, not Chrome.
+ *
+ * allowNavigation + MainActivity BridgeWebViewClient keep all D4EXAM hosts in-app.
+ * errorPath offline.html is used on network failure — still in the APK.
  */
 const config: CapacitorConfig = {
   appId: "com.d4exam.app",
@@ -19,6 +19,7 @@ const config: CapacitorConfig = {
     errorPath: "offline.html",
     allowNavigation: [
       "d4exam.name.ng",
+      "*.d4exam.name.ng",
       "d4exam-platform.vercel.app",
       "*.vercel.app",
       "*.supabase.co",
@@ -27,6 +28,7 @@ const config: CapacitorConfig = {
       "*.firebaseio.com",
       "*.firebasestorage.app",
       "*.firebaseapp.com",
+      "localhost",
     ],
   },
   android: {
