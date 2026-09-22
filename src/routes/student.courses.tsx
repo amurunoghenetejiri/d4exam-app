@@ -51,8 +51,8 @@ function Page() {
           const { data, error } = await supabase
             .from("courses")
             .select("id, code, name, level_id")
-            .eq("school_id", student.schoolId)
-            .eq("department_id", student.departmentId)
+            .eq("school_id", student.schoolId!)
+            .eq("department_id", student.departmentId!)
             .limit(400);
           if (error) {
             console.warn("[student-courses] available", error.message);

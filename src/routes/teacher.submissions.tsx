@@ -72,7 +72,7 @@ function Page() {
         .order("submitted_at", { ascending: false })
         .limit(200);
       if (res.error) {
-        res = await supabase
+        res = (await supabase
           .from("exam_attempts")
           .select(
             `id, exam_id, student_id, status, submitted_at,
@@ -82,10 +82,10 @@ function Page() {
           .in("exam_id", examIds)
           .in("status", ["submitted", "terminated", "flagged"])
           .order("submitted_at", { ascending: false })
-          .limit(200);
+          .limit(200)) as typeof res;
       }
       if (res.error) throw res.error;
-      return (res.data ?? []) as AttemptRow[];
+      return (res.data ?? []) as unknown as AttemptRow[];
     },
   });
 

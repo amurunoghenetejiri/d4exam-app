@@ -90,13 +90,13 @@ function Page() {
           .eq("school_id", schoolId)
           .in("status", ["approved", "scheduled"])
           .order("created_at", { ascending: false })
-          .limit(80);
+          .limit(80)) as typeof res;
       }
       if (res.error) {
         console.warn("[post-to-students]", res.error);
         return [] as ExamRow[];
       }
-      return (Array.isArray(res.data) ? res.data : []) as ExamRow[];
+      return (Array.isArray(res.data) ? res.data : []) as unknown as ExamRow[];
     },
   });
 

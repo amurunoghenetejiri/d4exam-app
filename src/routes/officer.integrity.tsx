@@ -73,10 +73,10 @@ function Page() {
           .eq("school_id", schoolId)
           .in("status", ["submitted", "terminated", "flagged"])
           .order("submitted_at", { ascending: false, nullsFirst: false })
-          .limit(80);
+          .limit(80)) as typeof res;
       }
       if (res.error) throw res.error;
-      return (res.data ?? []) as AttemptRow[];
+      return (res.data ?? []) as unknown as AttemptRow[];
     },
   });
 
