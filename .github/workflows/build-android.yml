@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -32,8 +32,14 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      # Runner already has Android SDK. Do NOT install obsolete package "tools".
+      - name: Accept Android licenses & ensure platform/build-tools
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" || \
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" || true
+          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          ls "${ANDROID_HOME:-$ANDROID_SDK_ROOT}" || true
 
       - name: Install JS deps
         run: |
@@ -52,7 +58,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then
-            echo "WARNING: VITE_SUPABASE_* secrets not set — login in APK may fail until secrets are added"
+            echo "WARNING: VITE_SUPABASE_* secrets not set"
           fi
           {
             echo "VITE_SUPABASE_URL=${VITE_SUPABASE_URL}"
@@ -60,17 +66,33 @@ jobs:
             echo "VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}"
           } > .env
 
+      - name: Ensure no website server.url in Capacitor configs
+        run: |
+          if grep -RInE '"url"\s*:\s*"https?://[^"]*d4exam|"url"\s*:\s*"https?://[^"]*vercel' capacitor.config.ts capacitor.config.json android/app/src/main/assets/capacitor.config.json 2>/dev/null; then
+            echo "FATAL: website server.url still present"
+            exit 1
+          fi
+          echo "OK: no website server.url in Capacitor configs"
+
       - name: Build Capacitor SPA shell
         run: npm run build:app
 
       - name: Cap sync Android
         run: npx cap sync android
 
+      - name: Re-assert no website server.url after sync
+        run: |
+          if grep -RInE '"url"\s*:\s*"https?://' android/app/src/main/assets/capacitor.config.json 2>/dev/null; then
+            echo "FATAL: server.url reintroduced by cap sync"
+            cat android/app/src/main/assets/capacitor.config.json
+            exit 1
+          fi
+
       - name: Assemble debug APK
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
