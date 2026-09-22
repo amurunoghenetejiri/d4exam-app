@@ -17,6 +17,9 @@ const config: CapacitorConfig = {
     androidScheme: "https",
     cleartext: false,
     hostname: "localhost",
+    // Deep links / reloads inside the shell fall back to the bundled SPA,
+    // so refreshing on /student or /login works with zero internet.
+    errorPath: "index.html",
     allowNavigation: [
       "*.supabase.co",
       "*.googleapis.com",

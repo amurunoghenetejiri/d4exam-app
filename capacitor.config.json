@@ -5,6 +5,7 @@
   "server": {
     "androidScheme": "https",
     "hostname": "localhost",
+    "errorPath": "index.html",
     "allowNavigation": [
       "*.supabase.co",
       "*.googleapis.com",
