@@ -90,37 +90,28 @@ export function isNativeShell(): boolean {
       persistNativeFlag();
       return true;
     }
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
   try {
-    if (w.Capacitor && typeof w.Capacitor.getPlatform === "function") {
-      const p = w.Capacitor.getPlatform();
-      if (p === "android" || p === "ios") {
-        persistNativeFlag();
-        return true;
-      }
+    const p = w.Capacitor?.getPlatform?.();
+    if (p === "android" || p === "ios") {
+      persistNativeFlag();
+      return true;
     }
-  } catch {
-    /* ignore */
-  }
-  // User-agent heuristics for Capacitor WebView loading remote URL
+  } catch { /* ignore */ }
   try {
     const ua = navigator.userAgent || "";
-    if (/Android/i.test(ua) && (/; wv\)/i.test(ua) || /Capacitor/i.test(ua))) {
+    // Real Capacitor WebView, not Chrome
+    if (/; wv\)/i.test(ua) && /Android/i.test(ua)) {
       persistNativeFlag();
       return true;
     }
-    if (/Capacitor/i.test(ua) && /iPhone|iPad|iPod/i.test(ua)) {
+    if (/Capacitor/i.test(ua)) {
       persistNativeFlag();
       return true;
     }
-  } catch {
-    /* ignore */
-  }
-  if (readNativeFlag()) return true;
-  const p = getRuntimePlatform();
-  return p === "ios" || p === "android";
+  } catch { /* ignore */ }
+  // localStorage flag alone is NOT enough (false positive on mobile Chrome)
+  return false;
 }
 
 export function isStandalonePwa(): boolean {
