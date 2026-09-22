@@ -1,306 +1,70 @@
 name: Build Android APK
 
 on:
-  workflow_dispatch:
   push:
-    paths:
-      - "android/**"
-      - "native-android/**"
-      - "capacitor.config.*"
-      - "scripts/prepare-capacitor-dist.mjs"
-      - "scripts/android-apply-icons.sh"
-      - "public/offline.html"
-      - "public/icon-512.png"
-      - "public/logo.png"
-      - "package.json"
-      - "bun.lock"
-      - ".github/workflows/build-android.yml"
-
-concurrency:
-  group: build-android-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  build-apk:
-    name: Build D4EXAM Debug APK
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    permissions:
-      contents: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.2.19"
-
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: "npm"
 
-      - name: Install dependencies
-        run: |
-          set -euo pipefail
-          bun install
-          # Ensure Capgo biometric is present for Capacitor 8
-          bun add @capgo/capacitor-native-biometric@^8.6.4 || true
-
-      - name: Build bundled offline shell + verify in-WebView production URL
-        run: |
-          set -euo pipefail
-          # Offline fallback assets (errorPath). Online app = https://d4exam.name.ng inside WebView.
-          if ! node scripts/prepare-capacitor-dist.mjs; then
-            echo "WARN: local SPA build failed — minimal offline shell"
-            mkdir -p dist
-            printf '%s\n' '<!DOCTYPE html><html><head><meta charset="utf-8"/><title>D4EXAM</title></head><body style="background:#0b1b3a;color:#fff;font-family:system-ui;text-align:center;padding:2rem"><p>Offline. Connect to use D4EXAM.</p></body></html>' > dist/index.html
-          fi
-          mkdir -p dist
-          if [ -f public/offline.html ]; then cp -f public/offline.html dist/offline.html; fi
-          if [ -f public/logo.png ]; then cp -f public/logo.png dist/logo.png; fi
-          test -f dist/index.html
-          ls -la dist | head -30
-
-      - name: Verify Capacitor loads D4EXAM inside WebView (not Chrome)
-        run: |
-          set -euo pipefail
-          CFG="capacitor.config.ts"
-          if ! grep -E 'url: "https://(www\.)?d4exam\.name\.ng"' "$CFG"; then
-            echo "FATAL: capacitor.config.ts must load https://www.d4exam.name.ng inside the APK WebView"
-            head -40 "$CFG" || true
-            exit 1
-          fi
-          echo "OK: server.url = https://d4exam.name.ng (in-app WebView, MainActivity blocks Chrome)"
-
-      - name: Ensure complete Android platform
-        run: |
-          set -euo pipefail
-          rm -rf android
-          bunx cap add android
-          test -f android/gradlew
-          chmod +x android/gradlew
-
-      - name: Overlay native plugins + themes + D4EXAM icon
-        run: |
-          set -euo pipefail
-          test -d native-android
-          mkdir -p android/app/src/main/java/com/d4exam/app
-          cp -a native-android/app/src/main/java/com/d4exam/app/. android/app/src/main/java/com/d4exam/app/
-
-          DRAW="android/app/src/main/res/drawable"
-          VALS="android/app/src/main/res/values"
-          mkdir -p "$DRAW" "$VALS"
-
-          if [ -d native-android/app/src/main/res/drawable ]; then
-            cp -a native-android/app/src/main/res/drawable/. "$DRAW/" || true
-          fi
-          if [ -f "$DRAW/splash.xml" ]; then
-            rm -f "$DRAW"/splash.png "$DRAW"/splash.jpg "$DRAW"/splash.webp "$DRAW"/splash.gif
-          fi
-          for xml in "$DRAW"/*.xml; do
-            [ -f "$xml" ] || continue
-            base="$(basename "$xml" .xml)"
-            for ext in png jpg jpeg webp gif; do
-              rm -f "$DRAW/${base}.${ext}"
-            done
-          done
-
-          cp -f native-android/app/src/main/res/values/colors.xml "$VALS/" 2>/dev/null || true
-          cp -f native-android/app/src/main/res/values/styles.xml "$VALS/" 2>/dev/null || true
-
-          chmod +x scripts/android-apply-icons.sh || true
-          bash scripts/android-apply-icons.sh || echo "WARN: icon script failed (non-fatal)"
-
-          MAN="android/app/src/main/AndroidManifest.xml"
-          if ! grep -q 'ScreenCaptureService' "$MAN"; then
-            sed -i 's|</application>|        <service android:name=".ScreenCaptureService" android:exported="false" android:foregroundServiceType="mediaProjection" />\n    </application>|' "$MAN"
-          fi
-          for perm in \
-            android.permission.CAMERA \
-            android.permission.RECORD_AUDIO \
-            android.permission.MODIFY_AUDIO_SETTINGS \
-            android.permission.POST_NOTIFICATIONS \
-            android.permission.VIBRATE \
-            android.permission.USE_BIOMETRIC \
-            android.permission.USE_FINGERPRINT \
-            android.permission.FOREGROUND_SERVICE \
-            android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION; do
-            if ! grep -q "$perm" "$MAN"; then
-              sed -i "s|</manifest>|    <uses-permission android:name=\"$perm\" />\n</manifest>|" "$MAN"
-            fi
-          done
-
-          if ! grep -q 'android:icon="@mipmap/ic_launcher"' "$MAN"; then
-            sed -i 's|android:icon="[^"]*"|android:icon="@mipmap/ic_launcher"|' "$MAN" || true
-          fi
-
-          test -f android/app/src/main/java/com/d4exam/app/ExamImmersivePlugin.java
-          test -f android/app/src/main/java/com/d4exam/app/ScreenSharePlugin.java
-          test -f android/app/src/main/java/com/d4exam/app/MainActivity.java
-          if grep -E '^[[:space:]]*import[[:space:]]+androidx\.core\.splashscreen' \
-              android/app/src/main/java/com/d4exam/app/MainActivity.java; then
-            echo "ERROR: MainActivity still imports AndroidX splash API"
-            exit 1
-          fi
-          grep -q 'ExamImmersivePlugin' android/app/src/main/java/com/d4exam/app/MainActivity.java
-          grep -q 'ScreenSharePlugin' android/app/src/main/java/com/d4exam/app/MainActivity.java
-          grep -q 'android.permission.VIBRATE' "$MAN"
-          grep -q 'android.permission.USE_BIOMETRIC' "$MAN"
-          echo "OK: native plugins + themes + icon + biometric perms"
-
-      - name: Pin compileSdk 36 (Capacitor 8 requirement)
-        run: |
-          set -euo pipefail
-          if [ -f android/variables.gradle ]; then
-            sed -i 's/compileSdkVersion *= *[0-9]*/compileSdkVersion = 36/' android/variables.gradle
-            sed -i 's/targetSdkVersion *= *[0-9]*/targetSdkVersion = 36/' android/variables.gradle
-            sed -i 's/minSdkVersion *= *[0-9]*/minSdkVersion = 24/' android/variables.gradle
-            cat android/variables.gradle
-          fi
-
-      - name: Setup Java 21
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: "temurin"
           java-version: "21"
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools platforms;android-36 build-tools;36.0.0
 
-      - name: Accept Android licenses
+      - name: Install JS deps
         run: |
-          set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" || true
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-      - name: Capacitor sync Android
+      - name: Write client env for build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
-          set -euo pipefail
-          bunx cap sync android
-          python3 scripts/ensure-capacitor-plugins.py
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/versionCode [0-9]*/versionCode 43/' android/app/build.gradle || true
-            sed -i 's/versionName "[^"]*"/versionName "1.4.3-biometric"/' android/app/build.gradle || true
-            echo "OK: versionName 1.4.3-biometric"
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "WARNING: VITE_SUPABASE_* secrets not set — build may lack API config"
           fi
-          python3 scripts/force-local-capacitor-assets.py || true
-          if [ -f android/variables.gradle ]; then
-            sed -i 's/compileSdkVersion *= *[0-9]*/compileSdkVersion = 36/' android/variables.gradle
-            sed -i 's/targetSdkVersion *= *[0-9]*/targetSdkVersion = 36/' android/variables.gradle
-            sed -i 's/minSdkVersion *= *[0-9]*/minSdkVersion = 24/' android/variables.gradle
-          fi
-          cp -a native-android/app/src/main/java/com/d4exam/app/. android/app/src/main/java/com/d4exam/app/
-          VALS="android/app/src/main/res/values"
-          DRAW="android/app/src/main/res/drawable"
-          mkdir -p "$VALS" "$DRAW"
-          cp -f native-android/app/src/main/res/values/colors.xml "$VALS/" 2>/dev/null || true
-          cp -f native-android/app/src/main/res/values/styles.xml "$VALS/" 2>/dev/null || true
-          if [ -f "$DRAW/splash.xml" ]; then
-            rm -f "$DRAW"/splash.png "$DRAW"/splash.jpg "$DRAW"/splash.webp "$DRAW"/splash.gif
-          fi
-          # Re-assert biometric permissions after sync (sync may rewrite manifest)
-          MAN="android/app/src/main/AndroidManifest.xml"
-          for perm in android.permission.USE_BIOMETRIC android.permission.USE_FINGERPRINT android.permission.VIBRATE; do
-            if ! grep -q "$perm" "$MAN"; then
-              sed -i "s|</manifest>|    <uses-permission android:name=\"$perm\" />\n</manifest>|" "$MAN"
-            fi
-          done
-          if [ -f android/app/src/main/assets/capacitor.config.json ]; then
-            if ! grep -E 'd4exam\.name\.ng|d4exam-platform\.vercel\.app' android/app/src/main/assets/capacitor.config.json; then
-              echo "FATAL: android assets capacitor.config.json missing production URL after sync"
-              cat android/app/src/main/assets/capacitor.config.json || true
-              exit 1
-            fi
-          fi
-          # Native biometric must be linked after sync
-          if ! grep -qi 'capgo-native-biometric\|native-biometric\|NativeBiometric' android/capacitor.settings.gradle android/app/capacitor.build.gradle 2>/dev/null; then
-            echo "FATAL: biometric plugin missing from gradle"
-            cat android/capacitor.settings.gradle || true
-            cat android/app/capacitor.build.gradle || true
-            exit 1
-          fi
-          echo "OK: biometric plugin linked"
-          chmod +x android/gradlew
-          grep -q 'ExamImmersivePlugin' android/app/src/main/java/com/d4exam/app/MainActivity.java
-          echo "OK: sync complete — Vercel WebView shell + biometric"
+          {
+            echo "VITE_SUPABASE_URL=${VITE_SUPABASE_URL}"
+            echo "VITE_SUPABASE_PUBLISHABLE_KEY=${VITE_SUPABASE_PUBLISHABLE_KEY}"
+            echo "VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}"
+          } > .env
 
-      - name: Build debug APK
+      - name: Build Capacitor SPA shell
+        run: npm run build:app
+
+      - name: Cap sync Android
+        run: npx cap sync android
+
+      - name: Assemble debug APK
+        working-directory: android
         run: |
-          set -euo pipefail
-          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-          if [ -z "${ANDROID_SDK_ROOT}" ]; then
-            for candidate in "$HOME/Android/Sdk" /usr/local/lib/android/sdk "$ANDROID_HOME"; do
-              if [ -n "$candidate" ] && [ -d "$candidate" ]; then
-                export ANDROID_SDK_ROOT="$candidate"
-                break
-              fi
-            done
-          fi
-          export ANDROID_HOME="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          test -n "$ANDROID_HOME" && test -d "$ANDROID_HOME"
-          test -d "$ANDROID_HOME/platforms/android-36" || sdkmanager "platforms;android-36" "build-tools;36.0.0"
-          cd android
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
-          set +e
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/gradle-assemble.log
-          STATUS=${PIPESTATUS[0]}
-          set -e
-          if [ "$STATUS" -ne 0 ]; then
-            echo "===== GRADLE FAILURE (last 250 lines) ====="
-            tail -n 250 /tmp/gradle-assemble.log
-            exit "$STATUS"
-          fi
-          ls -la app/build/outputs/apk/debug/ || true
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
-      - name: Prepare d4exam.apk for release
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/apk-out
-          SRC=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
-          cp -f "$SRC" /tmp/apk-out/d4exam.apk
-          ls -la /tmp/apk-out/d4exam.apk
-
-      - name: Upload Gradle log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gradle-assemble-log
-          path: /tmp/gradle-assemble.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload APK artifact
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: d4exam-debug-apk
-          path: /tmp/apk-out/d4exam.apk
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 14
-
-      - name: Publish GitHub Release apk-latest
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: apk-latest
-          name: D4EXAM Android APK (latest)
-          body: |
-            Sideload install for D4EXAM (not Play Store).
-
-            **Install / Update URL**
-            https://github.com/amurunoghenetejiri/d4exam-platform/releases/download/apk-latest/d4exam.apk
-
-            Includes fingerprint (NativeBiometric) + multi-account switch fixes.
-
-            Built from commit ${{ github.sha }}
-          files: /tmp/apk-out/d4exam.apk
-          draft: false
-          prerelease: false
-          make_latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

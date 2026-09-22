@@ -3,15 +3,9 @@
   "appName": "D4EXAM",
   "webDir": "dist",
   "server": {
-    "url": "https://www.d4exam.name.ng",
     "androidScheme": "https",
-    "errorPath": "offline.html",
+    "hostname": "localhost",
     "allowNavigation": [
-      "d4exam.name.ng",
-      "www.d4exam.name.ng",
-      "*.d4exam.name.ng",
-      "d4exam-platform.vercel.app",
-      "*.vercel.app",
       "*.supabase.co",
       "*.googleapis.com",
       "*.gstatic.com",
@@ -28,7 +22,7 @@
   },
   "plugins": {
     "SplashScreen": {
-      "launchShowDuration": 2000,
+      "launchShowDuration": 2500,
       "launchAutoHide": true,
       "backgroundColor": "#0b1b3a",
       "androidSplashResourceName": "splash",
@@ -43,11 +37,7 @@
       "overlaysWebView": false
     },
     "PushNotifications": {
-      "presentationOptions": [
-        "badge",
-        "sound",
-        "alert"
-      ]
+      "presentationOptions": ["badge", "sound", "alert"]
     },
     "LocalNotifications": {
       "smallIcon": "ic_stat_d4exam",

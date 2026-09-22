@@ -10,17 +10,23 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-capacitor
 .output
 .vinxi
 .tanstack/**
 .nitro
 *.local
 
-# Wrangler / Cloudflare
-.wrangler/
+# Secrets — never commit
+.env
+.env.*
+!.env.example
 .dev.vars
 
-# Editor directories and files
+# Wrangler / Cloudflare
+.wrangler/
+
+# Editor
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -42,7 +48,8 @@ android/*.iml
 android/app/*.iml
 *.apk
 *.aab
-.DS_Store
+*.ap_
+*.dex
 
-# Capacitor web copy (generated)
-# Keep android/ in git so the project is complete for Android Studio
+# Generated stubs
+scripts/.cap-stubs/

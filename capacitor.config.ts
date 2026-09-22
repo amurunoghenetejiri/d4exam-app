@@ -1,31 +1,23 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 /**
- * D4EXAM Capacitor Android shell.
+ * D4EXAM native Android shell (app repo only).
  *
- * Online: loads https://d4exam.name.ng INSIDE the Capacitor WebView (same APK,
- * not Chrome). This keeps TanStack routing, login, and all pages working.
- *
- * Offline: errorPath offline.html + bundled dist/ for cold start assets.
- * MainActivity.shouldStayInApp prevents Android from opening Chrome for D4EXAM hosts.
- *
- * Native plugins (biometric, push, camera, screen share) attach to this WebView.
+ * - Loads the BUNDLED web assets from webDir (dist/) — no remote website URL.
+ * - Does NOT open d4exam.name.ng / Vercel in Chrome or as server.url.
+ * - Online API traffic goes only to Supabase / Google / Firebase (allowNavigation).
+ * - Offline: local index.html + cached app shell; native plugins stay available.
  */
 const config: CapacitorConfig = {
   appId: "com.d4exam.app",
   appName: "D4EXAM",
   webDir: "dist",
   server: {
-    url: "https://www.d4exam.name.ng",
+    // Local Capacitor origin only — never point at the public website.
     androidScheme: "https",
     cleartext: false,
-    errorPath: "offline.html",
+    hostname: "localhost",
     allowNavigation: [
-      "d4exam.name.ng",
-      "www.d4exam.name.ng",
-      "*.d4exam.name.ng",
-      "d4exam-platform.vercel.app",
-      "*.vercel.app",
       "*.supabase.co",
       "*.googleapis.com",
       "*.gstatic.com",
@@ -42,7 +34,7 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 2000,
+      launchShowDuration: 2500,
       launchAutoHide: true,
       backgroundColor: "#0b1b3a",
       androidSplashResourceName: "splash",
