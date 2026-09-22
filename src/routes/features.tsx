@@ -19,6 +19,9 @@ export const Route = createFileRoute("/features")({
       { property: "og:title", content: "Features — D4EXAM Examination Platform" },
       { property: "og:description", content: "Question banks, exam scheduling, CBT delivery, integrity monitoring, automated marking, result approval and institutional reporting." },
     ],
+    links: [
+      { rel: "canonical", href: "https://d4exam.name.ng/features" },
+    ],
   }),
   component: Page,
 });

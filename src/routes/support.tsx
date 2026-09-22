@@ -64,6 +64,9 @@ export const Route = createFileRoute("/support")({
           "Get help with examinations, accounts, imports and result publication from the D4EXAM support team.",
       },
     ],
+    links: [
+      { rel: "canonical", href: "https://d4exam.name.ng/support" },
+    ],
   }),
   component: Page,
 });

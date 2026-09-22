@@ -204,17 +204,35 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "D4EXAM is a professional CBT and examination management platform for schools, colleges and universities worldwide.",
+          "D4EXAM is a professional CBT and examination management platform for schools, colleges and universities. Secure online exams, question banks, live monitoring, automated marking and results.",
       },
       { name: "author", content: "D4EXAM" },
       { name: "theme-color", content: "#0b1b3a" },
+      { name: "robots", content: "index, follow, max-image-preview:large" },
+      { name: "googlebot", content: "index, follow" },
       { property: "og:type", content: "website" },
-      { property: "og:url", content: "https://d4exam.name.ng" },
+      { property: "og:url", content: "https://d4exam.name.ng/" },
       { property: "og:site_name", content: "D4EXAM" },
+      { property: "og:title", content: "D4EXAM — Secure Online Examination Platform" },
+      {
+        property: "og:description",
+        content:
+          "Professional CBT and examination management for schools, colleges and universities worldwide.",
+      },
+      { property: "og:image", content: "https://d4exam.name.ng/logo.png" },
+      { property: "og:locale", content: "en_US" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "D4EXAM — Secure Online Examination Platform" },
+      {
+        name: "twitter:description",
+        content:
+          "Professional CBT and examination management for schools, colleges and universities worldwide.",
+      },
+      { name: "twitter:image", content: "https://d4exam.name.ng/logo.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
+      { rel: "canonical", href: "https://d4exam.name.ng/" },
       { rel: "icon", type: "image/png", href: "/favicon.png" },
       { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
       { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
@@ -277,6 +295,35 @@ const BOOT_SPLASH_SCRIPT = `
 `;
 
 function RootShell({ children }: { children: ReactNode }) {
+
+  const seoJsonLd = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "name": "D4EXAM",
+        "url": "https://d4exam.name.ng",
+        "logo": "https://d4exam.name.ng/logo.png",
+        "description": "Professional CBT and examination management platform for schools, colleges and universities.",
+      },
+      {
+        "@type": "WebSite",
+        "name": "D4EXAM",
+        "url": "https://d4exam.name.ng",
+        "description": "Secure online examination (CBT) platform for institutions.",
+        "publisher": { "@type": "Organization", "name": "D4EXAM" },
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "D4EXAM",
+        "applicationCategory": "EducationalApplication",
+        "operatingSystem": "Web, Android",
+        "url": "https://d4exam.name.ng",
+        "description": "Secure computer-based testing and examination management for schools and universities.",
+      },
+    ],
+  };
+
   return (
     <html lang="en" style={{ backgroundColor: "#0b1b3a" }}>
       <head>
@@ -311,7 +358,11 @@ function RootShell({ children }: { children: ReactNode }) {
         </div>
         <script dangerouslySetInnerHTML={{ __html: BOOT_SPLASH_SCRIPT }} />
         {children}
-        <Scripts />
+        <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(seoJsonLd) }}
+          />
+          <Scripts />
       </body>
     </html>
   );

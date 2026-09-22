@@ -38,6 +38,9 @@ export const Route = createFileRoute("/login")({
       { title: "Sign in — D4EXAM" },
       { name: "description", content: "Sign in to your D4EXAM school account." },
     ],
+    links: [
+      { rel: "canonical", href: "https://d4exam.name.ng/login" },
+    ],
   }),
   beforeLoad: async () => {
     try {

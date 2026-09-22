@@ -13,6 +13,9 @@ export const Route = createFileRoute("/pricing")({
           "D4EXAM pricing for technical schools, colleges, polytechnics and universities.",
       },
     ],
+    links: [
+      { rel: "canonical", href: "https://d4exam.name.ng/pricing" },
+    ],
   }),
   component: PricingPage,
 });

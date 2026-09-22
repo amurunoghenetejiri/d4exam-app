@@ -19,6 +19,9 @@ export const Route = createFileRoute("/privacy")({
       { property: "og:title", content: "Privacy Policy — D4EXAM" },
       { property: "og:description", content: "How D4EXAM collects, processes and protects institutional and candidate data." },
     ],
+    links: [
+      { rel: "canonical", href: "https://d4exam.name.ng/privacy" },
+    ],
   }),
   component: Page,
 });

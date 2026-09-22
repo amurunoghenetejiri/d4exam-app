@@ -44,6 +44,9 @@ export const Route = createFileRoute("/about")({
           "D4EXAM builds professional examination infrastructure for schools, colleges and universities worldwide.",
       },
     ],
+    links: [
+      { rel: "canonical", href: "https://d4exam.name.ng/about" },
+    ],
   }),
   component: Page,
 });

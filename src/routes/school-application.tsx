@@ -21,6 +21,9 @@ export const Route = createFileRoute("/school-application")({
       { title: "Apply Your School — D4EXAM" },
       { name: "description", content: "Register your school on D4EXAM." },
     ],
+    links: [
+      { rel: "canonical", href: "https://d4exam.name.ng/school-application" },
+    ],
   }),
   component: Page,
 });

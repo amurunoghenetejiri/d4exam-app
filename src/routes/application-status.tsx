@@ -17,6 +17,9 @@ export const Route = createFileRoute("/application-status")({
         content: "Check the progress of your D4EXAM school application.",
       },
     ],
+    links: [
+      { rel: "canonical", href: "https://d4exam.name.ng/application-status" },
+    ],
   }),
   component: Page,
 });

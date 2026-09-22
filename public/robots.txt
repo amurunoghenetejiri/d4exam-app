@@ -1,8 +1,31 @@
+# D4EXAM — https://d4exam.name.ng
+# Public marketing pages are crawlable. Authenticated app areas are disallowed.
+
 User-agent: Googlebot
 Allow: /
+Disallow: /admin
+Disallow: /super-admin
+Disallow: /student
+Disallow: /teacher
+Disallow: /officer
+Disallow: /auth/
+Disallow: /forgot-password
+Disallow: /forgot-app-password
+Disallow: /reset-password
+Disallow: /notification-gallery
 
 User-agent: Bingbot
 Allow: /
+Disallow: /admin
+Disallow: /super-admin
+Disallow: /student
+Disallow: /teacher
+Disallow: /officer
+Disallow: /auth/
+Disallow: /forgot-password
+Disallow: /forgot-app-password
+Disallow: /reset-password
+Disallow: /notification-gallery
 
 User-agent: Twitterbot
 Allow: /
@@ -12,5 +35,15 @@ Allow: /
 
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /super-admin
+Disallow: /student
+Disallow: /teacher
+Disallow: /officer
+Disallow: /auth/
+Disallow: /forgot-password
+Disallow: /forgot-app-password
+Disallow: /reset-password
+Disallow: /notification-gallery
 
 Sitemap: https://d4exam.name.ng/sitemap.xml
