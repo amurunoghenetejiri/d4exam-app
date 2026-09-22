@@ -137,23 +137,64 @@ function guessExt(file: File): string {
  * 2) Else FileReader data URL (no image decode)
  * Never throws cannot-read/decode — returns best-effort URL or empty string.
  */
+/** Resize/compress logo client-side so storage + DB stay under limits. */
+async function compressLogoFile(file: File, maxPx = 512, quality = 0.82): Promise<File> {
+  try {
+    if (!file.type.startsWith("image/") || file.type === "image/svg+xml") return file;
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, maxPx / Math.max(bmp.width, bmp.height));
+    const w = Math.max(1, Math.round(bmp.width * scale));
+    const h = Math.max(1, Math.round(bmp.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bmp, 0, 0, w, h);
+    bmp.close?.();
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob((b) => resolve(b), "image/jpeg", quality),
+    );
+    if (!blob) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, ".jpg") || "logo.jpg", {
+      type: "image/jpeg",
+    });
+  } catch {
+    return file;
+  }
+}
+
+async function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const r = String(reader.result || "");
+      if (r.startsWith("data:")) resolve(r);
+      else reject(new Error("empty"));
+    };
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export async function uploadSchoolLogo(opts: {
   file: File;
   folder: string;
 }): Promise<{ url: string; path: string }> {
-  const soft = validateLogoFile(opts.file);
-  if (soft && opts.file.size <= 0) {
+  if (!opts.file || opts.file.size <= 0) {
     return { url: "", path: "" };
   }
 
-  const ext = guessExt(opts.file);
+  // Prefer a compressed image for uploads
+  const file = await compressLogoFile(opts.file);
+  const ext = guessExt(file) || "jpg";
   const path = `${opts.folder}/logo-${Date.now()}.${ext}`;
-  const contentType = opts.file.type || `image/${ext === "jpg" ? "jpeg" : ext}`;
+  const contentType = file.type || `image/${ext === "jpg" ? "jpeg" : ext}`;
 
   const buckets = ["school-logos", "public", "avatars"];
   for (const bucket of buckets) {
     try {
-      const { error: upErr } = await supabase.storage.from(bucket).upload(path, opts.file, {
+      const { error: upErr } = await supabase.storage.from(bucket).upload(path, file, {
         cacheControl: "3600",
         upsert: true,
         contentType,
@@ -168,19 +209,18 @@ export async function uploadSchoolLogo(opts: {
     }
   }
 
+  // Anonymous applicants often cannot write to storage — keep logo as data URL
   try {
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const r = String(reader.result || "");
-        if (r.startsWith("data:")) resolve(r);
-        else reject(new Error("empty"));
-      };
-      reader.onerror = () => reject(new Error("read failed"));
-      reader.readAsDataURL(opts.file);
-    });
-    if (dataUrl.length <= 1_500_000) {
+    const dataUrl = await fileToDataUrl(file);
+    // Cap ~1.2MB data URL so insert payload stays reasonable
+    if (dataUrl.length <= 1_200_000) {
       return { url: dataUrl, path: "data-url" };
+    }
+    // Try stronger compression once more
+    const smaller = await compressLogoFile(opts.file, 256, 0.7);
+    const dataUrl2 = await fileToDataUrl(smaller);
+    if (dataUrl2.length <= 1_200_000) {
+      return { url: dataUrl2, path: "data-url" };
     }
   } catch {
     /* fall through */

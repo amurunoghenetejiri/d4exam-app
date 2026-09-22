@@ -164,3 +164,70 @@ export const sendPlatformMessage = createServerFn({ method: "POST" })
     }
     return { ok: results.some((x) => x === "email" || x === "notification"), results };
   });
+
+
+/** Email every super_admin profile when a school applies (Resend). */
+export const notifySuperAdminsApplicationEmail = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        schoolName: z.string().min(1),
+        trackingCode: z.string().min(1),
+        applicantName: z.string().optional(),
+        applicantEmail: z.string().email().optional().or(z.literal("")).optional(),
+        applicationId: z.string().optional(),
+      })
+      .parse(d),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      const url =
+        process.env["SUPABASE_URL"] ||
+        process.env["VITE_SUPABASE_URL"] ||
+        "";
+      const service =
+        process.env["SUPABASE_SERVICE_ROLE_KEY"] ||
+        process.env["SUPABASE_SECRET_KEY"] ||
+        "";
+      if (!url || !service) {
+        return { ok: false as const, error: "server not configured" };
+      }
+      const admin = createClient(url, service, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data: roles } = await admin
+        .from("user_roles")
+        .select("user_id")
+        .eq("role", "super_admin");
+      const ids = [...new Set((roles || []).map((r: { user_id: string }) => r.user_id).filter(Boolean))];
+      if (!ids.length) return { ok: false as const, error: "no super admins" };
+      const { data: profiles } = await admin
+        .from("profiles")
+        .select("email, full_name, auth_user_id")
+        .in("auth_user_id", ids);
+      const emails = [
+        ...new Set(
+          (profiles || [])
+            .map((p: { email?: string | null }) => (p.email || "").trim().toLowerCase())
+            .filter((e: string) => e.includes("@")),
+        ),
+      ];
+      const { sendSuperAdminNewApplicationEmail } = await import("@/lib/email.server");
+      let sent = 0;
+      for (const to of emails) {
+        const r = await sendSuperAdminNewApplicationEmail({
+          to,
+          schoolName: data.schoolName,
+          trackingCode: data.trackingCode,
+          applicantName: data.applicantName,
+          applicantEmail: data.applicantEmail || null,
+        });
+        if (r.ok) sent += 1;
+      }
+      return { ok: sent > 0, sent };
+    } catch (e) {
+      console.warn("[email] super admin application", e);
+      return { ok: false as const, error: "send failed" };
+    }
+  });

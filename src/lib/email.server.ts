@@ -134,10 +134,11 @@ export async function sendSchoolApprovalEmail(params: {
     `Your school "${params.schoolName}" has been approved on D4EXAM.`,
     `School code: ${params.schoolCode}`,
     `Admin email: ${params.adminEmail}`,
-    `Sign in: ${loginUrl}`,
-    `Change your password after first login.`,
+    `Create your password: ${appUrl("/application-status")}`,
+    `Then sign in at ${loginUrl}`,
   ].join("\n");
 
+  const setupUrl = appUrl("/application-status");
   const html = brandedHtml({
     title: "School application approved",
     greeting: `Hello ${params.applicantName},`,
@@ -145,11 +146,11 @@ export async function sendSchoolApprovalEmail(params: {
       `Your school "${params.schoolName}" has been approved on D4EXAM.`,
       `School / institution code: ${params.schoolCode}`,
       `Sign-in email: ${params.adminEmail}`,
-      `A temporary password was set during approval. Sign in and change it immediately under Settings.`,
-      "Use the button below to open D4EXAM.",
+      "Create your own login password on the application status page (use your tracking code and this email). We never send your password by email.",
+      "After you create your password, sign in, allow notifications when prompted, then set an app unlock password or fingerprint in Settings → Security.",
     ],
-    buttonLabel: "Sign in to D4EXAM",
-    buttonUrl: loginUrl,
+    buttonLabel: "Create password & open status",
+    buttonUrl: setupUrl,
     footerNote: "Keep your school code private. Only authorised staff should sign in.",
   });
 
@@ -415,5 +416,59 @@ export async function sendAppPasswordHelpEmail(params: {
     subject,
     html,
     text: "D4EXAM app unlock help: sign in and set a new app unlock password under Settings.",
+  });
+}
+
+
+export async function sendSuperAdminNewApplicationEmail(params: {
+  to: string;
+  schoolName: string;
+  trackingCode: string;
+  applicantName?: string | null;
+  applicantEmail?: string | null;
+}): Promise<SendEmailResult> {
+  const url = appUrl("/super-admin/applications");
+  const subject = `D4EXAM — New school application: ${params.schoolName}`;
+  const html = brandedHtml({
+    title: "New school application",
+    greeting: "Hello Super Admin,",
+    paragraphs: [
+      `A new school application was submitted for "${params.schoolName}".`,
+      `Tracking code: ${params.trackingCode}`,
+      params.applicantName ? `Applicant: ${params.applicantName}` : "Applicant details are in the portal.",
+      params.applicantEmail ? `Contact email: ${params.applicantEmail}` : "",
+      "Open School Applications to review, approve, or request changes.",
+    ].filter(Boolean),
+    buttonLabel: "Open school applications",
+    buttonUrl: url,
+  });
+  const text = `New school application: ${params.schoolName}. Code: ${params.trackingCode}. ${url}`;
+  return sendEmail({ to: params.to, subject, html, text });
+}
+
+export async function sendSchoolApplicationRejectedEmail(params: {
+  to: string;
+  applicantName: string;
+  schoolName: string;
+  reason?: string | null;
+}): Promise<SendEmailResult> {
+  const statusUrl = appUrl("/application-status");
+  const subject = `D4EXAM — Application update: ${params.schoolName}`;
+  const html = brandedHtml({
+    title: "Application not approved",
+    greeting: `Hello ${params.applicantName || "Applicant"},`,
+    paragraphs: [
+      `Your school application for "${params.schoolName}" was not approved.`,
+      params.reason ? `Note from D4EXAM: ${params.reason}` : "You may update your details and apply again if appropriate.",
+      "Check status anytime with your reference code.",
+    ],
+    buttonLabel: "Check application status",
+    buttonUrl: statusUrl,
+  });
+  return sendEmail({
+    to: params.to,
+    subject,
+    html,
+    text: `Hello ${params.applicantName}, application for ${params.schoolName} was not approved. ${statusUrl}`,
   });
 }

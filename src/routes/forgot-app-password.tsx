@@ -53,25 +53,31 @@ function ForgotAppPasswordPage() {
     try {
       // Verify identity against login (no Resend yet — just confirm details look valid)
       // When Resend is configured, send reset link to the locked email.
-      if (emailLocked && email) {
-        setStep("confirm");
+      const targetEmail = (email || session?.email || "").trim().toLowerCase();
+      if (!targetEmail.includes("@")) {
+        setErr(
+          "No email is linked to this account yet. Add an email in Profile / Settings after you sign in, then try again.",
+        );
         return;
       }
-      // Try resolve email from session profile only for now
-      if (session?.email) {
-        setEmail(session.email);
-        setEmailLocked(true);
-        setStep("confirm");
-        try {
-          void notifyAppPasswordHelp({
-            data: { email: session.email, fullName: session.fullName || undefined },
-          });
-        } catch { /* ignore */ }
-        return;
+      setEmail(targetEmail);
+      setEmailLocked(true);
+      try {
+        const r = await notifyAppPasswordHelp({
+          data: {
+            email: targetEmail,
+            fullName: fullName.trim() || session?.fullName || undefined,
+          },
+        });
+        if (r && typeof r === "object" && "ok" in r && r.ok === false) {
+          // Still show confirm — instructions are also on-screen
+          console.warn("[forgot-app-password] email", r);
+        }
+      } catch (e) {
+        console.warn("[forgot-app-password]", e);
       }
-      setErr(
-        "No email is linked to this account yet. Add an email in Profile / Settings after you sign in, then try again. Email reset will work once Resend is configured.",
-      );
+      setStep("confirm");
+      return;
     } finally {
       setBusy(false);
     }

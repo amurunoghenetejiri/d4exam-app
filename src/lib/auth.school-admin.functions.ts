@@ -68,6 +68,17 @@ export const reviewSchoolApplication = createServerFn({ method: "POST" })
             applicationId: data.applicationId,
             reason: data.notes || "Your application was not approved.",
           });
+          if (email.includes("@")) {
+            try {
+              const { sendSchoolApplicationRejectedEmail } = await import("@/lib/email.server");
+              void sendSchoolApplicationRejectedEmail({
+                to: email,
+                applicantName: String(app.applicant_name || "Applicant"),
+                schoolName,
+                reason: data.notes || null,
+              });
+            } catch { /* ignore */ }
+          }
         } else if (data.decision === "more_information_required") {
           const { notifyApplicantNeedsChanges } = await import("@/lib/notify-applicants");
           void notifyApplicantNeedsChanges({

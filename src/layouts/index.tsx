@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouterState } from "@tanstack/react-router";
 import { Monitor } from "lucide-react";
 import { AppShell } from "@/components/layout/AppShell";
@@ -62,14 +62,60 @@ export function SuperAdminLayout({ children }: { children: ReactNode }) {
   );
 }
 
-/** Mobile ↔ desktop viewport toggle for Super Admin only (does not affect other roles). */
+
+function DesktopScaledFrame({
+  children,
+  scale,
+  desktopWidth,
+}: {
+  children: ReactNode;
+  scale: number;
+  desktopWidth: number;
+}) {
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const measure = () => {
+      setHeight(el.scrollHeight * scale);
+    };
+    measure();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [scale, children]);
+
+  return (
+    <div className="w-full overflow-x-hidden" style={{ height: height ?? "auto" }}>
+      <div
+        ref={innerRef}
+        style={{
+          width: desktopWidth,
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Super Admin only: desktop layout on a phone without horizontal zoom.
+ * Renders the desktop shell at 1100px logical width, then CSS-scales it
+ * down to fit the device width (Chrome-like "desktop site", fit-to-screen).
+ */
 function SuperAdminDesktopShell({ children }: { children: ReactNode }) {
   const [desktop, setDesktop] = useState(false);
+  const [scale, setScale] = useState(1);
+  const DESKTOP_W = 1100;
 
   useEffect(() => {
     try {
-      const v = localStorage.getItem("d4_sa_desktop_view");
-      if (v === "1") setDesktop(true);
+      if (localStorage.getItem("d4_sa_desktop_view") === "1") setDesktop(true);
     } catch {
       /* ignore */
     }
@@ -85,34 +131,55 @@ function SuperAdminDesktopShell({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     if (desktop) {
       root.classList.add("sa-desktop-view");
-      // Force a desktop-like min width so layout expands on phones
-      root.style.setProperty("--sa-desktop-min", "1100px");
+      root.style.overflowX = "hidden";
     } else {
       root.classList.remove("sa-desktop-view");
-      root.style.removeProperty("--sa-desktop-min");
+      root.style.overflowX = "";
     }
     return () => {
       root.classList.remove("sa-desktop-view");
-      root.style.removeProperty("--sa-desktop-min");
+      root.style.overflowX = "";
+    };
+  }, [desktop]);
+
+  useEffect(() => {
+    if (!desktop) {
+      setScale(1);
+      return;
+    }
+    const update = () => {
+      const w = typeof window !== "undefined" ? window.innerWidth : DESKTOP_W;
+      // Fit full desktop layout into the phone width (never larger than 1)
+      setScale(Math.min(1, w / DESKTOP_W));
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
     };
   }, [desktop]);
 
   return (
-    <div
-      className={desktop ? "min-w-[1100px] origin-top-left" : undefined}
-      style={desktop ? { minWidth: "1100px" } : undefined}
-    >
+    <div className="relative w-full">
       <button
         type="button"
         onClick={() => setDesktop((v) => !v)}
         title={desktop ? "Switch to mobile view" : "Switch to desktop view"}
         aria-pressed={desktop}
-        className="fixed bottom-20 right-3 z-[60] inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg transition hover:bg-slate-50 md:bottom-6 md:right-6"
+        className="fixed bottom-20 right-3 z-[70] inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg transition hover:bg-slate-50 md:bottom-6 md:right-6"
       >
         <Monitor className="h-5 w-5" aria-hidden />
         <span className="sr-only">{desktop ? "Mobile view" : "Desktop view"}</span>
       </button>
-      {children}
+      {desktop ? (
+        <DesktopScaledFrame scale={scale} desktopWidth={DESKTOP_W}>
+          {children}
+        </DesktopScaledFrame>
+      ) : (
+        children
+      )}
     </div>
   );
 }

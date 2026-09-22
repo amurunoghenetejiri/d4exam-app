@@ -1,4 +1,7 @@
-import { notifySchoolApplicationReceived } from "@/lib/email-notify.functions";
+import {
+  notifySchoolApplicationReceived,
+  notifySuperAdminsApplicationEmail,
+} from "@/lib/email-notify.functions";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { PublicLayout } from "@/components/layout/PublicLayout";
@@ -122,19 +125,31 @@ function Page() {
     }
     setLoading(true);
     try {
-      let logoUrl: string | null = logoPreview && logoPreview.startsWith("data:") ? logoPreview : null;
+            let logoUrl: string | null =
+        logoPreview && logoPreview.startsWith("data:") ? logoPreview : null;
       if (logoFile) {
         try {
-          const uploaded = await uploadSchoolLogo({ file: logoFile, folder: `applications/${Date.now()}` });
+          const uploaded = await uploadSchoolLogo({
+            file: logoFile,
+            folder: `applications/${Date.now()}`,
+          });
           if (uploaded?.url) logoUrl = uploaded.url;
         } catch (e) {
           console.warn("[school-application] logo upload", e);
         }
+        // Keep client preview as last resort so full applications are not blocked
+        if (!logoUrl && logoPreview?.startsWith("data:")) {
+          logoUrl = logoPreview;
+        }
         if (!logoUrl && !isTrial) {
-          setError("Could not save the school logo.");
+          setError(
+            "Could not save the school logo. Try a smaller PNG/JPG (under 2MB), then submit again.",
+          );
           setLoading(false);
           return;
         }
+      }
+
       }
       const trialHours = 48;
       const trialEndsAt = isTrial ? new Date(Date.now() + trialHours * 60 * 60 * 1000).toISOString() : null;
@@ -188,7 +203,22 @@ function Page() {
         localStorage.removeItem(DRAFT_KEY);
       } catch { /* ignore */ }
       try {
-        void notifySuperAdminsOfApplication(schoolName.trim() + (isTrial ? " (Trial/Demo)" : ""), data.id as string, savedCode);
+        void notifySuperAdminsOfApplication(
+          schoolName.trim() + (isTrial ? " (Trial/Demo)" : ""),
+          data.id as string,
+          savedCode,
+        );
+      } catch { /* ignore */ }
+      try {
+        void notifySuperAdminsApplicationEmail({
+          data: {
+            schoolName: schoolName.trim() + (isTrial ? " (Trial/Demo)" : ""),
+            trackingCode: savedCode,
+            applicantName: applicantName.trim() || undefined,
+            applicantEmail: (applicantEmail.trim() || officialEmail.trim()).toLowerCase() || undefined,
+            applicationId: data.id as string,
+          },
+        });
       } catch { /* ignore */ }
       try {
         const to = (applicantEmail.trim() || officialEmail.trim()).toLowerCase();
