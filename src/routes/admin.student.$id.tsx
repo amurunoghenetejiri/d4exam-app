@@ -182,7 +182,7 @@ function Page() {
     },
   });
 
-  const s = studentQ.data;
+  const s = studentQ.data as Record<string, unknown> | null | undefined;
   const name =
     ((s?.profiles as { full_name?: string } | null)?.full_name as string | null)?.trim() ||
     (s?.matric_number as string | null) ||

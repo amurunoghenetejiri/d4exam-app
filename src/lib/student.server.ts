@@ -203,11 +203,12 @@ export const getSchoolDashboardCounts = createServerFn({ method: "POST" })
       (profile?.school_id && String(profile.school_id) === schoolId);
     if (!allowed) throw new Error("Forbidden");
 
-    const [students, teachers, officers, courses] = await Promise.all([
+    const [students, teachers, officers, courses, examinations] = await Promise.all([
       supabaseAdmin.from("students").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
       supabaseAdmin.from("teachers").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
       supabaseAdmin.from("examination_officers").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
       supabaseAdmin.from("courses").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
+      supabaseAdmin.from("examinations").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
     ]);
 
     return {
@@ -215,6 +216,7 @@ export const getSchoolDashboardCounts = createServerFn({ method: "POST" })
       teachers: teachers.count ?? 0,
       officers: officers.count ?? 0,
       courses: courses.count ?? 0,
+      examinations: examinations.count ?? 0,
     };
   });
 

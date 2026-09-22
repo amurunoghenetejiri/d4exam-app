@@ -163,7 +163,7 @@ function HomePage() {
                 className="h-11 shrink-0 rounded-full border-white/40 bg-white/10 px-4 text-sm font-semibold text-white hover:bg-white/20 hover:text-white sm:h-12 sm:px-7 sm:text-base"
                 asChild
               >
-                <Link to="/school-application?type=trial">Start Trial / Demo</Link>
+                <Link to="/school-application" search={{ type: "trial" }}>Start Trial / Demo</Link>
               </Button>
             </div>
             <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-200">
@@ -309,7 +309,7 @@ function HomePage() {
                 <Link to="/school-application">Apply — Full school</Link>
               </Button>
               <Button size="lg" variant="outline" className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold sm:h-12 sm:px-6 sm:text-base" asChild>
-                <Link to="/school-application?type=trial">Start Trial / Demo</Link>
+                <Link to="/school-application" search={{ type: "trial" }}>Start Trial / Demo</Link>
               </Button>
             </div>
           </div>

@@ -395,7 +395,7 @@ export async function switchToAccount(
     updateAccountTokens(targetId, access, refresh);
     setActiveAccountId(targetId);
     injectSessionIntoStorage(access, refresh, user);
-    if (account.role) seedPendingLoginRole(account.role);
+    if (account?.role) seedPendingLoginRole(account.role);
     // Best-effort setSession (ignore result — storage injection is the source of truth)
     void supabase.auth
       .setSession({ access_token: access, refresh_token: refresh })
