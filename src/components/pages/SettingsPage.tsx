@@ -381,6 +381,9 @@ function SchoolIdentityCard() {
     setBusy(true);
     try {
       const { url } = await uploadSchoolLogo({ file, folder: schoolId });
+      if (!url || !String(url).trim()) {
+        throw new Error("Upload failed. Try a smaller PNG or JPG (under 2MB).");
+      }
       await updateSchoolLogoUrl(schoolId, url);
       await refetch();
       await qc.invalidateQueries({ queryKey: ["school-identity"] });

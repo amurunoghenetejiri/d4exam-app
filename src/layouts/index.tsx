@@ -168,7 +168,7 @@ function SuperAdminDesktopShell({ children }: { children: ReactNode }) {
         onClick={() => setDesktop((v) => !v)}
         title={desktop ? "Switch to mobile view" : "Switch to desktop view"}
         aria-pressed={desktop}
-        className="fixed bottom-20 right-3 z-[70] inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-lg transition hover:bg-slate-50 md:bottom-6 md:right-6"
+        className={`fixed bottom-20 right-3 z-[70] inline-flex h-11 w-11 items-center justify-center rounded-full border shadow-lg transition md:bottom-6 md:right-6 ${desktop ? "border-primary bg-primary text-white hover:bg-primary/90" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
       >
         <Monitor className="h-5 w-5" aria-hidden />
         <span className="sr-only">{desktop ? "Mobile view" : "Desktop view"}</span>

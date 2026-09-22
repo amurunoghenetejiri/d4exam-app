@@ -192,3 +192,31 @@ export async function needsAppUnlockScreen(userId: string | null | undefined): P
 
 // silence unused in tree-shaking
 void isNativeShell;
+
+
+const RESET_META_KEY = "d4_app_unlock_reset";
+
+export type AppUnlockResetMeta = {
+  token: string;
+  exp: number;
+  userId: string;
+};
+
+export function makeResetToken(): string {
+  const a = new Uint8Array(24);
+  crypto.getRandomValues(a);
+  return Array.from(a)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function clearAppUnlockEverywhere(userId: string): Promise<void> {
+  await clearLocal();
+  try {
+    const { supabase } = await import("@/integrations/supabase/client");
+    await supabase.auth.updateUser({ data: { [META_KEY]: null, [RESET_META_KEY]: null } });
+  } catch {
+    /* ignore */
+  }
+  void userId;
+}

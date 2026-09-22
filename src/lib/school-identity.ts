@@ -230,9 +230,11 @@ export async function uploadSchoolLogo(opts: {
 }
 
 export async function updateSchoolLogoUrl(schoolId: string, logoUrl: string) {
+  const url = String(logoUrl || "").trim();
+  if (!url) throw new Error("No logo URL to save");
   const { error } = await supabase
     .from("schools")
-    .update({ logo_url: logoUrl, updated_at: new Date().toISOString() } as never)
+    .update({ logo_url: url, updated_at: new Date().toISOString() } as never)
     .eq("id", schoolId);
   if (error) throw new Error(error.message || "Could not save logo to school record");
 }

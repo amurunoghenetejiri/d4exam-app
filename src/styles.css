@@ -554,3 +554,25 @@ html.d4-compact-tables [data-d4-row],
 html.d4-compact-tables .rounded-xl.border.bg-white {
   /* list cards stay readable */
 }
+
+
+/* Super Admin "desktop mode" on phones — full sidebar layout like laptop */
+html.sa-desktop-view .sa-sidebar {
+  display: flex !important;
+}
+html.sa-desktop-view .sa-mobile-menu {
+  display: none !important;
+}
+html.sa-desktop-view header.d4-app-topbar {
+  left: 16rem !important;
+}
+html.sa-desktop-view .sa-main {
+  padding-left: 16rem !important;
+}
+html.sa-desktop-view .sa-bottom-nav,
+html.sa-desktop-view .d4-app-bottom-nav {
+  display: none !important;
+}
+html.sa-desktop-view .sa-main main {
+  padding-bottom: 2rem !important;
+}

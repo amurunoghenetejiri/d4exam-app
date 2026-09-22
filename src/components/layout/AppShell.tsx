@@ -392,7 +392,7 @@ export function AppShell({
       <NetworkBanner />
       <Watermark opacity={0.08} size="xl" className="pointer-events-none lg:left-64" />
 
-      <aside className="fixed inset-y-0 left-0 z-40 hidden h-dvh max-h-dvh w-64 flex-col bg-[#0b1b3a] lg:flex">
+      <aside className="sa-sidebar fixed inset-y-0 left-0 z-40 hidden h-dvh max-h-dvh w-64 flex-col bg-[#0b1b3a] lg:flex">
         <div className="flex h-[4.5rem] shrink-0 items-center border-b border-white/10 px-4">
           <PortalBrand
             isSchoolPortal={isSchoolPortal}
@@ -432,7 +432,7 @@ export function AppShell({
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-9 w-9 shrink-0 border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
+                  className="sa-mobile-menu h-9 w-9 shrink-0 border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
                   aria-label="Open menu"
                 >
                   <Menu className="h-5 w-5" />
@@ -603,16 +603,17 @@ export function AppShell({
         </div>
       </header>
 
-      <div className="relative z-10 d4-shell-main-offset lg:pl-64" style={{ paddingTop: "calc(3rem + env(safe-area-inset-top, 0px))" }}>
+      <div className="sa-main relative z-10 d4-shell-main-offset lg:pl-64" style={{ paddingTop: "calc(3rem + env(safe-area-inset-top, 0px))" }}>
         <main className="mx-auto w-full max-w-[1200px] px-3 pb-28 pt-4 sm:px-6 sm:pt-6 lg:max-w-[1400px] lg:px-8 lg:pb-12 lg:pt-8 xl:max-w-[1480px]">
           <div className="min-w-0 w-full">{children}</div>
         </main>
       </div>
 
+      {/* bottom nav hidden in sa-desktop-view via CSS */}
       {config.bottomNav && (
         <nav
           className={cn(
-            "d4-app-bottom-nav fixed inset-x-0 bottom-0 z-40 lg:hidden",
+            "sa-bottom-nav d4-app-bottom-nav fixed inset-x-0 bottom-0 z-40 lg:hidden",
             "border-t border-white/10 bg-[#0b1b3a]",
             "pb-[env(safe-area-inset-bottom,0px)]",
             "shadow-[0_-4px_16px_rgba(11,27,58,0.35)]",

@@ -142,7 +142,7 @@ function Page() {
               return (
                 <li
                   key={s.id}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm transition hover:border-primary/30"
+                  className="relative z-0 overflow-visible rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm transition hover:border-primary/30"
                 >
                   <div className="flex items-center gap-3">
                     <SchoolLogo
@@ -165,7 +165,7 @@ function Page() {
                         {dept} departments · {stu} students
                       </p>
                     </div>
-                    <Button size="sm" className="shrink-0 font-semibold" asChild>
+                    <Button size="sm" className="relative z-10 shrink-0 font-semibold shadow-sm" asChild>
                       <Link to="/super-admin/schools/$id" params={{ id: s.id }}>
                         Open <ChevronRight className="ml-1 h-4 w-4" />
                       </Link>

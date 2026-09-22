@@ -87,6 +87,28 @@ export const reviewSchoolApplication = createServerFn({ method: "POST" })
             applicationId: data.applicationId,
             reason: data.notes || "Please update your application with the requested information.",
           });
+          if (email.includes("@")) {
+            try {
+              const { sendSchoolApplicationNeedsInfoEmail } = await import("@/lib/email.server");
+              void sendSchoolApplicationNeedsInfoEmail({
+                to: email,
+                applicantName: String(app.applicant_name || "Applicant"),
+                schoolName,
+                reason: data.notes || null,
+              });
+            } catch { /* ignore */ }
+          }
+        } else if (data.decision === "under_review") {
+          if (email.includes("@")) {
+            try {
+              const { sendSchoolApplicationUnderReviewEmail } = await import("@/lib/email.server");
+              void sendSchoolApplicationUnderReviewEmail({
+                to: email,
+                applicantName: String(app.applicant_name || "Applicant"),
+                schoolName,
+              });
+            } catch { /* ignore */ }
+          }
         }
       } catch {
         /* best-effort */

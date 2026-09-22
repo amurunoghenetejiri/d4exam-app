@@ -9,6 +9,8 @@ import { ArrowLeft, Mail, Shield } from "lucide-react";
 import { useSessionUser } from "@/lib/session";
 import { setFingerprintLocked } from "@/lib/fingerprint-lock";
 import { notifyAppPasswordHelp } from "@/lib/email-notify.functions";
+import { requestAppUnlockResetEmail } from "@/lib/app-unlock-reset.functions";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/forgot-app-password")({
   head: () => ({
@@ -63,15 +65,32 @@ function ForgotAppPasswordPage() {
       setEmail(targetEmail);
       setEmailLocked(true);
       try {
-        const r = await notifyAppPasswordHelp({
+        // Prefer real reset link email (token + /reset-app-password)
+        let userId: string | undefined = session?.userId;
+        if (!userId) {
+          // Best-effort: if already signed in under the hood
+          try {
+            const { data: u } = await supabase.auth.getUser();
+            userId = u.user?.id;
+          } catch { /* ignore */ }
+        }
+        const r = await requestAppUnlockResetEmail({
           data: {
             email: targetEmail,
             fullName: fullName.trim() || session?.fullName || undefined,
+            userId,
           },
         });
-        if (r && typeof r === "object" && "ok" in r && r.ok === false) {
-          // Still show confirm — instructions are also on-screen
-          console.warn("[forgot-app-password] email", r);
+        if (!r?.ok) {
+          // Fallback instructional email
+          try {
+            await notifyAppPasswordHelp({
+              data: {
+                email: targetEmail,
+                fullName: fullName.trim() || session?.fullName || undefined,
+              },
+            });
+          } catch { /* ignore */ }
         }
       } catch (e) {
         console.warn("[forgot-app-password]", e);
@@ -133,7 +152,7 @@ function ForgotAppPasswordPage() {
               </div>
               <p className="text-base font-semibold text-white">Reset link ready for your email</p>
               <p className="text-sm text-slate-400">
-                A password reset link will be sent to:
+                If an account matches, a reset link was sent to:
               </p>
               <p className="rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 font-mono text-sm font-semibold text-sky-300">
                 {email}

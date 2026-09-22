@@ -41,9 +41,16 @@ function brandedHtml(opts: {
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 12px;">
     <tr><td align="center">
       <table width="100%" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
-        <tr><td style="background:linear-gradient(135deg,#0b1b3a,#122548);padding:20px 24px;">
-          <div style="color:#fff;font-size:20px;font-weight:800;letter-spacing:0.02em;">D4EXAM</div>
-          <div style="color:#93c5fd;font-size:12px;margin-top:4px;">Smart. Secure. Seamless.</div>
+        <tr><td style="background:linear-gradient(135deg,#0b1b3a,#122548);padding:18px 24px;">
+          <table cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:middle;padding-right:12px;">
+              <img src="https://d4exam.name.ng/logo.png" width="40" height="40" alt="D4EXAM" style="display:block;border-radius:8px;background:#fff;object-fit:contain;" />
+            </td>
+            <td style="vertical-align:middle;">
+              <div style="color:#fff;font-size:20px;font-weight:800;letter-spacing:0.02em;">D4EXAM</div>
+              <div style="color:#93c5fd;font-size:12px;margin-top:2px;">Smart. Secure. Seamless.</div>
+            </td>
+          </tr></table>
         </td></tr>
         <tr><td style="padding:24px;">
           <h1 style="margin:0 0 12px;font-size:18px;color:#0f172a;">${escapeHtml(opts.title)}</h1>
@@ -470,5 +477,85 @@ export async function sendSchoolApplicationRejectedEmail(params: {
     subject,
     html,
     text: `Hello ${params.applicantName}, application for ${params.schoolName} was not approved. ${statusUrl}`,
+  });
+}
+
+
+export async function sendAppUnlockResetLinkEmail(params: {
+  to: string;
+  fullName?: string | null;
+  resetUrl: string;
+}): Promise<SendEmailResult> {
+  const subject = "D4EXAM — Reset your app unlock password";
+  const html = brandedHtml({
+    title: "Reset app unlock password",
+    greeting: `Hello ${params.fullName || "there"},`,
+    paragraphs: [
+      "We received a request to reset the D4EXAM app unlock password for an account linked to this email.",
+      "This is separate from your school login password. The app unlock password is used when you reopen D4EXAM on your device.",
+      "Click the button below within 1 hour to choose a new app unlock password.",
+      "If you did not request this, you can ignore this email.",
+    ],
+    buttonLabel: "Reset app unlock password",
+    buttonUrl: params.resetUrl,
+    footerNote: "Link expires in 1 hour. For school login password, use Forgot password on the sign-in page.",
+  });
+  return sendEmail({
+    to: params.to,
+    subject,
+    html,
+    text: `Reset your D4EXAM app unlock password: ${params.resetUrl}`,
+  });
+}
+
+export async function sendSchoolApplicationNeedsInfoEmail(params: {
+  to: string;
+  applicantName: string;
+  schoolName: string;
+  reason?: string | null;
+}): Promise<SendEmailResult> {
+  const statusUrl = appUrl("/application-status");
+  const subject = `D4EXAM — More information needed: ${params.schoolName}`;
+  const html = brandedHtml({
+    title: "More information required",
+    greeting: `Hello ${params.applicantName || "Applicant"},`,
+    paragraphs: [
+      `Super Admin requested more information about your school application for "${params.schoolName}".`,
+      params.reason ? `Note: ${params.reason}` : "Please review your application details and update as needed.",
+      "Use your tracking code on the application status page, then reply through Support if you need help.",
+    ],
+    buttonLabel: "Open application status",
+    buttonUrl: statusUrl,
+  });
+  return sendEmail({
+    to: params.to,
+    subject,
+    html,
+    text: `More information needed for ${params.schoolName}. ${params.reason || ""} ${statusUrl}`,
+  });
+}
+
+export async function sendSchoolApplicationUnderReviewEmail(params: {
+  to: string;
+  applicantName: string;
+  schoolName: string;
+}): Promise<SendEmailResult> {
+  const statusUrl = appUrl("/application-status");
+  const subject = `D4EXAM — Application under review: ${params.schoolName}`;
+  const html = brandedHtml({
+    title: "Application under review",
+    greeting: `Hello ${params.applicantName || "Applicant"},`,
+    paragraphs: [
+      `Your school application for "${params.schoolName}" is now under review.`,
+      "You will receive another email when Super Admin approves it, requests changes, or updates the status.",
+    ],
+    buttonLabel: "Check application status",
+    buttonUrl: statusUrl,
+  });
+  return sendEmail({
+    to: params.to,
+    subject,
+    html,
+    text: `Your application for ${params.schoolName} is under review. ${statusUrl}`,
   });
 }
