@@ -627,7 +627,9 @@ export interface FileRoutesByFullPath {
   '/super-admin/reports': typeof SuperAdminReportsRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
   '/super-admin/settings': typeof SuperAdminSettingsRoute
-  '/super-admin/subscriptions' | '/super-admin/services' | '/super-admin/messages': typeof SuperAdminSubscriptionsRoute
+  '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
+  '/super-admin/services': typeof SuperAdminServicesRoute
+  '/super-admin/messages': typeof SuperAdminMessagesRoute
   '/super-admin/users': typeof SuperAdminUsersRoute
   '/teacher/courses': typeof TeacherCoursesRoute
   '/teacher/exam-security': typeof TeacherExamSecurityRoute
@@ -712,7 +714,9 @@ export interface FileRoutesByTo {
   '/super-admin/profile': typeof SuperAdminProfileRoute
   '/super-admin/reports': typeof SuperAdminReportsRoute
   '/super-admin/settings': typeof SuperAdminSettingsRoute
-  '/super-admin/subscriptions' | '/super-admin/services' | '/super-admin/messages': typeof SuperAdminSubscriptionsRoute
+  '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
+  '/super-admin/services': typeof SuperAdminServicesRoute
+  '/super-admin/messages': typeof SuperAdminMessagesRoute
   '/super-admin/users': typeof SuperAdminUsersRoute
   '/teacher/courses': typeof TeacherCoursesRoute
   '/teacher/exam-security': typeof TeacherExamSecurityRoute
@@ -804,7 +808,9 @@ export interface FileRoutesById {
   '/super-admin/reports': typeof SuperAdminReportsRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
   '/super-admin/settings': typeof SuperAdminSettingsRoute
-  '/super-admin/subscriptions' | '/super-admin/services' | '/super-admin/messages': typeof SuperAdminSubscriptionsRoute
+  '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
+  '/super-admin/services': typeof SuperAdminServicesRoute
+  '/super-admin/messages': typeof SuperAdminMessagesRoute
   '/super-admin/users': typeof SuperAdminUsersRoute
   '/teacher/courses': typeof TeacherCoursesRoute
   '/teacher/exam-security': typeof TeacherExamSecurityRoute
@@ -898,7 +904,9 @@ export interface FileRouteTypes {
     | '/super-admin/reports'
     | '/super-admin/schools'
     | '/super-admin/settings'
-    | '/super-admin/subscriptions' | '/super-admin/services' | '/super-admin/messages'
+    | '/super-admin/subscriptions'
+    | '/super-admin/services'
+    | '/super-admin/messages'
     | '/super-admin/users'
     | '/teacher/courses'
     | '/teacher/exam-security'
@@ -984,7 +992,9 @@ export interface FileRouteTypes {
     | '/super-admin/profile'
     | '/super-admin/reports'
     | '/super-admin/settings'
-    | '/super-admin/subscriptions' | '/super-admin/services' | '/super-admin/messages'
+    | '/super-admin/subscriptions'
+    | '/super-admin/services'
+    | '/super-admin/messages'
     | '/super-admin/users'
     | '/teacher/courses'
     | '/teacher/exam-security'
@@ -1076,7 +1086,9 @@ export interface FileRouteTypes {
     | '/super-admin/reports'
     | '/super-admin/schools'
     | '/super-admin/settings'
-    | '/super-admin/subscriptions' | '/super-admin/services' | '/super-admin/messages'
+    | '/super-admin/subscriptions'
+    | '/super-admin/services'
+    | '/super-admin/messages'
     | '/super-admin/users'
     | '/teacher/courses'
     | '/teacher/exam-security'
@@ -1598,17 +1610,17 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperAdminSettingsRouteImport
       parentRoute: typeof SuperAdminRoute
     }
-    '/super-admin/subscriptions' | '/super-admin/services' | '/super-admin/messages': {
-      id: '/super-admin/subscriptions' | '/super-admin/services' | '/super-admin/messages'
+    '/super-admin/subscriptions': {
+      id: '/super-admin/subscriptions'
       path: '/subscriptions'
-      fullPath: '/super-admin/subscriptions' | '/super-admin/services' | '/super-admin/messages'
+      fullPath: '/super-admin/subscriptions'
       preLoaderRoute: typeof SuperAdminSubscriptionsRouteImport
       parentRoute: typeof SuperAdminRoute
     }
-    '/super-admin/services' | '/super-admin/messages': {
-      id: '/super-admin/services' | '/super-admin/messages'
+    '/super-admin/services': {
+      id: '/super-admin/services'
       path: '/services'
-      fullPath: '/super-admin/services' | '/super-admin/messages'
+      fullPath: '/super-admin/services'
       preLoaderRoute: typeof SuperAdminServicesRouteImport
       parentRoute: typeof SuperAdminRoute
     }
