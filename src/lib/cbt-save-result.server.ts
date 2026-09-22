@@ -4,6 +4,7 @@
  */
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { Json } from "@/integrations/supabase/types";
 
 export type SaveCbtResultServerInput = {
   examId: string;
@@ -27,8 +28,9 @@ export type SaveCbtResultServerInput = {
 
 export const saveCbtResultServer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
+  .inputValidator((data: SaveCbtResultServerInput) => data)
   .handler(async ({ data, context }): Promise<{ resultId: string | null; error: string | null }> => {
-    const input = data as SaveCbtResultServerInput;
+    const input = data;
     if (!input?.examId || !input?.studentId || !input?.schoolId) {
       return { resultId: null, error: "Missing exam, student, or school id." };
     }
@@ -173,8 +175,9 @@ export const saveCbtResultServer = createServerFn({ method: "POST" })
 /** Fetch a student's own result by result id or exam id (service role). */
 export const getMyCbtResultServer = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ data, context }): Promise<{ result: Record<string, unknown> | null; error: string | null }> => {
-    const input = data as { id: string; studentId?: string };
+  .inputValidator((data: { id: string; studentId?: string }) => data)
+  .handler(async ({ data, context }): Promise<{ result: Record<string, Json> | null; error: string | null }> => {
+    const input = data;
     if (!input?.id) return { result: null, error: "Missing id" };
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -210,7 +213,7 @@ export const getMyCbtResultServer = createServerFn({ method: "POST" })
       .eq("student_id", studentId)
       .eq("id", input.id)
       .maybeSingle();
-    if (byId.data) return { result: byId.data as Record<string, unknown>, error: null };
+    if (byId.data) return { result: byId.data as Record<string, Json>, error: null };
 
     const byExam = await supabaseAdmin
       .from("results")
@@ -220,7 +223,7 @@ export const getMyCbtResultServer = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (byExam.data) return { result: byExam.data as Record<string, unknown>, error: null };
+    if (byExam.data) return { result: byExam.data as Record<string, Json>, error: null };
 
     return { result: null, error: null };
   });

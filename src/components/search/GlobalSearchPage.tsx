@@ -423,15 +423,15 @@ async function runSearch(
     try {
       const { data: schools } = await supabase
         .from("schools")
-        .select("id, name, code")
-        .or(`name.ilike.${JSON.stringify(pattern)},code.ilike.${JSON.stringify(pattern)}`)
+        .select("id, name, school_code")
+        .or(`name.ilike.${JSON.stringify(pattern)},school_code.ilike.${JSON.stringify(pattern)}`)
         .limit(8);
       for (const s of schools ?? []) {
         hits.push({
           id: String(s.id),
           kind: "school",
           title: String(s.name || "School"),
-          subtitle: s.code ? `Code: ${s.code}` : undefined,
+          subtitle: s.school_code ? `Code: ${s.school_code}` : undefined,
           href: `/super-admin/schools/${s.id}`,
         });
       }
@@ -556,15 +556,6 @@ async function runSearch(
         .eq("school_id", schoolId)
         .maybeSingle();
       sid = byProfile.data?.id ? String(byProfile.data.id) : null;
-      if (!sid) {
-        const byUser = await supabase
-          .from("students")
-          .select("id")
-          .eq("user_id", userId)
-          .eq("school_id", schoolId)
-          .maybeSingle();
-        sid = byUser.data?.id ? String(byUser.data.id) : null;
-      }
       if (sid) {
         const { data: results } = await supabase
           .from("results")
@@ -657,15 +648,15 @@ async function runSearch(
     try {
       const { data: teachers } = await supabase
         .from("teachers")
-        .select("id, full_name, staff_id")
+        .select("id, staff_id, profiles(full_name)")
         .eq("school_id", schoolId)
-        .or(`full_name.ilike.${JSON.stringify(pattern)},staff_id.ilike.${JSON.stringify(pattern)}`)
+        .ilike("staff_id", pattern)
         .limit(8);
       for (const te of teachers ?? []) {
         hits.push({
           id: String(te.id),
           kind: "teacher",
-          title: String(te.full_name || "Teacher"),
+          title: String((te.profiles as { full_name?: string | null } | null)?.full_name || "Teacher"),
           subtitle: te.staff_id ? `Staff: ${te.staff_id}` : undefined,
           href: "/admin/teachers",
         });

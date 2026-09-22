@@ -354,17 +354,6 @@ async function courseStudentAuthIds(courseId: string | null | undefined, schoolI
         const id = (r as { student_id?: string }).student_id;
         if (id) sids.push(id);
       }
-      if (!sids.length) {
-        const { data: enroll } = await supabase
-          .from("course_enrollments")
-          .select("student_id")
-          .eq("course_id", courseId)
-          .limit(3000);
-        for (const r of enroll ?? []) {
-          const id = (r as { student_id?: string }).student_id;
-          if (id) sids.push(id);
-        }
-      }
       if (sids.length) return studentIdsToAuthUserIds([...new Set(sids)]);
     }
     const { data: roles } = await supabase
@@ -396,9 +385,11 @@ async function courseStudentAuthIds(courseId: string | null | undefined, schoolI
 export async function notifyOfficersStudentResultPending(opts: {
   schoolId: string;
   examId?: string | null;
-  examTitle: string;
-  studentName: string;
+  examTitle?: string;
+  studentName?: string;
   studentId?: string | null;
+  resultId?: string | null;
+  published?: boolean;
   courseCode?: string | null;
   courseTitle?: string | null;
 }): Promise<void> {
@@ -407,8 +398,8 @@ export async function notifyOfficersStudentResultPending(opts: {
     if (!officers.length) return;
     const link = "/officer/results";
     const copy = Msg.officerResultAwaitingReview({
-      studentName: opts.studentName,
-      examTitle: opts.examTitle,
+      studentName: opts.studentName ?? "A student",
+      examTitle: opts.examTitle ?? "Examination",
       courseCode: opts.courseCode,
       courseTitle: opts.courseTitle,
       link,
@@ -423,7 +414,7 @@ export async function notifyOfficersStudentResultPending(opts: {
         link: templateLink(copy, link),
         actionLabel: copy.action?.label ?? "REVIEW RESULT",
         entityType: "examination",
-        entityId: opts.examId || opts.examTitle,
+        entityId: opts.examId || opts.examTitle || "",
         dedupeMinutes: 15,
       })),
     );
@@ -564,6 +555,7 @@ export async function notifyStudentOfficerWarning(opts: {
   studentId?: string | null;
   schoolId?: string | null;
   examId?: string | null;
+  examTitle?: string | null;
   message: string;
   violationCount?: number | null;
   studentName?: string | null;
@@ -1483,8 +1475,11 @@ export async function notifyOfficersStudentViolation(opts: {
   courseCode?: string | null;
   courseTitle?: string | null;
   studentName?: string | null;
+  studentId?: string | null;
   eventType?: string | null;
   detail?: string | null;
+  description?: string | null;
+  severity?: string | null;
 }): Promise<void> {
   try {
     const officers = await listOfficerUserIds(opts.schoolId);

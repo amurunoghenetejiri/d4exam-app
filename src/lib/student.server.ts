@@ -142,17 +142,6 @@ export const getMyStudentContext = createServerFn({ method: "GET" })
     } catch {
       courses = [];
     }
-    if (!courses.length) {
-      try {
-        const { data: en } = await db
-          .from("course_enrollments")
-          .select("course_id, courses(id, code, name)")
-          .eq("student_id", student.id as string);
-        courses = mapCourseRows(en ?? []);
-      } catch {
-        /* ignore */
-      }
-    }
     // Students self-enrol from Courses page — do not auto-map dept courses as enrolled.
     {
       const seen = new Set<string>();
@@ -214,11 +203,12 @@ export const getSchoolDashboardCounts = createServerFn({ method: "POST" })
       (profile?.school_id && String(profile.school_id) === schoolId);
     if (!allowed) throw new Error("Forbidden");
 
-    const [students, teachers, officers, courses] = await Promise.all([
+    const [students, teachers, officers, courses, examinations] = await Promise.all([
       supabaseAdmin.from("students").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
       supabaseAdmin.from("teachers").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
       supabaseAdmin.from("examination_officers").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
       supabaseAdmin.from("courses").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
+      supabaseAdmin.from("examinations").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
     ]);
 
     return {
@@ -226,6 +216,7 @@ export const getSchoolDashboardCounts = createServerFn({ method: "POST" })
       teachers: teachers.count ?? 0,
       officers: officers.count ?? 0,
       courses: courses.count ?? 0,
+      examinations: examinations.count ?? 0,
     };
   });
 
@@ -322,21 +313,5 @@ export const enrolStudentInCourse = createServerFn({ method: "POST" })
       };
     }
 
-    // Fallback course_enrollments
-    const { error: enErr } = await db.from("course_enrollments").insert({
-      student_id: studentId,
-      course_id: data.courseId,
-      school_id: schoolId,
-    } as never);
-    if (enErr && !/duplicate|unique/i.test(enErr.message || "")) {
-      throw new Error(scErr.message || enErr.message || "Could not enrol");
-    }
-    return {
-      ok: true as const,
-      course: {
-        id: String(course.id),
-        code: String(course.code || ""),
-        name: String(course.name || ""),
-      },
-    };
+    throw new Error(scErr.message || "Could not enrol");
   });

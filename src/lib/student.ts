@@ -151,18 +151,6 @@ export function useStudentContext() {
             } catch {
               courses = [];
             }
-            if (!courses.length) {
-              try {
-                const { data: en } = await supabase
-                  .from("course_enrollments")
-                  .select("course_id, courses(id, code, name)")
-                  .eq("student_id", studentId)
-                  .limit(300);
-                courses = mapRows(en ?? []);
-              } catch {
-                /* ignore */
-              }
-            }
             const seen = new Set<string>();
             courses = courses.filter((c) => {
               if (seen.has(c.id)) return false;

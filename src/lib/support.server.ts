@@ -44,7 +44,9 @@ function sanitize(s: unknown, max = 4000): string {
     .slice(0, max);
 }
 
-export const submitSupportMessage = createServerFn({ method: "POST" }).handler(
+export const submitSupportMessage = createServerFn({ method: "POST" })
+  .inputValidator((data: Record<string, unknown>) => data)
+  .handler(
   async ({ data }): Promise<{ ok: true; id?: string } | { ok: false; error: string }> => {
     const input = (data || {}) as SupportMessageInput;
     const subject = sanitize(input.subject, 200);

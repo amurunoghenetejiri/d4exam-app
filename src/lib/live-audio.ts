@@ -114,7 +114,7 @@ export function startLiveMicPublisher(opts: {
     const rms = Math.sqrt(sum / down.length);
     if (rms < 0.0012) return;
     const pcm = floatTo16BitPCM(down);
-    const b64 = abToBase64(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength));
+    const b64 = abToBase64(pcm.buffer.slice(pcm.byteOffset, pcm.byteOffset + pcm.byteLength) as ArrayBuffer);
     const payload: LiveMicChunkPayload = {
       attemptId,
       studentId: opts.studentId ?? null,

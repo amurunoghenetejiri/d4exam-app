@@ -316,7 +316,7 @@ function Page() {
           title={active ? "Mark script" : "Select a script"}
           description={
             active
-              ? `${active.students?.full_name || students?.profiles?.full_name || "Student"} · objective auto-score: ${objectiveScore}`
+              ? `${active.students?.full_name || "Student"} · objective auto-score: ${objectiveScore}`
               : "Choose a submitted attempt on the left"
           }
         >

@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { Json } from "@/integrations/supabase/types";
 import { getAppOrigin } from "@/lib/app-url";
 import { createClient } from "@supabase/supabase-js";
 import { createSign } from "node:crypto";
@@ -374,7 +375,7 @@ export const sendTestNotificationToSelf = createServerFn({ method: "POST" })
       role: String(o.role || ""),
     };
   })
-  .handler(async ({ data }: { data: { userId: string; role: string } }) => {
+  .handler(async ({ data }) => {
     if (!data.userId) return { ok: false as const, error: "userId required" };
 
     const link =
@@ -414,7 +415,7 @@ export const sendTestNotificationToSelf = createServerFn({ method: "POST" })
       }
     }
 
-    let push: unknown = { sent: 0, skipped: true, reason: "not attempted" };
+    let push: Json = { sent: 0, skipped: true, reason: "not attempted" };
     try {
       push = await dispatchPushToUser({
         data: {

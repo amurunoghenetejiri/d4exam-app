@@ -144,7 +144,7 @@ function Page() {
         console.warn("[officer-approvals] list", res.error);
         return [] as ExamRow[];
       }
-      const list = (Array.isArray(res.data) ? res.data : []) as ExamRow[];
+      const list = (Array.isArray(res.data) ? res.data : []) as unknown as ExamRow[];
       const rank = (s: string) => {
         const x = (s || "").toLowerCase();
         if (x === "pending_approval") return 0;

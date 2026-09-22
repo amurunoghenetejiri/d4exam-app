@@ -5,7 +5,18 @@ import { mirrorSessionUser } from "@/lib/local-db/mirror";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+type ProfileLite = {
+  id?: string;
+  full_name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  status?: string | null;
+  school_id?: string | null;
+  auth_user_id?: string | null;
+};
+
+async function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -319,8 +330,8 @@ export async function fetchSessionUser(): Promise<SessionUser | null> {
 
   // FAST: RPC + profiles/roles in parallel (~2.5s max)
   let rpcCtx: SessionContextRpc | null = null;
-  let profileByAuth: { data: Record<string, unknown> | null } = { data: null };
-  let profileById: { data: Record<string, unknown> | null } = { data: null };
+  let profileByAuth: { data: ProfileLite | null } = { data: null };
+  let profileById: { data: ProfileLite | null } = { data: null };
   let roleRes: { data: { role: string; school_id: string | null; user_id: string }[] | null } = { data: null };
   try {
     const [rpcData, triple] = await Promise.all([

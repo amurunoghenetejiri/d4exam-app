@@ -149,9 +149,9 @@ function nameFromMetadata(meta: unknown): string {
 
 function pickFeedFrame(
   feedMode: "camera" | "screen" | "both",
-  cam?: { src: string; ts: number } | null,
-  screen?: { src: string; ts: number } | null,
-): { src: string; ts: number } | undefined {
+  cam?: FrameEntry | null,
+  screen?: FrameEntry | null,
+): FrameEntry | undefined {
   if (feedMode === "screen") return screen || undefined;
   if (feedMode === "camera") return cam || undefined;
   return cam || screen || undefined;
@@ -713,7 +713,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
         const { data, error } = await supabase.from("examinations").select(sel).eq("school_id", schoolId!).in("id", ids);
         if (!error) {
           for (const r of data ?? []) {
-            const row = r as { id: string; title?: string | null; courses?: { code?: string; name?: string } | { code?: string; name?: string }[] | null };
+            const row = r as unknown as { id: string; title?: string | null; courses?: { code?: string; name?: string } | { code?: string; name?: string }[] | null };
             const c = Array.isArray(row.courses) ? row.courses[0] : row.courses;
             map[row.id] = { title: String(row.title || "").trim(), courseCode: String(c?.code || "").trim(), courseName: String(c?.name || "").trim() };
           }
@@ -887,7 +887,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
           else if (fs === "none" || fs === "unclear") sev = "warning";
           else sev = "normal";
         }
-        const resolved = studentNamesQ.data?.[String(a.student_id)];
+        const resolved: unknown = studentNamesQ.data?.[String(a.student_id)];
         const byMatricKey = String(a.students?.matric_number || a.students?.student_id || (a.metadata as Record<string, unknown> | null)?.matricNumber || "").trim().toLowerCase();
         const fromMatricMap = byMatricKey ? nameByMatricQ.data?.[`matric:${byMatricKey}`] : undefined;
         const fromIdMap = nameByMatricQ.data?.[String(a.student_id)];

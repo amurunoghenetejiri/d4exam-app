@@ -78,14 +78,16 @@ export function CourseMaterialsPanel({
         session?.userId,
         cacheKey,
         async () => {
-          let { data, error } = await supabase
+          // Optional columns (ocr_text/ocr_status/converted_pdf_url) may not exist on older schemas.
+          const first = await supabase
             .from("course_materials")
-            .select("id, course_id, title, description, material_type, file_url, file_name, file_mime, file_size, uploader_role, uploader_name, uploaded_by, created_at, download_count, tags, ocr_text, ocr_status, converted_pdf_url")
+            .select("id, course_id, title, description, material_type, file_url, file_name, file_mime, file_size, uploader_role, uploader_name, uploaded_by, created_at, download_count, tags, ocr_text, ocr_status, converted_pdf_url" as "*")
             .eq("school_id", schoolId)
             .in("course_id", courseIds)
             .order("created_at", { ascending: false })
             .limit(400);
-          if (error) {
+          let data: unknown[] | null = first.data as unknown[] | null;
+          if (first.error) {
             const retry = await supabase
               .from("course_materials")
               .select("id, course_id, title, description, material_type, file_url, file_name, file_mime, file_size, uploader_role, uploader_name, uploaded_by, created_at")
@@ -94,7 +96,7 @@ export function CourseMaterialsPanel({
               .order("created_at", { ascending: false })
               .limit(400);
             if (retry.error) throw retry.error;
-            data = retry.data;
+            data = retry.data as unknown[] | null;
           }
           return (data ?? []) as MaterialRow[];
         },
@@ -180,11 +182,11 @@ export function CourseMaterialsPanel({
     return { url: data.publicUrl, name: fileName, mime, size: blob.size };
   }
 
-  async function submitUpload() {
-    if (!session?.userId || !schoolId) return toast.error("Sign in required.");
-    if (!courseId) return toast.error("Select a subject/course.");
+  async function submitUpload(): Promise<void> {
+    if (!session?.userId || !schoolId) { toast.error("Sign in required."); return; }
+    if (!courseId) { toast.error("Select a subject/course."); return; }
     const baseTitle = title.trim();
-    if (!baseTitle && !files.length && !description.trim()) return toast.error("Add a title or file.");
+    if (!baseTitle && !files.length && !description.trim()) { toast.error("Add a title or file."); return; }
     setBusy(true); setProgress(8);
     try {
       const rows: Record<string, unknown>[] = [];
@@ -240,22 +242,22 @@ export function CourseMaterialsPanel({
     }
   }
 
-  async function saveEdit() {
+  async function saveEdit(): Promise<void> {
     if (!editItem || !session?.userId) return;
     const { error } = await supabase.from("course_materials").update({
       title: title.trim() || editItem.title, description: description.trim() || null,
       material_type: materialType, tags: tags.trim() || null, course_id: courseId || editItem.course_id,
     } as never).eq("id", editItem.id).eq("uploaded_by", session.userId);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     toast.success("Material updated.");
     setEditItem(null); setUploadOpen(false);
     await qc.invalidateQueries({ queryKey: ["course-materials"] });
   }
 
-  async function remove(id: string) {
+  async function remove(id: string): Promise<void> {
     if (!window.confirm("Delete this material?")) return;
     const { error } = await supabase.from("course_materials").delete().eq("id", id);
-    if (error) return toast.error(error.message);
+    if (error) { toast.error(error.message); return; }
     toast.success("Deleted");
     if (viewer?.id === id) setViewer(null);
     setMenuId(null);
@@ -277,6 +279,23 @@ export function CourseMaterialsPanel({
       toast.error("Download failed");
     }
   }
+
+  async function shareMaterial(m: MaterialRow) {
+    const url = m.file_url || "";
+    if (!url) { toast.error("Nothing to share"); return; }
+    try {
+      const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };
+      if (nav.share) {
+        await nav.share({ title: m.title || "Material", text: m.title || undefined, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copied");
+    } catch {
+      /* user cancelled share */
+    }
+  }
+
 
   function openUpload() {
     setEditItem(null); setTitle(""); setDescription(""); setTags(""); setFiles([]);
@@ -562,7 +581,7 @@ export function CourseMaterialsPanel({
           onClose={() => setViewer(null)}
           onNavigate={(m) => setViewer(m as MaterialRow)}
           onItemPatch={(id, patch) => {
-            setViewer((v) => (v && v.id === id ? { ...v, ...patch } : v));
+            setViewer((v) => (v && v.id === id ? ({ ...v, ...patch } as MaterialRow) : v));
             void qc.invalidateQueries({ queryKey: ["course-materials"] });
           }}
         />
