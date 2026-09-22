@@ -142,17 +142,6 @@ export const getMyStudentContext = createServerFn({ method: "GET" })
     } catch {
       courses = [];
     }
-    if (!courses.length) {
-      try {
-        const { data: en } = await db
-          .from("course_enrollments")
-          .select("course_id, courses(id, code, name)")
-          .eq("student_id", student.id as string);
-        courses = mapCourseRows(en ?? []);
-      } catch {
-        /* ignore */
-      }
-    }
     // Students self-enrol from Courses page — do not auto-map dept courses as enrolled.
     {
       const seen = new Set<string>();
@@ -322,21 +311,5 @@ export const enrolStudentInCourse = createServerFn({ method: "POST" })
       };
     }
 
-    // Fallback course_enrollments
-    const { error: enErr } = await db.from("course_enrollments").insert({
-      student_id: studentId,
-      course_id: data.courseId,
-      school_id: schoolId,
-    } as never);
-    if (enErr && !/duplicate|unique/i.test(enErr.message || "")) {
-      throw new Error(scErr.message || enErr.message || "Could not enrol");
-    }
-    return {
-      ok: true as const,
-      course: {
-        id: String(course.id),
-        code: String(course.code || ""),
-        name: String(course.name || ""),
-      },
-    };
+    throw new Error(scErr.message || "Could not enrol");
   });

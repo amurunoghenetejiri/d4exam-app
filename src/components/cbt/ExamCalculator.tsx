@@ -270,7 +270,7 @@ function evalAtoms(atoms: Atom[], angle: AngleMode, ans: number): number {
         case "deriv": {
           const at = evalAtoms(node.at.length ? node.at : [{ t: "num", v: "0" }], angle, ans);
           const eps = 1e-6;
-          const body = node.body.length ? node.body : [{ t: "num", v: "0" }];
+          const body: Atom[] = node.body.length ? node.body : [{ t: "num", v: "0" }];
           const y1 = evalAtoms(substituteX(body, at + eps), angle, ans);
           const y0 = evalAtoms(substituteX(body, at - eps), angle, ans);
           tokens.push(String((y1 - y0) / (2 * eps)));
