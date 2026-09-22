@@ -177,14 +177,14 @@ function QuestionBankPage() {
       const { data, error } = await supabase
         .from("questions")
         .select(
-          "id, question_text, question_type, marks, status, course_id, correct_answer, options, created_at, courses(code, name)",
+          "id, question_text, question_type, marks, status, course_id, correct_answer, created_at, courses(code, name)",
         )
         .eq("school_id", teacher.schoolId)
         .in("course_id", ids)
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
-      return (data ?? []) as QuestionRow[];
+      return (data ?? []) as unknown as QuestionRow[];
     },
   });
 

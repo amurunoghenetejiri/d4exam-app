@@ -84,7 +84,7 @@ function Page() {
         .order("created_at", { ascending: false })
         .limit(80);
       if (res.error) {
-        res = await supabase
+        res = (await supabase
           .from("examinations")
           .select(basic)
           .eq("school_id", schoolId)
