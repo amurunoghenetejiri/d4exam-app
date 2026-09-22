@@ -36,11 +36,15 @@ export function FingerprintLockCard() {
   useEffect(() => {
     if (!native) return;
     let cancelled = false;
-    void checkFingerprintAvailable().then((a) => {
-      if (!cancelled) setAvailability(a);
-    });
+    // Delay check slightly so Capacitor bridge is ready (server.url cold start)
+    const t = window.setTimeout(() => {
+      void checkFingerprintAvailable().then((a) => {
+        if (!cancelled) setAvailability(a);
+      });
+    }, 600);
     return () => {
       cancelled = true;
+      window.clearTimeout(t);
       if (safetyRef.current != null) {
         window.clearTimeout(safetyRef.current);
         safetyRef.current = null;

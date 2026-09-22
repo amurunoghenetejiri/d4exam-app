@@ -48,6 +48,62 @@ export function NotificationPermissionPrompt() {
   const fired = useRef(false);
   const [busy, setBusy] = useState(false);
 
+
+  // After login: request REAL Android notification permission (POST_NOTIFICATIONS)
+  // once per install — not a fake web dialog.
+  useEffect(() => {
+    if (!isNativeShell()) return;
+    const uid = session?.userId;
+    if (!uid) return;
+    try {
+      if (localStorage.getItem("d4_native_os_notif_asked_v2") === "1") return;
+    } catch {
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        // Let splash / dashboard settle
+        await new Promise((r) => setTimeout(r, 2_500));
+        if (cancelled) return;
+        const { LocalNotifications } = await import("@capacitor/local-notifications");
+        const cur = await LocalNotifications.checkPermissions();
+        if (cur.display === "granted" || cur.display === "denied") {
+          try {
+            localStorage.setItem("d4_native_os_notif_asked_v2", "1");
+          } catch { /* ignore */ }
+          await refreshNativePushPermissionState();
+          return;
+        }
+        // Shows the system Android permission dialog
+        const res = await LocalNotifications.requestPermissions();
+        try {
+          localStorage.setItem("d4_native_os_notif_asked_v2", "1");
+        } catch { /* ignore */ }
+        await refreshNativePushPermissionState();
+        if (res.display === "granted") {
+          toast.success("Notifications enabled");
+          try {
+            const { showD4ExamNativeNotification } = await import("@/native/localNotify");
+            const { notificationsEnabledConfirm } = await import("@/lib/notify-messages");
+            const copy = notificationsEnabledConfirm();
+            await showD4ExamNativeNotification(copy.title, copy.message, "/");
+          } catch { /* ignore */ }
+          // Register push listeners / token path if any
+          if (session?.userId) {
+            void enablePushNotifications(session.userId, session.role, { requestPermission: false });
+          }
+        }
+      } catch (e) {
+        console.warn("[D4EXAM] native notification permission", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.userId, session?.role]);
+
+
   useEffect(() => {
     const uid: string | null | undefined = session?.userId;
     const role: string | null | undefined = session?.role;
