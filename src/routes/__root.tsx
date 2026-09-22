@@ -34,6 +34,29 @@ import { startAccountVaultKeepAlive } from "@/lib/account-switcher";
 import { notifyWelcomeRole } from "@/lib/email-notify.functions";
 import { isSyntheticStudentEmail } from "@/lib/student-email";
 
+function goAppHome() {
+  try {
+    const hashMode =
+      typeof window !== "undefined" &&
+      (window.location.protocol === "file:" ||
+        window.location.hostname === "localhost" ||
+        window.location.hash.startsWith("#/") ||
+        isNativeShell());
+    if (hashMode) {
+      window.location.hash = "#/";
+      window.location.reload();
+      return;
+    }
+    window.location.assign("/");
+  } catch {
+    try {
+      window.location.href = "/";
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function NativeBootstrap() {
   const { data: session } = useSessionUser();
   const router = useRouter();
@@ -62,7 +85,6 @@ function NativeBootstrap() {
           return;
         }
         (window as unknown as { __d4UnsubBack?: () => void }).__d4UnsubBack = unsubBack;
-        // Non-blocking: never stall first paint / navigation on push setup
         if (!cancelled && session?.userId) {
           window.setTimeout(() => {
             void initNativePushIfNeeded(session.userId, session.role);
@@ -84,12 +106,10 @@ function NativeBootstrap() {
   return null;
 }
 
-
 function WebPushBootstrap() {
   const { data: session } = useSessionUser();
   useEffect(() => {
     if (!session?.userId) return;
-    // One-time welcome email per account (idempotent via localStorage)
     try {
       const key = `d4_welcome_email_sent_${session.userId}`;
       if (typeof localStorage !== "undefined" && !localStorage.getItem(key)) {
@@ -105,7 +125,9 @@ function WebPushBootstrap() {
           });
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     if (isNativeShell()) return;
     void initWebPushIfNeeded(session.userId, session.role);
     const onVis = () => {
@@ -129,12 +151,13 @@ function NotFoundComponent() {
           The page you're looking for doesn't exist or has been moved.
         </p>
         <div className="mt-6">
-          <Link
-            to="/"
+          <button
+            type="button"
+            onClick={goAppHome}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go home
-          </Link>
+          </button>
         </div>
       </div>
     </div>
@@ -142,11 +165,14 @@ function NotFoundComponent() {
 }
 
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
-  console.error(error);
+  console.error("[D4EXAM] root error", error);
   const router = useRouter();
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
+
+  const detail =
+    typeof error?.message === "string" && error.message.length < 180 ? error.message : null;
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
@@ -157,29 +183,39 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <p className="mt-2 text-sm text-muted-foreground">
           Don't worry — D4EXAM is still running. You can try again or head back home.
         </p>
+        {detail ? (
+          <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-left text-xs text-slate-600 break-words">
+            {detail}
+          </p>
+        ) : null}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
-              router.invalidate();
+              try {
+                router.invalidate();
+              } catch {
+                /* ignore */
+              }
               reset();
             }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Try Again
           </button>
-          <a
-            href="/"
+          <button
+            type="button"
+            onClick={goAppHome}
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             Go Home
-          </a>
+          </button>
           <button
             type="button"
             onClick={() => {
               try {
                 window.location.reload();
               } catch {
-                window.location.href = "/";
+                goAppHome();
               }
             }}
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -273,7 +309,6 @@ const BOOT_SPLASH_SCRIPT = `
     if (sessionStorage.getItem('d4exam_splash_shown_v6') === '1') return;
     var el = document.getElementById('d4-boot-splash');
     if (el) el.style.display = 'flex';
-    // Stay up until React signals ready — avoids white gap between boot + app splash / fingerprint
     var hidden = false;
     function hideBoot(){
       if (hidden) return;
@@ -288,14 +323,12 @@ const BOOT_SPLASH_SCRIPT = `
       } catch(e){}
     }
     window.addEventListener('d4-hide-boot-splash', hideBoot);
-    // Absolute safety only (never leave forever)
     setTimeout(hideBoot, 1800);
   } catch(e){}
 })();
 `;
 
 function RootShell({ children }: { children: ReactNode }) {
-
   const seoJsonLd = {
     "@context": "https://schema.org",
     "@graph": [
@@ -359,10 +392,10 @@ function RootShell({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: BOOT_SPLASH_SCRIPT }} />
         {children}
         <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(seoJsonLd) }}
-          />
-          <Scripts />
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(seoJsonLd) }}
+        />
+        <Scripts />
       </body>
     </html>
   );
@@ -387,7 +420,6 @@ function RootComponent() {
   useEffect(() => {
     installGlobalErrorHandlers();
     startAccountVaultKeepAlive();
-    // Clear leftover overlays that can freeze taps after splash / lock gates
     try {
       window.dispatchEvent(new Event("d4-hide-boot-splash"));
       const el = document.getElementById("d4-boot-splash");
