@@ -213,7 +213,7 @@ export const getMyCbtResultServer = createServerFn({ method: "POST" })
       .eq("student_id", studentId)
       .eq("id", input.id)
       .maybeSingle();
-    if (byId.data) return { result: byId.data as Record<string, unknown>, error: null };
+    if (byId.data) return { result: byId.data as Record<string, Json>, error: null };
 
     const byExam = await supabaseAdmin
       .from("results")
@@ -223,7 +223,7 @@ export const getMyCbtResultServer = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    if (byExam.data) return { result: byExam.data as Record<string, unknown>, error: null };
+    if (byExam.data) return { result: byExam.data as Record<string, Json>, error: null };
 
     return { result: null, error: null };
   });

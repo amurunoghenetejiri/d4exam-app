@@ -385,9 +385,11 @@ async function courseStudentAuthIds(courseId: string | null | undefined, schoolI
 export async function notifyOfficersStudentResultPending(opts: {
   schoolId: string;
   examId?: string | null;
-  examTitle: string;
-  studentName: string;
+  examTitle?: string;
+  studentName?: string;
   studentId?: string | null;
+  resultId?: string | null;
+  published?: boolean;
   courseCode?: string | null;
   courseTitle?: string | null;
 }): Promise<void> {
@@ -396,8 +398,8 @@ export async function notifyOfficersStudentResultPending(opts: {
     if (!officers.length) return;
     const link = "/officer/results";
     const copy = Msg.officerResultAwaitingReview({
-      studentName: opts.studentName,
-      examTitle: opts.examTitle,
+      studentName: opts.studentName ?? "A student",
+      examTitle: opts.examTitle ?? "Examination",
       courseCode: opts.courseCode,
       courseTitle: opts.courseTitle,
       link,
@@ -412,7 +414,7 @@ export async function notifyOfficersStudentResultPending(opts: {
         link: templateLink(copy, link),
         actionLabel: copy.action?.label ?? "REVIEW RESULT",
         entityType: "examination",
-        entityId: opts.examId || opts.examTitle,
+        entityId: opts.examId || opts.examTitle || "",
         dedupeMinutes: 15,
       })),
     );
