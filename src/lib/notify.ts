@@ -1475,8 +1475,11 @@ export async function notifyOfficersStudentViolation(opts: {
   courseCode?: string | null;
   courseTitle?: string | null;
   studentName?: string | null;
+  studentId?: string | null;
   eventType?: string | null;
   detail?: string | null;
+  description?: string | null;
+  severity?: string | null;
 }): Promise<void> {
   try {
     const officers = await listOfficerUserIds(opts.schoolId);

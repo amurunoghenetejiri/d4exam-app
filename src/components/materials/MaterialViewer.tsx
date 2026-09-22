@@ -464,7 +464,7 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
           const res = await fetch(href);
           const blob = await res.blob();
           const name = item.file_name || `${item.title || "material"}.bin`;
-          const file = new File([blob], name, { type: blob.type || item.file_mime || "application/octet-stream" });
+          const file = new globalThis.File([blob], name, { type: blob.type || item.file_mime || "application/octet-stream" });
           if (navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({ title: item.title, files: [file] });
             return;
@@ -652,8 +652,6 @@ export function MaterialViewer({ item, siblings, courseLabel, role = "student", 
         right: 0,
         bottom: 0,
         left: 0,
-        width: "100%",
-        height: "100%",
         minHeight: "100vh",
         minWidth: "100vw",
         width: "100vw",

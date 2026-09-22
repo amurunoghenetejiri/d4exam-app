@@ -179,7 +179,7 @@ function showLocalNotification(title: string, body: string, link?: string | null
             data: { link: pathLink, title },
             tag: "d4exam-notification",
             renotify: true,
-          });
+          } as NotificationOptions & { renotify?: boolean });
           return;
         }
       }

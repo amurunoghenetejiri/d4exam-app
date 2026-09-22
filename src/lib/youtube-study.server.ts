@@ -75,7 +75,9 @@ function normalizeInput(data: unknown): StudyInput {
   };
 }
 
-export const searchStudyVideos = createServerFn({ method: "POST" }).handler(
+export const searchStudyVideos = createServerFn({ method: "POST" })
+  .inputValidator((data: Record<string, unknown>) => data)
+  .handler(
   async (ctx): Promise<StudyHelpResult> => {
     const input = normalizeInput((ctx as { data?: unknown }).data ?? ctx);
     const query = buildQuery(input);

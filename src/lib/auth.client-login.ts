@@ -96,10 +96,10 @@ export async function clientSignInWithSchoolCode(
 
   // Matric / staff ID → resolve login email via RPC if available
   try {
-    const { data: resolved, error: rErr } = await supabase.rpc("resolve_login_email", {
+    const { data: resolved, error: rErr } = await supabase.rpc("resolve_login_email" as never, {
       _school_id: schoolId,
       _identifier: ident,
-    });
+    } as never);
     if (!rErr && resolved) {
       const email =
         typeof resolved === "string"

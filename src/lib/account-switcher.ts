@@ -356,7 +356,7 @@ export async function switchToAccount(
 
   if (prevUserId === targetId && prevAccess) {
     setActiveAccountId(targetId);
-    if (account.role) seedPendingLoginRole(account.role);
+    if (account?.role) seedPendingLoginRole(account.role);
     if (typeof window !== "undefined") {
       try {
         window.location.replace(path);
