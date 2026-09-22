@@ -41,7 +41,6 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "build-tools;36.0.0" || true
-          # Fallback if 36 build-tools name differs
           sdkmanager "platforms;android-36" "build-tools;35.0.0" || true
 
       - name: Install JS deps
@@ -58,13 +57,15 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
+          URL="${VITE_SUPABASE_URL:-https://rqjchjytqcqjmljahcdr.supabase.co}"
+          KEY="${VITE_SUPABASE_PUBLISHABLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJxamNoanl0cWNxam1samFoY2RyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwMjAwMzMsImV4cCI6MjEwMjU5NjAzM30.JWffmq5TIUnizWR-DIhwLylmHPmuuks2kUuEDEidlE8}"
           {
-            echo "VITE_SUPABASE_URL=${VITE_SUPABASE_URL}"
-            echo "VITE_SUPABASE_PUBLISHABLE_KEY=${VITE_SUPABASE_PUBLISHABLE_KEY}"
-            echo "VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}"
+            echo "VITE_SUPABASE_URL=${URL}"
+            echo "VITE_SUPABASE_PUBLISHABLE_KEY=${KEY}"
+            echo "VITE_SUPABASE_ANON_KEY=${KEY}"
           } > .env
+          echo "Wrote .env (URL host: $(echo "$URL" | sed 's|https://||'))"
 
       - name: Ensure no website server.url
         run: |
@@ -75,6 +76,9 @@ jobs:
 
       - name: Build Capacitor SPA shell
         run: npm run build:app
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
       - name: Cap sync Android
         run: npx cap sync android
