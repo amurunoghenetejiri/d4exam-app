@@ -207,8 +207,8 @@ jobs:
             fi
           done
           if [ -f android/app/src/main/assets/capacitor.config.json ]; then
-            if ! grep -q 'd4exam-platform.vercel.app' android/app/src/main/assets/capacitor.config.json; then
-              echo "FATAL: android assets capacitor.config.json missing Vercel URL after sync"
+            if ! grep -E 'd4exam\.name\.ng|d4exam-platform\.vercel\.app' android/app/src/main/assets/capacitor.config.json; then
+              echo "FATAL: android assets capacitor.config.json missing production URL after sync"
               cat android/app/src/main/assets/capacitor.config.json || true
               exit 1
             fi
