@@ -576,3 +576,31 @@ html.sa-desktop-view .d4-app-bottom-nav {
 html.sa-desktop-view .sa-main main {
   padding-bottom: 2rem !important;
 }
+
+
+/* Live monitor desktop-on-phone: show desktop grid, fit width, no sideways scroll */
+html.d4-monitor-desktop-site {
+  overflow-x: hidden !important;
+}
+html.d4-monitor-desktop-site body {
+  overflow-x: hidden !important;
+  max-width: 100vw !important;
+}
+html.d4-monitor-desktop-site .sa-sidebar {
+  display: flex !important;
+}
+html.d4-monitor-desktop-site .sa-mobile-menu,
+html.d4-monitor-desktop-site .sa-bottom-nav,
+html.d4-monitor-desktop-site .d4-app-bottom-nav {
+  display: none !important;
+}
+html.d4-monitor-desktop-site header.d4-app-topbar {
+  left: 16rem !important;
+}
+html.d4-monitor-desktop-site .sa-main {
+  padding-left: 16rem !important;
+}
+/* Force multi-column monitor cards like desktop without forcing 1100px viewport */
+html.d4-monitor-desktop-site .d4-monitor-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
+}

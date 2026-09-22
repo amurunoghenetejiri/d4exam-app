@@ -88,13 +88,18 @@ function DesktopScaledFrame({
   }, [scale, children]);
 
   return (
-    <div className="w-full overflow-x-hidden" style={{ height: height ?? "auto" }}>
+    <div
+      className="relative w-full overflow-x-hidden"
+      style={{ height: height ?? "auto", maxWidth: "100vw" }}
+    >
       <div
         ref={innerRef}
         style={{
           width: desktopWidth,
+          maxWidth: desktopWidth,
           transform: `scale(${scale})`,
           transformOrigin: "top left",
+          willChange: "transform",
         }}
       >
         {children}
@@ -111,7 +116,7 @@ function DesktopScaledFrame({
 function SuperAdminDesktopShell({ children }: { children: ReactNode }) {
   const [desktop, setDesktop] = useState(false);
   const [scale, setScale] = useState(1);
-  const DESKTOP_W = 1100;
+  const DESKTOP_W = 1024;
 
   useEffect(() => {
     try {
@@ -132,13 +137,16 @@ function SuperAdminDesktopShell({ children }: { children: ReactNode }) {
     if (desktop) {
       root.classList.add("sa-desktop-view");
       root.style.overflowX = "hidden";
+      document.body.style.overflowX = "hidden";
     } else {
       root.classList.remove("sa-desktop-view");
       root.style.overflowX = "";
+      document.body.style.overflowX = "";
     }
     return () => {
       root.classList.remove("sa-desktop-view");
       root.style.overflowX = "";
+      document.body.style.overflowX = "";
     };
   }, [desktop]);
 
@@ -150,7 +158,7 @@ function SuperAdminDesktopShell({ children }: { children: ReactNode }) {
     const update = () => {
       const w = typeof window !== "undefined" ? window.innerWidth : DESKTOP_W;
       // Fit full desktop layout into the phone width (never larger than 1)
-      setScale(Math.min(1, w / DESKTOP_W));
+      setScale(Math.min(1, Math.max(0.35, w / DESKTOP_W)));
     };
     update();
     window.addEventListener("resize", update);

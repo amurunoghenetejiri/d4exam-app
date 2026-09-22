@@ -199,13 +199,27 @@ export async function uploadSchoolLogo(opts: {
         upsert: true,
         contentType,
       });
-      if (upErr) continue;
+      if (upErr) {
+        console.warn("[logo-upload]", bucket, upErr.message);
+        continue;
+      }
+      // Prefer long-lived signed URL (works even if bucket is not fully public)
+      try {
+        const { data: signed, error: sErr } = await supabase.storage
+          .from(bucket)
+          .createSignedUrl(path, 60 * 60 * 24 * 365); // 1 year
+        if (!sErr && signed?.signedUrl) {
+          return { url: signed.signedUrl, path: `${bucket}/${path}` };
+        }
+      } catch {
+        /* fall through to public URL */
+      }
       const { data } = supabase.storage.from(bucket).getPublicUrl(path);
       if (data?.publicUrl) {
         return { url: data.publicUrl, path: `${bucket}/${path}` };
       }
-    } catch {
-      /* try next bucket */
+    } catch (e) {
+      console.warn("[logo-upload] bucket fail", bucket, e);
     }
   }
 

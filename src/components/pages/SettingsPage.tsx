@@ -36,6 +36,7 @@ import {
   useSchoolIdentity,
   validateLogoFile,
 } from "@/lib/school-identity";
+import { uploadSchoolLogoServer } from "@/lib/school-logo.functions";
 import { SchoolLogo } from "@/components/brand/SchoolLogo";
 import { Loader2, Upload, Building2, Info, LifeBuoy, Shield, ChevronRight, CreditCard, ArrowLeft, HardDrive, Languages, Clock, Palette, Trash2 } from "lucide-react";
 import { InAppHelpLegal, helpLegalTitle, type HelpLegalDoc } from "@/components/pages/InAppHelpLegal";
@@ -380,22 +381,61 @@ function SchoolIdentityCard() {
     if (!file) { toast.error("Choose a logo file first."); return; }
     setBusy(true);
     try {
-      const { url } = await uploadSchoolLogo({ file, folder: schoolId });
+      // 1) Prefer server upload (service role) so logos always persist and display
+      let url = "";
+      try {
+        const buf = await file.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+        }
+        const b64 = btoa(binary);
+        const server = await uploadSchoolLogoServer({
+          data: {
+            schoolId,
+            base64: b64,
+            contentType: file.type || "image/jpeg",
+            fileName: file.name,
+          },
+        });
+        if (server?.ok && server.url) {
+          url = server.url;
+        } else if (server && "error" in server && server.error) {
+          console.warn("[saveLogo] server", server.error);
+        }
+      } catch (e) {
+        console.warn("[saveLogo] server path failed", e);
+      }
+
+      // 2) Client upload fallback
+      if (!url) {
+        const up = await uploadSchoolLogo({ file, folder: schoolId });
+        url = up?.url || "";
+        if (url) {
+          await updateSchoolLogoUrl(schoolId, url);
+        }
+      }
+
       if (!url || !String(url).trim()) {
         throw new Error("Upload failed. Try a smaller PNG or JPG (under 2MB).");
       }
-      await updateSchoolLogoUrl(schoolId, url);
+
       await refetch();
       await qc.invalidateQueries({ queryKey: ["school-identity"] });
       await qc.invalidateQueries({ queryKey: ["session-user"] });
+      await qc.invalidateQueries({ queryKey: ["super-admin-schools"] });
       toast.success("School logo saved. It will show across your portal.");
       setFile(null);
       if (preview) URL.revokeObjectURL(preview);
       setPreview(null);
       if (inputRef.current) inputRef.current.value = "";
     } catch (e) {
-      toast.error((e as Error).message || "Could not update logo");
-    } finally { setBusy(false); }
+      toast.error((e as Error).message || "Could not save the school logo");
+    } finally {
+      setBusy(false);
+    }
   }
   function cancelLogo() {
     setFile(null);

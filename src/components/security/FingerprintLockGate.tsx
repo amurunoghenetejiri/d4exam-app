@@ -158,6 +158,7 @@ export function FingerprintLockGate() {
     pathname === "/" ||
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/forgot-app-password") ||
+    pathname.startsWith("/reset-app-password") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/school-application") ||
     pathname.startsWith("/application-status") ||

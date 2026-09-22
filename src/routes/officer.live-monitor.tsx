@@ -247,39 +247,36 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [desktopView, setDesktopView] = useState(false);
+  const [feedMode, setFeedMode] = useState<"camera" | "screen" | "both">("both");
 
-  // Chrome-style desktop site — native app only (not website/browser)
+  // Desktop mode on phone: sidebar + multi-column layout, fit width (no sideways scroll)
   useEffect(() => {
     if (typeof document === "undefined") return;
     if (!isNativeShell()) {
       if (desktopView) setDesktopView(false);
       return;
     }
-    const meta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
-    if (!meta) return;
-    const prev = meta.getAttribute("content") || "width=device-width, initial-scale=1, viewport-fit=cover";
     if (desktopView) {
-      meta.setAttribute("content", "width=1100");
       document.documentElement.classList.add("d4-monitor-desktop-site");
       try {
-        document.body.style.minWidth = "1100px";
+        document.body.style.overflowX = "hidden";
+        document.documentElement.style.overflowX = "hidden";
       } catch { /* ignore */ }
     } else {
-      meta.setAttribute("content", prev.includes("device-width") ? prev : "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
       document.documentElement.classList.remove("d4-monitor-desktop-site");
       try {
-        document.body.style.minWidth = "";
+        document.body.style.overflowX = "";
+        document.documentElement.style.overflowX = "";
       } catch { /* ignore */ }
     }
     return () => {
-      meta.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
       document.documentElement.classList.remove("d4-monitor-desktop-site");
       try {
-        document.body.style.minWidth = "";
+        document.body.style.overflowX = "";
+        document.documentElement.style.overflowX = "";
       } catch { /* ignore */ }
     };
   }, [desktopView]);
-  const [feedMode, setFeedMode] = useState<"camera" | "screen" | "both">("both");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [audioMuted, setAudioMuted] = useState(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -1525,7 +1522,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
             
               <Button type="button" variant={audioMuted ? "outline" : "default"} size="sm" className={cn("h-7 shrink-0 px-2 text-[10px] font-semibold sm:h-8 sm:text-xs", !audioMuted && "bg-emerald-600 text-white hover:bg-emerald-700")} onClick={() => { setAudioMuted((m) => { const next = !m; if (!next) { try { if (!audioCtxRef.current) { const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext; audioCtxRef.current = new AC(); } void audioCtxRef.current?.resume(); } catch { /* ignore */ } } return next; }); }} title={audioMuted ? "Unmute student microphones" : "Mute all"}>{audioMuted ? (<><MicOff className="mr-1 h-3.5 w-3.5" /> Muted</>) : (<><Mic className="mr-1 h-3.5 w-3.5" /> Listening</>)}</Button>
 {view === "grid" ? (
-            <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            <div className="d4-monitor-grid grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-2 xl:grid-cols-3">
               {filtered.map((c) => (
                 <StudentCard
                   key={c.a.id}

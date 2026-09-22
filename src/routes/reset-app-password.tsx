@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, KeyRound, CheckCircle2 } from "lucide-react";
 import { completeAppUnlockReset } from "@/lib/app-unlock-reset.functions";
 import { setAppUnlockPassword } from "@/lib/app-unlock";
+import { markSessionUnlocked, setFingerprintLocked } from "@/lib/fingerprint-lock";
 
 export const Route = createFileRoute("/reset-app-password")({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -67,6 +68,12 @@ function ResetAppPasswordPage() {
         await setAppUnlockPassword(uid, pw);
       } catch {
         /* cloud already set */
+      }
+      try {
+        setFingerprintLocked(false);
+        markSessionUnlocked();
+      } catch {
+        /* ignore */
       }
       setDone(true);
     } catch (e) {
