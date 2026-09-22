@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { Json } from "@/integrations/supabase/types";
 import { getAppOrigin } from "@/lib/app-url";
 import { createClient } from "@supabase/supabase-js";
 import { createSign } from "node:crypto";
@@ -414,7 +415,7 @@ export const sendTestNotificationToSelf = createServerFn({ method: "POST" })
       }
     }
 
-    let push: Record<string, unknown> | null = { sent: 0, skipped: true, reason: "not attempted" };
+    let push: Json = { sent: 0, skipped: true, reason: "not attempted" };
     try {
       push = await dispatchPushToUser({
         data: {
