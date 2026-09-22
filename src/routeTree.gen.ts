@@ -14,15 +14,17 @@ import { Route as AboutRouteImport } from './routes/about'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as ApplicationStatusRouteImport } from './routes/application-status'
 import { Route as FeaturesRouteImport } from './routes/features'
-import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as ForgotAppPasswordRouteImport } from './routes/forgot-app-password'
+import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotificationGalleryRouteImport } from './routes/notification-gallery'
 import { Route as OfficerRouteImport } from './routes/officer'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ResetAppPasswordRouteImport } from './routes/reset-app-password'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SchoolApplicationRouteImport } from './routes/school-application'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as StudentRouteImport } from './routes/student'
 import { Route as SuperAdminRouteImport } from './routes/super-admin'
 import { Route as SupportRouteImport } from './routes/support'
@@ -71,14 +73,14 @@ import { Route as SuperAdminIndexRouteImport } from './routes/super-admin.index'
 import { Route as SuperAdminApplicationsRouteImport } from './routes/super-admin.applications'
 import { Route as SuperAdminAuditLogsRouteImport } from './routes/super-admin.audit-logs'
 import { Route as SuperAdminExaminationsRouteImport } from './routes/super-admin.examinations'
+import { Route as SuperAdminMessagesRouteImport } from './routes/super-admin.messages'
 import { Route as SuperAdminNotificationsRouteImport } from './routes/super-admin.notifications'
 import { Route as SuperAdminProfileRouteImport } from './routes/super-admin.profile'
 import { Route as SuperAdminReportsRouteImport } from './routes/super-admin.reports'
 import { Route as SuperAdminSchoolsRouteImport } from './routes/super-admin.schools'
+import { Route as SuperAdminServicesRouteImport } from './routes/super-admin.services'
 import { Route as SuperAdminSettingsRouteImport } from './routes/super-admin.settings'
 import { Route as SuperAdminSubscriptionsRouteImport } from './routes/super-admin.subscriptions'
-import { Route as SuperAdminServicesRouteImport } from './routes/super-admin.services'
-import { Route as SuperAdminMessagesRouteImport } from './routes/super-admin.messages'
 import { Route as SuperAdminUsersRouteImport } from './routes/super-admin.users'
 import { Route as TeacherIndexRouteImport } from './routes/teacher.index'
 import { Route as TeacherCoursesRouteImport } from './routes/teacher.courses'
@@ -127,14 +129,14 @@ const FeaturesRoute = FeaturesRouteImport.update({
   path: '/features',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
-  id: '/forgot-password',
-  path: '/forgot-password',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ForgotAppPasswordRoute = ForgotAppPasswordRouteImport.update({
   id: '/forgot-app-password',
   path: '/forgot-app-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPasswordRoute = ForgotPasswordRouteImport.update({
+  id: '/forgot-password',
+  path: '/forgot-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -162,6 +164,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
   path: '/privacy',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResetAppPasswordRoute = ResetAppPasswordRouteImport.update({
+  id: '/reset-app-password',
+  path: '/reset-app-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
@@ -170,6 +177,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const SchoolApplicationRoute = SchoolApplicationRouteImport.update({
   id: '/school-application',
   path: '/school-application',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StudentRoute = StudentRouteImport.update({
@@ -412,6 +424,11 @@ const SuperAdminExaminationsRoute = SuperAdminExaminationsRouteImport.update({
   path: '/examinations',
   getParentRoute: () => SuperAdminRoute,
 } as any)
+const SuperAdminMessagesRoute = SuperAdminMessagesRouteImport.update({
+  id: '/messages',
+  path: '/messages',
+  getParentRoute: () => SuperAdminRoute,
+} as any)
 const SuperAdminNotificationsRoute = SuperAdminNotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
@@ -432,6 +449,11 @@ const SuperAdminSchoolsRoute = SuperAdminSchoolsRouteImport.update({
   path: '/schools',
   getParentRoute: () => SuperAdminRoute,
 } as any)
+const SuperAdminServicesRoute = SuperAdminServicesRouteImport.update({
+  id: '/services',
+  path: '/services',
+  getParentRoute: () => SuperAdminRoute,
+} as any)
 const SuperAdminSettingsRoute = SuperAdminSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -440,16 +462,6 @@ const SuperAdminSettingsRoute = SuperAdminSettingsRouteImport.update({
 const SuperAdminSubscriptionsRoute = SuperAdminSubscriptionsRouteImport.update({
   id: '/subscriptions',
   path: '/subscriptions',
-  getParentRoute: () => SuperAdminRoute,
-} as any)
-const SuperAdminServicesRoute = SuperAdminServicesRouteImport.update({
-  id: '/services',
-  path: '/services',
-  getParentRoute: () => SuperAdminRoute,
-} as any)
-const SuperAdminMessagesRoute = SuperAdminMessagesRouteImport.update({
-  id: '/messages',
-  path: '/messages',
   getParentRoute: () => SuperAdminRoute,
 } as any)
 const SuperAdminUsersRoute = SuperAdminUsersRouteImport.update({
@@ -576,8 +588,10 @@ export interface FileRoutesByFullPath {
   '/officer': typeof OfficerRouteWithChildren
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/reset-app-password': typeof ResetAppPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/school-application': typeof SchoolApplicationRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/student': typeof StudentRouteWithChildren
   '/super-admin': typeof SuperAdminRouteWithChildren
   '/support': typeof SupportRoute
@@ -622,14 +636,14 @@ export interface FileRoutesByFullPath {
   '/super-admin/applications': typeof SuperAdminApplicationsRoute
   '/super-admin/audit-logs': typeof SuperAdminAuditLogsRoute
   '/super-admin/examinations': typeof SuperAdminExaminationsRoute
+  '/super-admin/messages': typeof SuperAdminMessagesRoute
   '/super-admin/notifications': typeof SuperAdminNotificationsRoute
   '/super-admin/profile': typeof SuperAdminProfileRoute
   '/super-admin/reports': typeof SuperAdminReportsRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
+  '/super-admin/services': typeof SuperAdminServicesRoute
   '/super-admin/settings': typeof SuperAdminSettingsRoute
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
-  '/super-admin/services': typeof SuperAdminServicesRoute
-  '/super-admin/messages': typeof SuperAdminMessagesRoute
   '/super-admin/users': typeof SuperAdminUsersRoute
   '/teacher/courses': typeof TeacherCoursesRoute
   '/teacher/exam-security': typeof TeacherExamSecurityRoute
@@ -662,13 +676,16 @@ export interface FileRoutesByTo {
   '/about': typeof AboutRoute
   '/application-status': typeof ApplicationStatusRoute
   '/features': typeof FeaturesRoute
+  '/forgot-app-password': typeof ForgotAppPasswordRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/notification-gallery': typeof NotificationGalleryRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/reset-app-password': typeof ResetAppPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/school-application': typeof SchoolApplicationRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/support': typeof SupportRoute
   '/admin/courses': typeof AdminCoursesRoute
   '/admin/departments': typeof AdminDepartmentsRoute
@@ -710,13 +727,13 @@ export interface FileRoutesByTo {
   '/super-admin/applications': typeof SuperAdminApplicationsRoute
   '/super-admin/audit-logs': typeof SuperAdminAuditLogsRoute
   '/super-admin/examinations': typeof SuperAdminExaminationsRoute
+  '/super-admin/messages': typeof SuperAdminMessagesRoute
   '/super-admin/notifications': typeof SuperAdminNotificationsRoute
   '/super-admin/profile': typeof SuperAdminProfileRoute
   '/super-admin/reports': typeof SuperAdminReportsRoute
+  '/super-admin/services': typeof SuperAdminServicesRoute
   '/super-admin/settings': typeof SuperAdminSettingsRoute
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
-  '/super-admin/services': typeof SuperAdminServicesRoute
-  '/super-admin/messages': typeof SuperAdminMessagesRoute
   '/super-admin/users': typeof SuperAdminUsersRoute
   '/teacher/courses': typeof TeacherCoursesRoute
   '/teacher/exam-security': typeof TeacherExamSecurityRoute
@@ -751,14 +768,17 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/application-status': typeof ApplicationStatusRoute
   '/features': typeof FeaturesRoute
+  '/forgot-app-password': typeof ForgotAppPasswordRoute
   '/forgot-password': typeof ForgotPasswordRoute
   '/login': typeof LoginRoute
   '/notification-gallery': typeof NotificationGalleryRoute
   '/officer': typeof OfficerRouteWithChildren
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
+  '/reset-app-password': typeof ResetAppPasswordRoute
   '/reset-password': typeof ResetPasswordRoute
   '/school-application': typeof SchoolApplicationRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/student': typeof StudentRouteWithChildren
   '/super-admin': typeof SuperAdminRouteWithChildren
   '/support': typeof SupportRoute
@@ -803,14 +823,14 @@ export interface FileRoutesById {
   '/super-admin/applications': typeof SuperAdminApplicationsRoute
   '/super-admin/audit-logs': typeof SuperAdminAuditLogsRoute
   '/super-admin/examinations': typeof SuperAdminExaminationsRoute
+  '/super-admin/messages': typeof SuperAdminMessagesRoute
   '/super-admin/notifications': typeof SuperAdminNotificationsRoute
   '/super-admin/profile': typeof SuperAdminProfileRoute
   '/super-admin/reports': typeof SuperAdminReportsRoute
   '/super-admin/schools': typeof SuperAdminSchoolsRouteWithChildren
+  '/super-admin/services': typeof SuperAdminServicesRoute
   '/super-admin/settings': typeof SuperAdminSettingsRoute
   '/super-admin/subscriptions': typeof SuperAdminSubscriptionsRoute
-  '/super-admin/services': typeof SuperAdminServicesRoute
-  '/super-admin/messages': typeof SuperAdminMessagesRoute
   '/super-admin/users': typeof SuperAdminUsersRoute
   '/teacher/courses': typeof TeacherCoursesRoute
   '/teacher/exam-security': typeof TeacherExamSecurityRoute
@@ -853,8 +873,10 @@ export interface FileRouteTypes {
     | '/officer'
     | '/pricing'
     | '/privacy'
+    | '/reset-app-password'
     | '/reset-password'
     | '/school-application'
+    | '/sitemap.xml'
     | '/student'
     | '/super-admin'
     | '/support'
@@ -899,14 +921,14 @@ export interface FileRouteTypes {
     | '/super-admin/applications'
     | '/super-admin/audit-logs'
     | '/super-admin/examinations'
+    | '/super-admin/messages'
     | '/super-admin/notifications'
     | '/super-admin/profile'
     | '/super-admin/reports'
     | '/super-admin/schools'
+    | '/super-admin/services'
     | '/super-admin/settings'
     | '/super-admin/subscriptions'
-    | '/super-admin/services'
-    | '/super-admin/messages'
     | '/super-admin/users'
     | '/teacher/courses'
     | '/teacher/exam-security'
@@ -945,8 +967,10 @@ export interface FileRouteTypes {
     | '/notification-gallery'
     | '/pricing'
     | '/privacy'
+    | '/reset-app-password'
     | '/reset-password'
     | '/school-application'
+    | '/sitemap.xml'
     | '/support'
     | '/admin/courses'
     | '/admin/departments'
@@ -988,13 +1012,13 @@ export interface FileRouteTypes {
     | '/super-admin/applications'
     | '/super-admin/audit-logs'
     | '/super-admin/examinations'
+    | '/super-admin/messages'
     | '/super-admin/notifications'
     | '/super-admin/profile'
     | '/super-admin/reports'
+    | '/super-admin/services'
     | '/super-admin/settings'
     | '/super-admin/subscriptions'
-    | '/super-admin/services'
-    | '/super-admin/messages'
     | '/super-admin/users'
     | '/teacher/courses'
     | '/teacher/exam-security'
@@ -1035,8 +1059,10 @@ export interface FileRouteTypes {
     | '/officer'
     | '/pricing'
     | '/privacy'
+    | '/reset-app-password'
     | '/reset-password'
     | '/school-application'
+    | '/sitemap.xml'
     | '/student'
     | '/super-admin'
     | '/support'
@@ -1081,14 +1107,14 @@ export interface FileRouteTypes {
     | '/super-admin/applications'
     | '/super-admin/audit-logs'
     | '/super-admin/examinations'
+    | '/super-admin/messages'
     | '/super-admin/notifications'
     | '/super-admin/profile'
     | '/super-admin/reports'
     | '/super-admin/schools'
+    | '/super-admin/services'
     | '/super-admin/settings'
     | '/super-admin/subscriptions'
-    | '/super-admin/services'
-    | '/super-admin/messages'
     | '/super-admin/users'
     | '/teacher/courses'
     | '/teacher/exam-security'
@@ -1130,8 +1156,10 @@ export interface RootRouteChildren {
   OfficerRoute: typeof OfficerRouteWithChildren
   PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
+  ResetAppPasswordRoute: typeof ResetAppPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SchoolApplicationRoute: typeof SchoolApplicationRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   StudentRoute: typeof StudentRouteWithChildren
   SuperAdminRoute: typeof SuperAdminRouteWithChildren
   SupportRoute: typeof SupportRoute
@@ -1225,6 +1253,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PrivacyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reset-app-password': {
+      id: '/reset-app-password'
+      path: '/reset-app-password'
+      fullPath: '/reset-app-password'
+      preLoaderRoute: typeof ResetAppPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reset-password': {
       id: '/reset-password'
       path: '/reset-password'
@@ -1237,6 +1272,13 @@ declare module '@tanstack/react-router' {
       path: '/school-application'
       fullPath: '/school-application'
       preLoaderRoute: typeof SchoolApplicationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/student': {
@@ -1575,6 +1617,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperAdminExaminationsRouteImport
       parentRoute: typeof SuperAdminRoute
     }
+    '/super-admin/messages': {
+      id: '/super-admin/messages'
+      path: '/messages'
+      fullPath: '/super-admin/messages'
+      preLoaderRoute: typeof SuperAdminMessagesRouteImport
+      parentRoute: typeof SuperAdminRoute
+    }
     '/super-admin/notifications': {
       id: '/super-admin/notifications'
       path: '/notifications'
@@ -1603,6 +1652,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SuperAdminSchoolsRouteImport
       parentRoute: typeof SuperAdminRoute
     }
+    '/super-admin/services': {
+      id: '/super-admin/services'
+      path: '/services'
+      fullPath: '/super-admin/services'
+      preLoaderRoute: typeof SuperAdminServicesRouteImport
+      parentRoute: typeof SuperAdminRoute
+    }
     '/super-admin/settings': {
       id: '/super-admin/settings'
       path: '/settings'
@@ -1615,20 +1671,6 @@ declare module '@tanstack/react-router' {
       path: '/subscriptions'
       fullPath: '/super-admin/subscriptions'
       preLoaderRoute: typeof SuperAdminSubscriptionsRouteImport
-      parentRoute: typeof SuperAdminRoute
-    }
-    '/super-admin/services': {
-      id: '/super-admin/services'
-      path: '/services'
-      fullPath: '/super-admin/services'
-      preLoaderRoute: typeof SuperAdminServicesRouteImport
-      parentRoute: typeof SuperAdminRoute
-    }
-    '/super-admin/messages': {
-      id: '/super-admin/messages'
-      path: '/messages'
-      fullPath: '/super-admin/messages'
-      preLoaderRoute: typeof SuperAdminMessagesRouteImport
       parentRoute: typeof SuperAdminRoute
     }
     '/super-admin/users': {
@@ -1927,14 +1969,14 @@ interface SuperAdminRouteChildren {
   SuperAdminApplicationsRoute: typeof SuperAdminApplicationsRoute
   SuperAdminAuditLogsRoute: typeof SuperAdminAuditLogsRoute
   SuperAdminExaminationsRoute: typeof SuperAdminExaminationsRoute
+  SuperAdminMessagesRoute: typeof SuperAdminMessagesRoute
   SuperAdminNotificationsRoute: typeof SuperAdminNotificationsRoute
   SuperAdminProfileRoute: typeof SuperAdminProfileRoute
   SuperAdminReportsRoute: typeof SuperAdminReportsRoute
   SuperAdminSchoolsRoute: typeof SuperAdminSchoolsRouteWithChildren
+  SuperAdminServicesRoute: typeof SuperAdminServicesRoute
   SuperAdminSettingsRoute: typeof SuperAdminSettingsRoute
   SuperAdminSubscriptionsRoute: typeof SuperAdminSubscriptionsRoute
-  SuperAdminServicesRoute: typeof SuperAdminServicesRoute
-  SuperAdminMessagesRoute: typeof SuperAdminMessagesRoute
   SuperAdminUsersRoute: typeof SuperAdminUsersRoute
   SuperAdminIndexRoute: typeof SuperAdminIndexRoute
 }
@@ -1943,14 +1985,14 @@ const SuperAdminRouteChildren: SuperAdminRouteChildren = {
   SuperAdminApplicationsRoute: SuperAdminApplicationsRoute,
   SuperAdminAuditLogsRoute: SuperAdminAuditLogsRoute,
   SuperAdminExaminationsRoute: SuperAdminExaminationsRoute,
+  SuperAdminMessagesRoute: SuperAdminMessagesRoute,
   SuperAdminNotificationsRoute: SuperAdminNotificationsRoute,
   SuperAdminProfileRoute: SuperAdminProfileRoute,
   SuperAdminReportsRoute: SuperAdminReportsRoute,
   SuperAdminSchoolsRoute: SuperAdminSchoolsRouteWithChildren,
+  SuperAdminServicesRoute: SuperAdminServicesRoute,
   SuperAdminSettingsRoute: SuperAdminSettingsRoute,
   SuperAdminSubscriptionsRoute: SuperAdminSubscriptionsRoute,
-  SuperAdminServicesRoute: SuperAdminServicesRoute,
-  SuperAdminMessagesRoute: SuperAdminMessagesRoute,
   SuperAdminUsersRoute: SuperAdminUsersRoute,
   SuperAdminIndexRoute: SuperAdminIndexRoute,
 }
@@ -2004,16 +2046,17 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   ApplicationStatusRoute: ApplicationStatusRoute,
   FeaturesRoute: FeaturesRoute,
-  ForgotPasswordRoute: ForgotPasswordRoute,
   ForgotAppPasswordRoute: ForgotAppPasswordRoute,
-  ForgotAppPasswordRoute,
+  ForgotPasswordRoute: ForgotPasswordRoute,
   LoginRoute: LoginRoute,
   NotificationGalleryRoute: NotificationGalleryRoute,
   OfficerRoute: OfficerRouteWithChildren,
   PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
+  ResetAppPasswordRoute: ResetAppPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SchoolApplicationRoute: SchoolApplicationRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   StudentRoute: StudentRouteWithChildren,
   SuperAdminRoute: SuperAdminRouteWithChildren,
   SupportRoute: SupportRoute,
