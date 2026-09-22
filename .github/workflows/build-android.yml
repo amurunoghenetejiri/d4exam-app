@@ -70,11 +70,12 @@ jobs:
         run: |
           set -euo pipefail
           CFG="capacitor.config.ts"
-          if ! grep -F 'url: "https://d4exam-platform.vercel.app"' "$CFG"; then
-            echo "FATAL: capacitor.config.ts must point at Vercel production"
+          if ! grep -E 'url: "https://(d4exam\.name\.ng|d4exam-platform\.vercel\.app)"' "$CFG"; then
+            echo "FATAL: capacitor.config.ts must point at d4exam.name.ng (or Vercel)"
+            head -40 "$CFG" || true
             exit 1
           fi
-          echo "OK: Capacitor server.url points at Vercel production"
+          echo "OK: Capacitor server.url points at production"
 
       - name: Ensure complete Android platform
         run: |
