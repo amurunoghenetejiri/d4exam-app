@@ -68,8 +68,8 @@ jobs:
         run: |
           set -euo pipefail
           CFG="capacitor.config.ts"
-          if ! grep -E 'url: "https://d4exam\.name\.ng"' "$CFG"; then
-            echo "FATAL: capacitor.config.ts must load https://d4exam.name.ng inside the APK WebView"
+          if ! grep -E 'url: "https://(www\.)?d4exam\.name\.ng"' "$CFG"; then
+            echo "FATAL: capacitor.config.ts must load https://www.d4exam.name.ng inside the APK WebView"
             head -40 "$CFG" || true
             exit 1
           fi
