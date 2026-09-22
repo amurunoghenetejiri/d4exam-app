@@ -32,14 +32,11 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      # Runner already has Android SDK. Do NOT install obsolete package "tools".
-      - name: Accept Android licenses & ensure platform/build-tools
+      - name: Accept Android licenses & platforms
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" || \
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" || true
-          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
-          ls "${ANDROID_HOME:-$ANDROID_SDK_ROOT}" || true
 
       - name: Install JS deps
         run: |
@@ -72,7 +69,7 @@ jobs:
             echo "FATAL: website server.url still present"
             exit 1
           fi
-          echo "OK: no website server.url in Capacitor configs"
+          echo "OK: no website server.url"
 
       - name: Build Capacitor SPA shell
         run: npm run build:app
@@ -87,6 +84,23 @@ jobs:
             cat android/app/src/main/assets/capacitor.config.json
             exit 1
           fi
+
+      - name: Bootstrap Gradle wrapper if missing
+        working-directory: android
+        run: |
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            echo "gradlew already present"
+            exit 0
+          fi
+          echo "gradlew missing — generating wrapper"
+          GRADLE_VER=8.14.3
+          curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip"
+          unzip -q /tmp/gradle.zip -d /tmp
+          /tmp/gradle-${GRADLE_VER}/bin/gradle wrapper --gradle-version "${GRADLE_VER}"
+          chmod +x gradlew
+          test -f gradlew
+          echo "gradlew created"
 
       - name: Assemble debug APK
         working-directory: android

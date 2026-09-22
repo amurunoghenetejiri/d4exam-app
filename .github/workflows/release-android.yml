@@ -66,7 +66,7 @@ jobs:
             echo "VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_PUBLISHABLE_KEY}"
           } > .env
 
-      - name: Build SPA + sync + APK
+      - name: Build SPA + sync
         run: |
           npm run build:app
           npx cap sync android
@@ -74,7 +74,20 @@ jobs:
             echo "FATAL: website server.url present after sync"
             exit 1
           fi
-          cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+
+      - name: Bootstrap Gradle wrapper if missing
+        working-directory: android
+        run: |
+          if [ -f gradlew ]; then chmod +x gradlew; exit 0; fi
+          GRADLE_VER=8.14.3
+          curl -fsSL -o /tmp/gradle.zip "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip"
+          unzip -q /tmp/gradle.zip -d /tmp
+          /tmp/gradle-${GRADLE_VER}/bin/gradle wrapper --gradle-version "${GRADLE_VER}"
+          chmod +x gradlew
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
 
       - name: Prepare artifact
         id: meta
