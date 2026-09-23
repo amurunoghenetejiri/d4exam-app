@@ -124,20 +124,22 @@ export const getRouter = () => {
     },
   });
 
-  // APK / local Capacitor shell MUST use hash history.
-  // Root freeze cause: browser history on https://localhost made /student etc. real WebView
-  // path loads with no SPA server → taps looked frozen. Public website keeps browser history.
+  // APK MUST use hash history (#/student). Browser path history freezes the WebView.
+  // Capacitor entry sets window.__D4_FORCE_HASH__ before getRouter().
   let history: ReturnType<typeof createBrowserHistory> | ReturnType<typeof createHashHistory> | undefined;
   try {
     if (typeof window !== "undefined") {
+      const force =
+        Boolean((window as unknown as { __D4_FORCE_HASH__?: boolean }).__D4_FORCE_HASH__);
       const host = (window.location.hostname || "").toLowerCase();
       const isPublicWeb =
-        host === "d4exam.name.ng" ||
-        host === "www.d4exam.name.ng" ||
-        host.endsWith(".vercel.app") ||
-        host.includes("lovable.app") ||
-        host.includes("lovableproject.com");
-      if (!isPublicWeb) {
+        !force &&
+        (host === "d4exam.name.ng" ||
+          host === "www.d4exam.name.ng" ||
+          host.endsWith(".vercel.app") ||
+          host.includes("lovable.app") ||
+          host.includes("lovableproject.com"));
+      if (force || !isPublicWeb) {
         history = createHashHistory();
       }
     }
