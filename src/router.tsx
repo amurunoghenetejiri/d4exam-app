@@ -2,6 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { createRouter, createHashHistory, createBrowserHistory } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { isOnlineNow } from "@/lib/offline-sync";
+import { bindAppRouter } from "@/lib/app-navigate";
 
 function DefaultPending() {
   return (
@@ -88,7 +89,7 @@ function DefaultError({ error }: { error: Error }) {
           Try again
         </button>
         <a
-          href="#/"
+          href="/"
           className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800"
         >
           Go home
@@ -124,40 +125,31 @@ export const getRouter = () => {
     },
   });
 
-  // APK MUST use hash history (#/student). Browser path history freezes the WebView.
-  // Capacitor entry sets window.__D4_FORCE_HASH__ before getRouter().
+  // Capacitor local shell: hash history so /login and menu links always navigate.
+  // Online WebView (server.url) uses normal browser history on https://d4exam.name.ng.
   let history: ReturnType<typeof createBrowserHistory> | ReturnType<typeof createHashHistory> | undefined;
   try {
     if (typeof window !== "undefined") {
-      const force =
-        Boolean((window as unknown as { __D4_FORCE_HASH__?: boolean }).__D4_FORCE_HASH__);
-      const host = (window.location.hostname || "").toLowerCase();
-      const isPublicWeb =
-        !force &&
-        (host === "d4exam.name.ng" ||
-          host === "www.d4exam.name.ng" ||
-          host.endsWith(".vercel.app") ||
-          host.includes("lovable.app") ||
-          host.includes("lovableproject.com"));
-      if (force || !isPublicWeb) {
+      const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+      const ua = navigator.userAgent || "";
+      const native =
+        Boolean(cap?.isNativePlatform?.()) ||
+        (/; wv\)/i.test(ua) && /Android/i.test(ua)) ||
+        /Capacitor/i.test(ua);
+      // Only hash when serving from local capacitor host (bundled), not when on d4exam.name.ng
+      const host = window.location.hostname || "";
+      const localShell =
+        native &&
+        (host === "localhost" ||
+          host === "127.0.0.1" ||
+          host === "" ||
+          window.location.protocol === "file:");
+      if (localShell) {
         history = createHashHistory();
       }
     }
   } catch {
-    try {
-      history = createHashHistory();
-    } catch {
-      /* default */
-    }
-  }
-
-  // Never ship APK with undefined history (defaults to browser history → freeze)
-  if (!history) {
-    try {
-      history = createHashHistory();
-    } catch {
-      /* leave undefined only as last resort */
-    }
+    /* default history */
   }
 
   const router = createRouter({
@@ -172,6 +164,12 @@ export const getRouter = () => {
     defaultPendingComponent: DefaultPending,
     defaultErrorComponent: DefaultError as never,
   });
+
+  try {
+    bindAppRouter(router as never);
+  } catch {
+    /* ignore */
+  }
 
   return router;
 };

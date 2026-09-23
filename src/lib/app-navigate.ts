@@ -1,97 +1,152 @@
 /**
- * Client-side navigation that works inside the Capacitor APK SPA.
- * Local shell uses hash history (#/path). Public website keeps normal paths.
+ * SPA-safe navigation for D4EXAM web + Capacitor.
+ * Uses TanStack router when available; hash history on local native shell.
  */
 
-export function isPublicWebHost(): boolean {
-  if (typeof window === "undefined") return true;
+function isLocalNativeShell(): boolean {
+  if (typeof window === "undefined") return false;
   try {
-    const host = (window.location.hostname || "").toLowerCase();
-    return (
-      host === "d4exam.name.ng" ||
-      host === "www.d4exam.name.ng" ||
-      host.endsWith(".vercel.app") ||
-      host.includes("lovable.app") ||
-      host.includes("lovableproject.com")
-    );
+    const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+    const ua = navigator.userAgent || "";
+    const native =
+      Boolean(cap?.isNativePlatform?.()) ||
+      (/; wv\)/i.test(ua) && /Android/i.test(ua)) ||
+      /Capacitor/i.test(ua);
+    const host = window.location.hostname || "";
+    const local =
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "" ||
+      window.location.protocol === "file:";
+    return Boolean(native && local);
   } catch {
     return false;
   }
 }
 
-/** True when the UI is the bundled APK / local Capacitor shell (not the public website). */
-export function isLocalAppShell(): boolean {
+function shouldUseHash(): boolean {
   if (typeof window === "undefined") return false;
-  return !isPublicWebHost();
+  if (window.location.hash.startsWith("#/")) return true;
+  if ((window as unknown as { __D4_FORCE_HASH__?: boolean }).__D4_FORCE_HASH__) return true;
+  return isLocalNativeShell();
 }
 
-/**
- * Navigate to an in-app route without leaving the SPA.
- * On the APK this sets location.hash so TanStack hash history updates immediately.
- */
-export function appNavigate(path: string): void {
-  if (typeof window === "undefined") return;
-  let p = String(path || "/").trim() || "/";
-  if (!p.startsWith("/") && !p.startsWith("http") && !p.startsWith("#")) {
-    p = `/${p}`;
+function normalizePath(path: string): string {
+  const p = (path || "/").trim() || "/";
+  return p.startsWith("/") ? p : `/${p}`;
+}
+
+type D4Router = {
+  navigate?: (opts: { to: string; replace?: boolean }) => Promise<unknown> | unknown;
+  history?: { push?: (p: string) => void; replace?: (p: string) => void };
+};
+
+function getRouter(): D4Router | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return ((window as unknown as { __D4_ROUTER?: D4Router }).__D4_ROUTER as D4Router) || null;
+  } catch {
+    return null;
   }
-  // External / special schemes — leave alone
-  if (/^(https?:|intent:|mailto:|tel:)/i.test(p)) {
+}
+
+/** Push a client route (hash-aware). */
+export function appNavigate(path: string): void {
+  const clean = normalizePath(path);
+  if (typeof window === "undefined") return;
+
+  const router = getRouter();
+  if (router?.navigate) {
     try {
-      window.location.href = p;
+      void Promise.resolve(router.navigate({ to: clean, replace: false }));
+      return;
     } catch {
-      /* ignore */
+      /* fall through */
+    }
+  }
+  if (router?.history?.push) {
+    try {
+      router.history.push(clean);
+      return;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  if (shouldUseHash()) {
+    const next = `#${clean}`;
+    if (window.location.hash === next) {
+      try {
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      } catch {
+        window.location.hash = next;
+      }
+    } else {
+      window.location.hash = next;
     }
     return;
   }
-  // Strip accidental hash prefix
-  if (p.startsWith("#")) p = p.slice(1);
-  if (!p.startsWith("/")) p = `/${p}`;
 
-  if (isLocalAppShell()) {
+  try {
+    window.history.pushState({}, "", clean);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  } catch {
+    window.location.assign(clean);
+  }
+}
+
+/** Replace current route (hash-aware) — preferred after login. */
+export function appReplace(path: string): void {
+  const clean = normalizePath(path);
+  if (typeof window === "undefined") return;
+
+  const router = getRouter();
+  if (router?.navigate) {
     try {
-      // Prefer hash SPA navigation — never load a remote path
-      const next = `#${p}`;
-      if (window.location.hash === next) {
-        // force re-notify if same route
-        window.dispatchEvent(new HashChangeEvent("hashchange"));
-      } else {
-        window.location.hash = next;
-      }
+      void Promise.resolve(router.navigate({ to: clean, replace: true }));
       return;
     } catch {
       /* fall through */
     }
   }
+  if (router?.history?.replace) {
+    try {
+      router.history.replace(clean);
+      return;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  if (shouldUseHash()) {
+    const base = `${window.location.pathname}${window.location.search}`;
+    const next = `${base}#${clean}`;
+    try {
+      window.location.replace(next);
+    } catch {
+      window.location.hash = `#${clean}`;
+    }
+    return;
+  }
+
   try {
-    window.location.assign(p);
+    window.history.replaceState({}, "", clean);
+    window.dispatchEvent(new PopStateEvent("popstate"));
   } catch {
     try {
-      window.location.href = p;
+      window.location.replace(clean);
     } catch {
-      /* ignore */
+      window.location.href = clean;
     }
   }
 }
 
-export function appReplace(path: string): void {
+/** Attach router instance so appNavigate/appReplace can use it. */
+export function bindAppRouter(router: D4Router): void {
   if (typeof window === "undefined") return;
-  let p = String(path || "/").trim() || "/";
-  if (p.startsWith("#")) p = p.slice(1);
-  if (!p.startsWith("/")) p = `/${p}`;
-  if (isLocalAppShell()) {
-    try {
-      const url = `${window.location.pathname}${window.location.search}#${p}`;
-      window.history.replaceState(null, "", url);
-      window.dispatchEvent(new HashChangeEvent("hashchange"));
-      return;
-    } catch {
-      /* fall through */
-    }
-  }
   try {
-    window.location.replace(p);
+    (window as unknown as { __D4_ROUTER?: D4Router }).__D4_ROUTER = router;
   } catch {
-    appNavigate(p);
+    /* ignore */
   }
 }
