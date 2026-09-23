@@ -22,7 +22,6 @@ import { Watermark } from "@/components/brand/Watermark";
 import { InstallAndPushPrompt } from "@/components/InstallAndPushPrompt";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -440,73 +439,86 @@ export function AppShell({
       >
         <div className="mx-auto grid h-12 max-w-[1400px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 sm:h-16 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-            <Sheet
-              open={open}
-              onOpenChange={(next) => {
-                setOpen(next);
-                if (!next) {
-                  window.setTimeout(() => unlockUi(), 30);
-                  window.setTimeout(() => unlockUi(), 320);
-                }
+            {/* Capacitor-safe drawer — no Radix Sheet (avoids body pointer-events lock / freeze) */}
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="sa-mobile-menu h-9 w-9 shrink-0 border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
+              aria-label="Open menu"
+              aria-expanded={open}
+              onClick={() => {
+                setOpen(true);
+                unlockUi();
               }}
             >
-              <SheetTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="sa-mobile-menu h-9 w-9 shrink-0 border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
-                  aria-label="Open menu"
+              <Menu className="h-5 w-5" />
+            </Button>
+            {open ? (
+              <div className="sa-mobile-menu fixed inset-0 z-[80] lg:hidden" role="dialog" aria-modal="true" aria-label={`${config.label} navigation`}>
+                <button
+                  type="button"
+                  className="absolute inset-0 bg-black/55"
+                  aria-label="Close menu"
+                  onClick={() => {
+                    setOpen(false);
+                    unlockUi();
+                  }}
+                />
+                <div
+                  className={cn(
+                    "absolute inset-y-0 left-0 flex w-[min(100vw-2rem,18rem)] flex-col bg-[#0b1b3a] text-white shadow-2xl",
+                    "h-[100dvh] max-h-[100dvh]",
+                  )}
                 >
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent
-                side="left"
-                hideClose
-                className={cn(
-                  "flex flex-col gap-0 border-r-0 bg-[#0b1b3a] p-0 text-white",
-                  "!inset-y-0 !top-0 !bottom-0",
-                  "!h-[100dvh] !min-h-[100dvh] !max-h-[100dvh]",
-                  "w-[min(100vw-2rem,18rem)]",
-                )}
-              >
-                <SheetTitle className="sr-only">{config.label} navigation</SheetTitle>
-                <div className="flex min-h-16 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 sm:px-4 pt-[env(safe-area-inset-top,0px)]">
-                  <div className="min-w-0 flex-1">
-                    <PortalBrand
-                      isSchoolPortal={isSchoolPortal}
-                      logoUrl={logoUrl}
-                      schoolName={schoolName}
-                      homeTo={config.home}
+                  <div className="flex min-h-16 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 sm:px-4 pt-[env(safe-area-inset-top,0px)]">
+                    <div className="min-w-0 flex-1">
+                      <PortalBrand
+                        isSchoolPortal={isSchoolPortal}
+                        logoUrl={logoUrl}
+                        schoolName={schoolName}
+                        homeTo={config.home}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        unlockUi();
+                      }}
+                      aria-label="Close menu"
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                    >
+                      <X className="h-5 w-5" strokeWidth={2.25} />
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                    <NavLinks
+                      config={config}
+                      onNavigate={() => {
+                        setOpen(false);
+                        unlockUi();
+                      }}
+                      badges={navBadges}
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setOpen(false)}
-                    aria-label="Close menu"
-                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                  >
-                    <X className="h-5 w-5" strokeWidth={2.25} />
-                  </button>
+                  <div className="mt-auto shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpen(false);
+                        unlockUi();
+                        void signOut();
+                      }}
+                      className="pressable flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-400 transition-colors hover:bg-red-500/15 hover:text-red-300 active:scale-[0.98]"
+                    >
+                      <LogOut className="h-4 w-4" aria-hidden />
+                      Logout
+                    </button>
+                  </div>
                 </div>
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                  <NavLinks config={config} onNavigate={() => setOpen(false)} badges={navBadges} />
-                </div>
-                <div className="mt-auto shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpen(false);
-                      void signOut();
-                    }}
-                    className="pressable flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-400 transition-colors hover:bg-red-500/15 hover:text-red-300 active:scale-[0.98]"
-                  >
-                    <LogOut className="h-4 w-4" aria-hidden />
-                    Logout
-                  </button>
-                </div>
-              </SheetContent>
-            </Sheet>
+              </div>
+            ) : null}
 
             <span className="hidden text-sm font-bold tracking-tight text-white lg:inline">
               {config.label} Portal

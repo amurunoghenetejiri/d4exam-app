@@ -615,3 +615,13 @@ html body[data-scroll-locked]:not(:has([data-state="open"])) {
   pointer-events: auto !important;
   overflow: auto !important;
 }
+
+
+/* d4-ui-unlock-hard: Capacitor must stay tappable */
+html, body, #root {
+  pointer-events: auto !important;
+}
+body[data-scroll-locked] {
+  pointer-events: auto !important;
+  overflow: auto !important;
+}

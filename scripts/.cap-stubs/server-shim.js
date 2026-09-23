@@ -1,4 +1,18 @@
 /* auto-generated capacitor server stubs — SPA runs offline; server work uses Supabase client or online API */
+
+/** Client SPA: useServerFn returns a callable that never hits SSR. */
+export function useServerFn(fn) {
+  return async function capServerFn(args) {
+    try {
+      if (typeof fn === "function") return await fn(args);
+      if (fn && typeof fn.handler === "function") return await fn.handler(args);
+    } catch (e) {
+      return { error: (e && e.message) || "Action unavailable offline" };
+    }
+    return { error: "This action needs the online D4EXAM service." };
+  };
+}
+
 const _noop = async () => null;
 const _ORIGIN = 'https://d4exam.name.ng';
 export const createServerFn = (opts) => {

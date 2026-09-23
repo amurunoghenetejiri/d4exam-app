@@ -151,6 +151,15 @@ export const getRouter = () => {
     }
   }
 
+  // Never ship APK with undefined history (defaults to browser history → freeze)
+  if (!history) {
+    try {
+      history = createHashHistory();
+    } catch {
+      /* leave undefined only as last resort */
+    }
+  }
+
   const router = createRouter({
     routeTree,
     context: { queryClient },

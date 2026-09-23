@@ -34,6 +34,7 @@ function capacitorAliases(): Plugin {
     if (id.includes("@tanstack/start-server-core")) return stubFile;
     if (id.includes("@tanstack/start-storage-context")) return stubFile;
     if (id.includes("@tanstack/react-start/server")) return stubFile;
+    if (id === "@tanstack/react-start" || id.startsWith("@tanstack/react-start/")) return stubFile;
     if (id.includes("start-server-functions")) return stubFile;
     const cleaned = id.split("?")[0];
     if (/\.server(\.[cm]?[jt]sx?)?$/.test(cleaned)) return stubFile;
