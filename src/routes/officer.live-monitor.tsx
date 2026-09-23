@@ -149,9 +149,9 @@ function nameFromMetadata(meta: unknown): string {
 
 function pickFeedFrame(
   feedMode: "camera" | "screen" | "both",
-  cam?: FrameEntry | null,
-  screen?: FrameEntry | null,
-): FrameEntry | undefined {
+  cam?: { src: string; ts: number } | null,
+  screen?: { src: string; ts: number } | null,
+): { src: string; ts: number } | undefined {
   if (feedMode === "screen") return screen || undefined;
   if (feedMode === "camera") return cam || undefined;
   return cam || screen || undefined;
@@ -278,6 +278,9 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
     };
   }, [desktopView]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** Manual drag order of attempt ids (officer/teacher can rearrange cards). */
+  const [cardOrderIds, setCardOrderIds] = useState<string[]>([]);
+  const dragIdRef = useRef<string | null>(null);
   const [audioMuted, setAudioMuted] = useState(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioMutedRef = useRef(true);
@@ -713,7 +716,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
         const { data, error } = await supabase.from("examinations").select(sel).eq("school_id", schoolId!).in("id", ids);
         if (!error) {
           for (const r of data ?? []) {
-            const row = r as unknown as { id: string; title?: string | null; courses?: { code?: string; name?: string } | { code?: string; name?: string }[] | null };
+            const row = r as { id: string; title?: string | null; courses?: { code?: string; name?: string } | { code?: string; name?: string }[] | null };
             const c = Array.isArray(row.courses) ? row.courses[0] : row.courses;
             map[row.id] = { title: String(row.title || "").trim(), courseCode: String(c?.code || "").trim(), courseName: String(c?.name || "").trim() };
           }
@@ -887,7 +890,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
           else if (fs === "none" || fs === "unclear") sev = "warning";
           else sev = "normal";
         }
-        const resolved: unknown = studentNamesQ.data?.[String(a.student_id)];
+        const resolved = studentNamesQ.data?.[String(a.student_id)];
         const byMatricKey = String(a.students?.matric_number || a.students?.student_id || (a.metadata as Record<string, unknown> | null)?.matricNumber || "").trim().toLowerCase();
         const fromMatricMap = byMatricKey ? nameByMatricQ.data?.[`matric:${byMatricKey}`] : undefined;
         const fromIdMap = nameByMatricQ.data?.[String(a.student_id)];
@@ -1051,6 +1054,44 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
       return c.name.toLowerCase().includes(q) || c.matric.toLowerCase().includes(q) || c.course.toLowerCase().includes(q);
     });
   }, [cards, filter, search, examFilter, levelFilter, allowedExamIds]);
+
+  const orderedFiltered = useMemo(() => {
+    if (!cardOrderIds.length) return filtered;
+    const rank = new Map(cardOrderIds.map((id, i) => [id, i]));
+    return [...filtered].sort((a, b) => {
+      const ra = rank.has(a.a.id) ? rank.get(a.a.id)! : 1e9;
+      const rb = rank.has(b.a.id) ? rank.get(b.a.id)! : 1e9;
+      if (ra !== rb) return ra - rb;
+      return 0;
+    });
+  }, [filtered, cardOrderIds]);
+
+  function onCardDragStart(id: string) {
+    dragIdRef.current = id;
+  }
+  function onCardDragOver(e: React.DragEvent, overId: string) {
+    e.preventDefault();
+    const from = dragIdRef.current;
+    if (!from || from === overId) return;
+  }
+  function onCardDrop(overId: string) {
+    const from = dragIdRef.current;
+    dragIdRef.current = null;
+    if (!from || from === overId) return;
+    setCardOrderIds((prev) => {
+      const base = prev.length ? [...prev] : filtered.map((c) => c.a.id);
+      // include any new cards
+      for (const c of filtered) {
+        if (!base.includes(c.a.id)) base.push(c.a.id);
+      }
+      const fi = base.indexOf(from);
+      const ti = base.indexOf(overId);
+      if (fi < 0 || ti < 0) return base;
+      base.splice(fi, 1);
+      base.splice(ti, 0, from);
+      return base;
+    });
+  }
 
   const selected = cards.find((c) => c.a.id === selectedId) ?? null;
   const studentNameById = useMemo(() => {
@@ -1523,7 +1564,7 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
               <Button type="button" variant={audioMuted ? "outline" : "default"} size="sm" className={cn("h-7 shrink-0 px-2 text-[10px] font-semibold sm:h-8 sm:text-xs", !audioMuted && "bg-emerald-600 text-white hover:bg-emerald-700")} onClick={() => { setAudioMuted((m) => { const next = !m; if (!next) { try { if (!audioCtxRef.current) { const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext; audioCtxRef.current = new AC(); } void audioCtxRef.current?.resume(); } catch { /* ignore */ } } return next; }); }} title={audioMuted ? "Unmute student microphones" : "Mute all"}>{audioMuted ? (<><MicOff className="mr-1 h-3.5 w-3.5" /> Muted</>) : (<><Mic className="mr-1 h-3.5 w-3.5" /> Listening</>)}</Button>
 {view === "grid" ? (
             <div className="d4-monitor-grid grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-2 xl:grid-cols-3">
-              {filtered.map((c) => (
+              {orderedFiltered.map((c) => (
                 <StudentCard
                   key={c.a.id}
                   name={c.name}
@@ -1545,6 +1586,10 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
                   bars={c.bars}
                   isDone={c.isDone}
                   statusLabel={c.isDone ? doneStatusLabel(c.a.status) : undefined}
+                  dragId={c.a.id}
+                  onDragStart={onCardDragStart}
+                  onDragOver={onCardDragOver}
+                  onDrop={onCardDrop}
                   onClick={() => setSelectedId(c.a.id)}
                 />
               ))}
@@ -1555,7 +1600,11 @@ export function LiveMonitorPage({ courseIds = null, pageTitle }: LiveMonitorPage
                 <li key={c.a.id}>
                   <button
                     type="button"
-                    onClick={() => setSelectedId(c.a.id)}
+                    dragId={c.a.id}
+                  onDragStart={onCardDragStart}
+                  onDragOver={onCardDragOver}
+                  onDrop={onCardDrop}
+                  onClick={() => setSelectedId(c.a.id)}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-lg border bg-white p-2 text-left shadow-sm transition hover:shadow-md sm:gap-3 sm:rounded-xl sm:p-3",
                       severityBorderClass(c.sev),
@@ -1978,6 +2027,10 @@ function StudentCard({
   isDone,
   statusLabel,
   onClick,
+  dragId,
+  onDragStart,
+  onDragOver,
+  onDrop,
 }: {
   name: string;
   matric: string;
@@ -1993,14 +2046,39 @@ function StudentCard({
   isDone?: boolean;
   statusLabel?: string;
   onClick: () => void;
+  dragId?: string;
+  onDragStart?: (id: string) => void;
+  onDragOver?: (e: React.DragEvent, id: string) => void;
+  onDrop?: (id: string) => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      draggable={Boolean(dragId)}
+      onDragStart={(e) => {
+        if (!dragId) return;
+        try {
+          e.dataTransfer.setData("text/plain", dragId);
+          e.dataTransfer.effectAllowed = "move";
+        } catch { /* ignore */ }
+        onDragStart?.(dragId);
+      }}
+      onDragOver={(e) => {
+        if (!dragId) return;
+        e.preventDefault();
+        onDragOver?.(e, dragId);
+      }}
+      onDrop={(e) => {
+        if (!dragId) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onDrop?.(dragId);
+      }}
       className={cn(
         "overflow-hidden rounded-lg border bg-white text-left shadow-sm transition hover:shadow-md sm:rounded-xl sm:border-2",
         severityBorderClass(sev),
+        dragId && "cursor-grab active:cursor-grabbing",
       )}
     >
       <div

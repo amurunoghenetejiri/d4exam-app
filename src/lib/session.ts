@@ -4,20 +4,8 @@ import { rememberLastUserId, readLastUserId, withOfflineCache } from "@/lib/offl
 import { mirrorSessionUser } from "@/lib/local-db/mirror";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { appNavigate, appReplace } from "@/lib/app-navigate";
 
-type ProfileLite = {
-  id?: string;
-  full_name?: string | null;
-  first_name?: string | null;
-  last_name?: string | null;
-  email?: string | null;
-  status?: string | null;
-  school_id?: string | null;
-  auth_user_id?: string | null;
-};
-
-async function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -173,7 +161,7 @@ export async function switchActiveRole(role: AppRole | string): Promise<{ ok: tr
   }
 
   if (typeof window !== "undefined") {
-    appReplace(path);
+    window.location.replace(path);
   }
   return { ok: true, path };
 }
@@ -331,8 +319,8 @@ export async function fetchSessionUser(): Promise<SessionUser | null> {
 
   // FAST: RPC + profiles/roles in parallel (~2.5s max)
   let rpcCtx: SessionContextRpc | null = null;
-  let profileByAuth: { data: ProfileLite | null } = { data: null };
-  let profileById: { data: ProfileLite | null } = { data: null };
+  let profileByAuth: { data: Record<string, unknown> | null } = { data: null };
+  let profileById: { data: Record<string, unknown> | null } = { data: null };
   let roleRes: { data: { role: string; school_id: string | null; user_id: string }[] | null } = { data: null };
   try {
     const [rpcData, triple] = await Promise.all([
@@ -472,7 +460,7 @@ export async function fetchSessionUser(): Promise<SessionUser | null> {
       (typeof profile?.full_name === "string" ? profile.full_name.trim() : "") ||
       user.email ||
       "";
-    clearPendingLoginRole();
+    if (primaryRoleFast) clearPendingLoginRole();
     seedSchoolBrandFromSession(schoolId, schoolName, schoolLogoUrl);
     return {
       userId: user.id,
@@ -484,7 +472,7 @@ export async function fetchSessionUser(): Promise<SessionUser | null> {
       schoolName,
       schoolCode,
       schoolLogoUrl,
-      roles,
+      roles: primaryRoleFast && !roles.includes(primaryRoleFast) ? [...roles, primaryRoleFast] : roles,
       role: primaryRoleFast,
       identifier: rpcCtx?.officer_id || rpcCtx?.staff_id || rpcCtx?.matric || (profile?.email as string | undefined) || user.email || null,
       identifierLabel: rpcCtx?.officer_id ? "Officer ID" : rpcCtx?.staff_id ? "Staff ID" : rpcCtx?.matric ? "Matric" : "Email",
@@ -607,6 +595,10 @@ export async function fetchSessionUser(): Promise<SessionUser | null> {
     "student",
   ];
   const preferred = readPreferredRole() || readPendingLoginRole();
+  // Keep preferred staff role even if user_roles lag / RLS delays (prevents admin→login loop)
+  if (preferred && !roles.includes(preferred) && ["school_admin", "examination_officer", "teacher", "super_admin"].includes(preferred)) {
+    roles = [...roles, preferred];
+  }
   const primaryRole =
     (preferred && roles.includes(preferred) ? preferred : null) ||
     priority.find((r) => roles.includes(r)) ||
@@ -626,6 +618,7 @@ export async function fetchSessionUser(): Promise<SessionUser | null> {
     user.email ||
     "";
 
+  if (primaryRole) clearPendingLoginRole();
   seedSchoolBrandFromSession(schoolId, schoolName, schoolLogoUrl);
   return {
     userId: user.id,
@@ -701,5 +694,5 @@ export function initials(name: string) {
 export async function signOut() {
   await supabase.auth.signOut();
   clearPendingLoginRole();
-  if (typeof window !== "undefined") appNavigate("/login");
+  if (typeof window !== "undefined") window.location.href = "/login";
 }

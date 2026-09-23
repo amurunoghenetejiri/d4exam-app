@@ -21,6 +21,10 @@ import { App as CapApp } from "@capacitor/app";
 import {
   useSessionUser,
   readCachedSchoolBrand,
+  roleHome,
+  readPreferredRole,
+  readLastRole,
+  readPendingLoginRole,
   type AppRole,
 } from "@/lib/session";
 import { isNativeShell } from "@/native/platform";
@@ -43,7 +47,6 @@ import {
 } from "@/lib/fingerprint-lock";
 import { readLastUserId } from "@/lib/offline-query";
 import { cn } from "@/lib/utils";
-import { appNavigate } from "@/lib/app-navigate";
 
 const SPLASH_SESSION_KEY = "d4exam_splash_shown_v6";
 /** App theme navy — matches Capacitor status bar / splash */
@@ -291,9 +294,9 @@ export function FingerprintLockGate() {
     setLocked(false);
     setLogoutConfirm(false);
     try {
-      appNavigate("/login");
+      window.location.href = "/login";
     } catch {
-      appNavigate("/login");
+      window.location.assign("/login");
     }
   }
 
@@ -467,6 +470,18 @@ export function FingerprintLockGate() {
     setLocked(false);
     promptedRef.current = false;
     runningRef.current = false;
+    // Unlock while still on /login (SPA race): go to role dashboard
+    try {
+      const path = pathname || "";
+      if (path === "/login" || path === "/") {
+        const role = readPreferredRole() || readLastRole() || readPendingLoginRole();
+        if (role && roleHome[role]) {
+          appNavigate(roleHome[role]);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
     // After password unlock on a fingerprint-capable device that is not yet enabled → offer enable
     if (
       opts?.fromPassword &&
@@ -729,9 +744,9 @@ export function FingerprintLockGate() {
                 setLocked(false);
                 setFingerprintLocked(false);
                 try {
-                  appNavigate("/forgot-app-password");
+                  window.location.assign("/forgot-app-password");
                 } catch {
-                  appNavigate("/forgot-app-password");
+                  window.location.href = "/forgot-app-password";
                 }
               }}
               className="mt-3 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline"
