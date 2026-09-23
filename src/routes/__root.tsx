@@ -29,6 +29,7 @@ import { isNativeShell } from "@/native/platform";
 import { applyNativeStatusBar } from "@/native/statusBar";
 import { registerAndroidBackButton } from "@/native/backButton";
 import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
+import { unlockUi, installUiUnlockSafetyNet } from "@/lib/unlock-ui";
 import { DisplayPrefsBootstrap } from "@/components/DisplayPrefsBootstrap";
 import { startAccountVaultKeepAlive } from "@/lib/account-switcher";
 import { notifyWelcomeRole } from "@/lib/email-notify.functions";
@@ -387,7 +388,7 @@ function RootShell({ children }: { children: ReactNode }) {
             <div className="s">Smart Examination System</div>
           </div>
           <div className="slogan">
-            Fast • Secure • <span className="hi">Smart</span> • Seamless
+            SMART. <span className="hi">SECURE.</span> SEAMLESS.
           </div>
         </div>
         <script dangerouslySetInnerHTML={{ __html: BOOT_SPLASH_SCRIPT }} />
@@ -421,6 +422,7 @@ function RootComponent() {
   useEffect(() => {
     installGlobalErrorHandlers();
     startAccountVaultKeepAlive();
+    const stopUnlock = installUiUnlockSafetyNet();
     try {
       window.dispatchEvent(new Event("d4-hide-boot-splash"));
       const el = document.getElementById("d4-boot-splash");
@@ -429,12 +431,25 @@ function RootComponent() {
         el.style.pointerEvents = "none";
         el.style.display = "none";
       }
+      // Capacitor shell uses #d4-boot (not d4-boot-splash)
+      const boot = document.getElementById("d4-boot");
+      if (boot) {
+        // leave visible; capacitor-main enforces min splash time
+      }
       document.body.style.overflow = "";
       document.documentElement.style.overflow = "";
       document.body.classList.remove("d4-fp-lock-active", "d4-setup-lock-active");
+      unlockUi();
     } catch {
       /* ignore */
     }
+    return () => {
+      try {
+        stopUnlock();
+      } catch {
+        /* ignore */
+      }
+    };
   }, []);
 
   return (

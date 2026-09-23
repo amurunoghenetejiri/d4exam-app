@@ -6,6 +6,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { unlockUi } from "@/lib/unlock-ui";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -26,6 +27,15 @@ const SheetOverlay = React.forwardRef<
     )}
     {...props}
     ref={ref}
+    onAnimationEnd={(e) => {
+      props.onAnimationEnd?.(e);
+      try {
+        const st = (e.currentTarget as HTMLElement).getAttribute("data-state");
+        if (st === "closed") unlockUi();
+      } catch {
+        /* ignore */
+      }
+    }}
   />
 ));
 SheetOverlay.displayName = SheetPrimitive.Overlay.displayName;

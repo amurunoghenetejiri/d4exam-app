@@ -1,4 +1,5 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useRouter, useRouterState } from "@tanstack/react-router";
+import { unlockUi } from "@/lib/unlock-ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import {
@@ -125,6 +126,8 @@ function NavLinks({
   onNavigate?: () => void;
   badges?: Record<string, { dot?: "green" | "blue" | "red"; live?: boolean }>;
 }) {
+  const router = useRouter();
+
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const t = useT();
   const translateNav = (label: string) => translateNavLabel(label, t);
@@ -148,7 +151,16 @@ function NavLinks({
                   <Link
                     to={item.to}
                     preload={false}
-                    onClick={onNavigate}
+                    onClick={(e) => {
+                      try {
+                        e.preventDefault();
+                        void router.navigate({ to: item.to as never });
+                      } catch {
+                        /* Link default */
+                      }
+                      onNavigate?.();
+                      window.setTimeout(() => unlockUi(), 50);
+                    }}
                     className={cn(
                       "pressable relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
                       "active:scale-[0.98] active:bg-white/10",
@@ -296,6 +308,7 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const t = useT();
   const { data: session } = useSessionUser();
@@ -427,7 +440,16 @@ export function AppShell({
       >
         <div className="mx-auto grid h-12 max-w-[1400px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 sm:h-16 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-            <Sheet open={open} onOpenChange={setOpen}>
+            <Sheet
+              open={open}
+              onOpenChange={(next) => {
+                setOpen(next);
+                if (!next) {
+                  window.setTimeout(() => unlockUi(), 30);
+                  window.setTimeout(() => unlockUi(), 320);
+                }
+              }}
+            >
               <SheetTrigger asChild>
                 <Button
                   variant="outline"
@@ -633,6 +655,15 @@ export function AppShell({
                   <Link
                     to={item.to}
                     preload={false}
+                    onClick={(e) => {
+                      try {
+                        e.preventDefault();
+                        void router.navigate({ to: item.to as never });
+                      } catch {
+                        /* default */
+                      }
+                      window.setTimeout(() => unlockUi(), 50);
+                    }}
                     className={cn(
                       "pressable relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors",
                       active ? "text-white" : "text-slate-400 hover:text-white",

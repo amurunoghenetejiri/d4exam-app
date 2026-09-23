@@ -604,3 +604,14 @@ html.d4-monitor-desktop-site .sa-main {
 html.d4-monitor-desktop-site .d4-monitor-grid {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
 }
+
+
+/* d4-ui-unlock: never leave the Capacitor shell untappable */
+html body {
+  pointer-events: auto;
+}
+/* When Radix locks scroll, still allow interaction with the app shell after sheets close */
+html body[data-scroll-locked]:not(:has([data-state="open"])) {
+  pointer-events: auto !important;
+  overflow: auto !important;
+}

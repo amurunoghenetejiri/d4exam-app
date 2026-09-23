@@ -277,7 +277,7 @@ const html = `<!DOCTYPE html>
         <div class="s">Smart Examination System</div>
         <button type="button" id="d4-retry">Try again</button>
       </div>
-      <div class="slogan">Fast • Secure • <span class="hi">Smart</span> • Seamless</div>
+      <div class="slogan">SMART. <span class="hi">SECURE.</span> SEAMLESS.</div>
     </div>
     <div id="root"></div>
     <script>
