@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sheet";
 import { isAppLikeShell } from "@/native/platform";
 import { cn } from "@/lib/utils";
+import { appNavigate, appReplace } from "@/lib/app-navigate";
 
 const links = [
   { to: "/features", label: "Features" },
@@ -66,9 +67,9 @@ export function PublicLayout({ children }: { children: ReactNode }) {
         void navigate({ to: to as never });
       } catch {
         try {
-          window.location.assign(to);
+          appNavigate(to);
         } catch {
-          window.location.href = to;
+          appNavigate(to);
         }
       }
     }, 80);

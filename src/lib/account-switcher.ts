@@ -10,6 +10,7 @@ import type { AppRole, SessionUser } from "@/lib/session";
 import { roleHome, clearPendingLoginRole, seedPendingLoginRole } from "@/lib/session";
 import { offlineClearUser } from "@/lib/offline-cache";
 import { clearFingerprintIfUser, disableFingerprint } from "@/lib/fingerprint-lock";
+import { appNavigate, appReplace } from "@/lib/app-navigate";
 
 const VAULT_KEY = "d4_account_vault_v1";
 const ACTIVE_KEY = "d4_account_active_v1";
@@ -359,9 +360,9 @@ export async function switchToAccount(
     if (account?.role) seedPendingLoginRole(account.role);
     if (typeof window !== "undefined") {
       try {
-        window.location.replace(path);
+        appReplace(path);
       } catch {
-        window.location.href = path;
+        appNavigate(path);
       }
     }
     return { ok: true };
@@ -405,9 +406,9 @@ export async function switchToAccount(
       const sep = path.includes("?") ? "&" : "?";
       const dest = `${path}${sep}_sw=${Date.now()}`;
       try {
-        window.location.replace(dest);
+        appReplace(dest);
       } catch {
-        window.location.href = dest;
+        appNavigate(dest);
       }
     }
     return { ok: true };
@@ -495,7 +496,7 @@ export async function signOutThisAccount(): Promise<void> {
   if (userId) await removeAccountFromDevice(userId);
   const remaining = listSavedAccounts();
   if (typeof window !== "undefined") {
-    window.location.href = remaining.length > 0 ? "/login?switched=1" : "/login";
+    appNavigate(remaining.length > 0 ? "/login?switched=1" : "/login");
   }
 }
 
@@ -526,7 +527,7 @@ export async function signOutAllAccounts(): Promise<void> {
       /* ignore */
     }
   }
-  if (typeof window !== "undefined") window.location.href = "/login";
+  if (typeof window !== "undefined") appNavigate("/login");
 }
 
 export function beginAddAccountFlow(): void {
@@ -538,7 +539,7 @@ export function beginAddAccountFlow(): void {
       /* ignore */
     }
     void supabase.auth.signOut({ scope: "local" }).finally(() => {
-      window.location.href = "/login?addAccount=1";
+      appNavigate("/login?addAccount=1");
     });
   });
 }

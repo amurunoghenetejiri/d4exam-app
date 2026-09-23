@@ -22,6 +22,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionUser, type AppRole } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { appNavigate, appReplace } from "@/lib/app-navigate";
 
 type SearchHit = {
   id: string;
@@ -84,10 +85,10 @@ function saveRecent(q: string, userId: string | null, role: string) {
 function safeGo(href: string | undefined) {
   if (!href) return;
   try {
-    window.location.assign(href);
+    appNavigate(href);
   } catch {
     try {
-      window.location.href = href;
+      appNavigate(href);
     } catch {
       /* ignore */
     }

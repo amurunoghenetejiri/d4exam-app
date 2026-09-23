@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { appNavigate, appReplace } from "@/lib/app-navigate";
 
 export const Route = createFileRoute("/login")({
   ssr: false,
@@ -190,9 +191,9 @@ async function goToRoleHome(role: string, rememberDevice = true) {
     /* ignore */
   }
   try {
-    window.location.replace(path);
+    appReplace(path);
   } catch {
-    window.location.href = path;
+    appNavigate(path);
   }
   return true;
 }

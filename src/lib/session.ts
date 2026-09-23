@@ -4,6 +4,7 @@ import { rememberLastUserId, readLastUserId, withOfflineCache } from "@/lib/offl
 import { mirrorSessionUser } from "@/lib/local-db/mirror";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { appNavigate, appReplace } from "@/lib/app-navigate";
 
 type ProfileLite = {
   id?: string;
@@ -172,7 +173,7 @@ export async function switchActiveRole(role: AppRole | string): Promise<{ ok: tr
   }
 
   if (typeof window !== "undefined") {
-    window.location.replace(path);
+    appReplace(path);
   }
   return { ok: true, path };
 }
@@ -700,5 +701,5 @@ export function initials(name: string) {
 export async function signOut() {
   await supabase.auth.signOut();
   clearPendingLoginRole();
-  if (typeof window !== "undefined") window.location.href = "/login";
+  if (typeof window !== "undefined") appNavigate("/login");
 }

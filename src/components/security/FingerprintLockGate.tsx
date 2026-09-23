@@ -43,6 +43,7 @@ import {
 } from "@/lib/fingerprint-lock";
 import { readLastUserId } from "@/lib/offline-query";
 import { cn } from "@/lib/utils";
+import { appNavigate } from "@/lib/app-navigate";
 
 const SPLASH_SESSION_KEY = "d4exam_splash_shown_v6";
 /** App theme navy — matches Capacitor status bar / splash */
@@ -290,9 +291,9 @@ export function FingerprintLockGate() {
     setLocked(false);
     setLogoutConfirm(false);
     try {
-      window.location.href = "/login";
+      appNavigate("/login");
     } catch {
-      window.location.assign("/login");
+      appNavigate("/login");
     }
   }
 
@@ -728,9 +729,9 @@ export function FingerprintLockGate() {
                 setLocked(false);
                 setFingerprintLocked(false);
                 try {
-                  window.location.assign("/forgot-app-password");
+                  appNavigate("/forgot-app-password");
                 } catch {
-                  window.location.href = "/forgot-app-password";
+                  appNavigate("/forgot-app-password");
                 }
               }}
               className="mt-3 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline"

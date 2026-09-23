@@ -88,7 +88,7 @@ function DefaultError({ error }: { error: Error }) {
           Try again
         </button>
         <a
-          href="/"
+          href="#/"
           className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800"
         >
           Go home
@@ -124,31 +124,29 @@ export const getRouter = () => {
     },
   });
 
-  // Capacitor local shell: hash history so /login and menu links always navigate.
-  // Online WebView (server.url) uses normal browser history on https://d4exam.name.ng.
+  // APK / local Capacitor shell MUST use hash history.
+  // Root freeze cause: browser history on https://localhost made /student etc. real WebView
+  // path loads with no SPA server → taps looked frozen. Public website keeps browser history.
   let history: ReturnType<typeof createBrowserHistory> | ReturnType<typeof createHashHistory> | undefined;
   try {
     if (typeof window !== "undefined") {
-      const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
-      const ua = navigator.userAgent || "";
-      const native =
-        Boolean(cap?.isNativePlatform?.()) ||
-        (/; wv\)/i.test(ua) && /Android/i.test(ua)) ||
-        /Capacitor/i.test(ua);
-      // Only hash when serving from local capacitor host (bundled), not when on d4exam.name.ng
-      const host = window.location.hostname || "";
-      const localShell =
-        native &&
-        (host === "localhost" ||
-          host === "127.0.0.1" ||
-          host === "" ||
-          window.location.protocol === "file:");
-      if (localShell) {
+      const host = (window.location.hostname || "").toLowerCase();
+      const isPublicWeb =
+        host === "d4exam.name.ng" ||
+        host === "www.d4exam.name.ng" ||
+        host.endsWith(".vercel.app") ||
+        host.includes("lovable.app") ||
+        host.includes("lovableproject.com");
+      if (!isPublicWeb) {
         history = createHashHistory();
       }
     }
   } catch {
-    /* default history */
+    try {
+      history = createHashHistory();
+    } catch {
+      /* default */
+    }
   }
 
   const router = createRouter({

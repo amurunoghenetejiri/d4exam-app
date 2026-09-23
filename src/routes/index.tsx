@@ -19,6 +19,17 @@ import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { fetchSessionUser, roleHome, readLastPath, readLastRole, readPreferredRole, type AppRole } from "@/lib/session";
 
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
 export const Route = createFileRoute("/")({
   ssr: false,
   head: () => ({
@@ -48,7 +59,7 @@ export const Route = createFileRoute("/")({
           throw redirect({ to: home as never });
         }
       }
-      const session = await fetchSessionUser();
+      const session = await withTimeout(fetchSessionUser(), 1200);
       if (session?.role && session.role in roleHome) {
         throw redirect({ to: roleHome[session.role as AppRole] as never });
       }

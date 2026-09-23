@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { withOfflineCache } from "@/lib/offline-query";
 import { OfflineKeys } from "@/lib/offline-cache";
 import { isOnlineNow } from "@/lib/offline-sync";
+import { appNavigate, appReplace } from "@/lib/app-navigate";
 
 type Notif = {
   id: string;
@@ -398,10 +399,10 @@ export function NotificationsPage({ scope }: { scope: string }) {
                   try {
                     void navigate({ to: href as never });
                   } catch {
-                    window.location.assign(href);
+                    appNavigate(href);
                   }
                 } else if (href) {
-                  window.location.href = href;
+                  appNavigate(href);
                 }
               }}
             >
@@ -467,7 +468,7 @@ export function NotificationsPage({ scope }: { scope: string }) {
                       try {
                         void navigate({ to: href as never });
                       } catch {
-                        window.location.assign(href);
+                        appNavigate(href);
                       }
                     }}
                   >

@@ -227,23 +227,40 @@ const html = `<!DOCTYPE html>
       html, body { margin: 0; min-height: 100%; background: #0b1b3a; }
       #root { min-height: 100dvh; }
       #d4-boot {
-        position: fixed; inset: 0; z-index: 99999; display: grid; place-items: center;
-        background: #0b1b3a; color: #e2e8f0; font-family: system-ui, sans-serif; text-align: center;
+        position: fixed; inset: 0; z-index: 99999; display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        background: #0b1b3a; color: #e2e8f0; font-family: system-ui, sans-serif;
+        text-align: center;
         padding: max(1rem, env(safe-area-inset-top)) 1.25rem max(1rem, env(safe-area-inset-bottom));
+        transition: opacity 0.25s ease;
       }
-      #d4-boot .mark {
-        width: 72px; height: 72px; margin: 0 auto 1rem; border-radius: 18px;
-        background: #1e3a5f; display: grid; place-items: center;
-        font-weight: 800; font-size: 1.25rem; color: #93c5fd;
+      #d4-boot .boot-main {
+        display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center;
       }
-      #d4-boot .spin {
-        width: 36px; height: 36px; margin: 0 auto 1rem;
-        border: 3px solid #1e3a5f; border-top-color: #3b82f6;
-        border-radius: 50%; animation: d4spin 0.8s linear infinite;
+      #d4-boot img.logo {
+        width: min(40vw, 160px); height: min(40vw, 160px); object-fit: contain;
+        animation: d4pulse 1.6s ease-in-out infinite;
       }
-      @keyframes d4spin { to { transform: rotate(360deg); } }
-      #d4-boot h1 { font-size: 1.15rem; margin: 0 0 0.4rem; font-weight: 700; }
-      #d4-boot p { margin: 0 auto; max-width: 18rem; font-size: 0.9rem; color: #94a3b8; }
+      @keyframes d4pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.04); opacity: 0.92; }
+      }
+      #d4-boot .t {
+        margin-top: 1.25rem; font-weight: 800; letter-spacing: 0.14em;
+        font-size: clamp(1.5rem, 6vw, 2.25rem); color: #fff;
+      }
+      #d4-boot .t span.b { color: #2563eb; }
+      #d4-boot .s {
+        margin-top: 0.5rem; font-size: 10px; letter-spacing: 0.28em;
+        color: #94a3b8; font-weight: 600;
+      }
+      #d4-boot .slogan {
+        position: absolute; bottom: max(1.5rem, env(safe-area-inset-bottom));
+        left: 0; right: 0; text-align: center;
+        font-size: 11px; letter-spacing: 0.12em; color: #94a3b8; font-weight: 600;
+        padding: 0 2rem;
+      }
+      #d4-boot .slogan span.hi { color: #60a5fa; }
       #d4-boot button {
         margin-top: 1.1rem; border: 0; border-radius: 0.75rem;
         background: #2563eb; color: #fff; font-weight: 600;
@@ -254,13 +271,13 @@ const html = `<!DOCTYPE html>
   </head>
   <body>
     <div id="d4-boot" role="status">
-      <div>
-        <div class="mark">D4</div>
-        <div class="spin"></div>
-        <h1>Loading D4EXAM</h1>
-        <p>Starting secure examination workspace\u2026</p>
+      <div class="boot-main">
+        <img class="logo" src="./logo.png" alt="D4EXAM" width="160" height="160" />
+        <div class="t">D<span class="b">4</span>EXAM</div>
+        <div class="s">Smart Examination System</div>
         <button type="button" id="d4-retry">Try again</button>
       </div>
+      <div class="slogan">Fast • Secure • <span class="hi">Smart</span> • Seamless</div>
     </div>
     <div id="root"></div>
     <script>
