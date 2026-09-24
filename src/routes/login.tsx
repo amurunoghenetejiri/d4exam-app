@@ -274,9 +274,9 @@ async function goToRoleHome(role: string, rememberDevice = true, loginSchool?: {
     appReplace(path);
   } catch {
     try {
-      window.location.replace(path);
+      window.location.hash = `#${path.startsWith("/") ? path : "/" + path}`;
     } catch {
-      window.location.href = path;
+      /* ignore */
     }
   }
   return true;

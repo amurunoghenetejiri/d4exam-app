@@ -47,7 +47,7 @@ import {
 } from "@/lib/fingerprint-lock";
 import { readLastUserId } from "@/lib/offline-query";
 import { cn } from "@/lib/utils";
-import { appNavigate } from "@/lib/app-navigate";
+import { appNavigate, appReplace } from "@/lib/app-navigate";
 
 const SPLASH_SESSION_KEY = "d4exam_splash_shown_v6";
 /** App theme navy — matches Capacitor status bar / splash */
@@ -299,20 +299,27 @@ export function FingerprintLockGate() {
     setLocked(false);
     setLogoutConfirm(false);
     try {
-      appNavigate("/login");
+      void import("@/lib/unlock-ui").then((m) => m.unlockUi());
+    } catch {
+      /* ignore */
+    }
+    try {
+      appReplace("/login");
     } catch {
       try {
-        window.location.href = "/login";
+        appNavigate("/login");
       } catch {
-        window.location.assign("/login");
+        window.location.hash = "#/login";
       }
     }
-    // Hard fallback so unlock screen never traps the user
+    // Hard fallback — hash only, never path load that freezes WebView
     window.setTimeout(() => {
       try {
-        if (!String(window.location.href || "").includes("login")) {
-          window.location.assign("/login");
+        const h = String(window.location.hash || "");
+        if (!h.includes("login")) {
+          window.location.hash = "#/login";
         }
+        void import("@/lib/unlock-ui").then((m) => m.unlockUi());
       } catch {
         /* ignore */
       }
@@ -481,6 +488,11 @@ export function FingerprintLockGate() {
   }, [locked, splashDone, native]);
 
   function finishUnlock(opts?: { fromPassword?: boolean }) {
+    try {
+      void import("@/lib/unlock-ui").then((m) => m.unlockUi());
+    } catch {
+      /* ignore */
+    }
     setFingerprintLocked(false);
     clearBackgroundMark();
     markSessionUnlocked();
@@ -781,9 +793,14 @@ export function FingerprintLockGate() {
                 setLocked(false);
                 setFingerprintLocked(false);
                 try {
-                  window.location.assign("/forgot-app-password");
+                  void import("@/lib/unlock-ui").then((m) => m.unlockUi());
                 } catch {
-                  window.location.href = "/forgot-app-password";
+                  /* ignore */
+                }
+                try {
+                  appNavigate("/forgot-app-password");
+                } catch {
+                  window.location.hash = "#/forgot-app-password";
                 }
               }}
               className="mt-3 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline"

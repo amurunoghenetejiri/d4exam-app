@@ -64,7 +64,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
     const { data: sess } = await Promise.race([
       sessPromise,
       new Promise<{ data: { session: null } }>((resolve) =>
-        setTimeout(() => resolve({ data: { session: null } }), online ? 2_500 : 400),
+        setTimeout(() => resolve({ data: { session: null } }), online ? 1_200 : 200),
       ),
     ]);
     hasAuthSession = Boolean(sess.session?.access_token && sess.session.user?.id);
@@ -88,7 +88,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
       try {
         user = await Promise.race([
           fetchSessionUser(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 4_500)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_200)),
         ]);
       } catch {
         user = null;
@@ -99,7 +99,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
           const { repairMySessionSchool } = await import("@/lib/repair-session-school.functions");
           const fixed = await Promise.race([
             repairMySessionSchool(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 3_500)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_500)),
           ]);
           if (fixed && (fixed as { schoolId?: string }).schoolId) {
             const { seedLoginSchoolContext } = await import("@/lib/session");
@@ -115,7 +115,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
           await new Promise((r) => setTimeout(r, 150));
           const again = await Promise.race([
             fetchSessionUser(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 3_000)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_500)),
           ]);
           if (again && (!user || !isIncomplete(again))) user = again;
           else if (again && isIncomplete(user) && !isIncomplete(again)) user = again;
@@ -151,7 +151,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
         try {
           const hard = await Promise.race([
             fetchSessionUser(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
           ]);
           // Accept resolved role even if schoolId is still hydrating (admin/officer login loop fix)
           if (

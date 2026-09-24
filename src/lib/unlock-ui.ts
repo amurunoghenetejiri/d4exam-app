@@ -48,6 +48,19 @@ export function unlockUi(): void {
         /* ignore */
       }
     });
+    // Stale fingerprint lock overlay must never block taps after unlock
+    document.querySelectorAll(".d4-fp-lock-overlay").forEach((el) => {
+      try {
+        const h = el as HTMLElement;
+        // Only strip if body is not actively locked
+        if (!document.body.classList.contains("d4-fp-lock-active")) {
+          h.style.pointerEvents = "none";
+          h.style.display = "none";
+        }
+      } catch {
+        /* ignore */
+      }
+    });
   } catch {
     /* ignore */
   }

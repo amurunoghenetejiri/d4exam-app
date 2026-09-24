@@ -1,3 +1,4 @@
+import { appNavigate } from "@/lib/app-navigate";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, FileText, Layers, Clock } from "lucide-react";
@@ -153,7 +154,7 @@ function Page() {
               description="Create an exam for an assigned course."
               actionLabel="Create examination"
               onAction={() => {
-                window.location.assign("/teacher/examinations");
+                appNavigate("/teacher/examinations");
               }}
             />
           ) : (

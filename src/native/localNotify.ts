@@ -287,7 +287,9 @@ export async function bindLocalNotificationActions(): Promise<void> {
         }
         if (typeof window !== "undefined") {
           const origin = window.location.origin || "";
-          window.location.assign(origin ? `${origin}${link}` : link);
+          void import("@/lib/app-navigate").then(({ appNavigate }) => {
+            appNavigate(String(link || "/").replace(/^#/, ""));
+          });
         }
       } catch {
         /* ignore */

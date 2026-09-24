@@ -190,7 +190,14 @@ function showLocalNotification(title: string, body: string, link?: string | null
       const n = new Notification(title, { body, icon, badge });
       n.onclick = () => {
         window.focus();
-        window.location.assign(`${window.location.origin || ""}${pathLink}`);
+        void (async () => {
+          try {
+            const { appNavigate } = await import("@/lib/app-navigate");
+            appNavigate(pathLink);
+          } catch {
+            window.location.hash = `#${pathLink.startsWith("/") ? pathLink : "/" + pathLink}`;
+          }
+        })();
         n.close();
       };
     } catch {
@@ -273,7 +280,28 @@ async function bindNativePushListeners(userId: string, role?: string | null): Pr
         }
         if (!link.startsWith("/")) link = `/${link}`;
         if (typeof window !== "undefined") {
-          window.location.assign(link);
+          {
+          const path = String(link || "");
+          if (path.startsWith("/") || path.startsWith("#/")) {
+            void import("@/lib/app-navigate").then(({ appNavigate }) =>
+              appNavigate(path.replace(/^#/, "")),
+            );
+          } else if (path.includes("d4exam") || path.startsWith("http")) {
+            // external — leave to system; still prefer hash if same-origin path
+            try {
+              const u = new URL(path, window.location.href);
+              if (u.origin === window.location.origin) {
+                void import("@/lib/app-navigate").then(({ appNavigate }) => appNavigate(u.pathname + u.search));
+              } else {
+                window.open(path, "_blank");
+              }
+            } catch {
+              window.location.hash = "#/";
+            }
+          } else {
+            window.location.hash = `#${path.startsWith("/") ? path : "/" + path}`;
+          }
+        }
         }
       } catch {
         /* ignore */

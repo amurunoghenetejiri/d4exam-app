@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import { createRouter, createHashHistory, createBrowserHistory } from "@tanstack/react-router";
+import { createRouter, createHashHistory } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { isOnlineNow } from "@/lib/offline-sync";
 import { bindAppRouter } from "@/lib/app-navigate";
@@ -47,26 +47,17 @@ function DefaultError({ error }: { error: Error }) {
         <button
           type="button"
           className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-7 py-3.5 text-[0.95rem] font-semibold text-white shadow-lg shadow-blue-600/35 transition active:scale-[0.98] active:bg-blue-700"
-          onClick={() => window.location.reload()}
+          onClick={() => {
+            try {
+              window.location.hash = window.location.hash || "#/";
+              window.location.reload();
+            } catch {
+              window.location.reload();
+            }
+          }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path d="M21 12a9 9 0 1 1-2.6-6.3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-            <path d="M21 4v5h-5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
           Try Again
         </button>
-        <div className="mt-9 flex max-w-[16rem] flex-col items-center gap-2 text-slate-500">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <path d="M5.07 11.05a9 9 0 0 1 13.86 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <path d="M8.53 14.11a5 5 0 0 1 6.95 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            <circle cx="12" cy="18" r="1.2" fill="currentColor" />
-          </svg>
-          <p className="text-xs leading-relaxed">
-            D4EXAM will reconnect automatically
-            <br />
-            once you're back online.
-          </p>
-        </div>
       </div>
     );
   }
@@ -77,26 +68,39 @@ function DefaultError({ error }: { error: Error }) {
         D4
       </div>
       <h1 className="text-lg font-semibold text-slate-900">This page didn't load</h1>
-      <p className="text-sm text-slate-500">
-        Something went wrong. Try again or go back to your dashboard.
-      </p>
-      <div className="flex flex-wrap justify-center gap-2">
-        <button
-          type="button"
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-          onClick={() => window.location.reload()}
-        >
-          Try again
-        </button>
-        <a
-          href="/"
-          className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800"
-        >
-          Go home
-        </a>
-      </div>
+      <p className="text-sm text-slate-500">{error?.message || "Something went wrong."}</p>
+      <a
+        href="#/"
+        className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800"
+        onClick={(e) => {
+          e.preventDefault();
+          try {
+            window.location.hash = "#/";
+          } catch {
+            /* ignore */
+          }
+        }}
+      >
+        Go home
+      </a>
     </div>
   );
+}
+
+function isNativeApp(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+    const ua = navigator.userAgent || "";
+    return (
+      Boolean(cap?.isNativePlatform?.()) ||
+      (/; wv\)/i.test(ua) && /Android/i.test(ua)) ||
+      /Capacitor/i.test(ua) ||
+      Boolean((window as unknown as { __D4_FORCE_HASH__?: boolean }).__D4_FORCE_HASH__)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export const getRouter = () => {
@@ -125,32 +129,8 @@ export const getRouter = () => {
     },
   });
 
-  // Capacitor local shell: hash history so /login and menu links always navigate.
-  // Online WebView (server.url) uses normal browser history on https://d4exam.name.ng.
-  let history: ReturnType<typeof createBrowserHistory> | ReturnType<typeof createHashHistory> | undefined;
-  try {
-    if (typeof window !== "undefined") {
-      const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
-      const ua = navigator.userAgent || "";
-      const native =
-        Boolean(cap?.isNativePlatform?.()) ||
-        (/; wv\)/i.test(ua) && /Android/i.test(ua)) ||
-        /Capacitor/i.test(ua);
-      // Only hash when serving from local capacitor host (bundled), not when on d4exam.name.ng
-      const host = window.location.hostname || "";
-      const localShell =
-        native &&
-        (host === "localhost" ||
-          host === "127.0.0.1" ||
-          host === "" ||
-          window.location.protocol === "file:");
-      if (localShell) {
-        history = createHashHistory();
-      }
-    }
-  } catch {
-    /* default history */
-  }
+  // ALWAYS hash history in the Android APK — path navigations break the local WebView SPA.
+  const history = createHashHistory();
 
   const router = createRouter({
     routeTree,
@@ -158,9 +138,9 @@ export const getRouter = () => {
     history,
     scrollRestoration: true,
     defaultPreloadStaleTime: 5 * 60_000,
-    defaultPreload: "intent",
+    defaultPreload: isNativeApp() ? false : "intent",
     defaultPendingMs: 0,
-    defaultPendingMinMs: 120,
+    defaultPendingMinMs: 0,
     defaultPendingComponent: DefaultPending,
     defaultErrorComponent: DefaultError as never,
   });

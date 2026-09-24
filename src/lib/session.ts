@@ -204,7 +204,12 @@ export async function switchActiveRole(role: AppRole | string): Promise<{ ok: tr
   }
 
   if (typeof window !== "undefined") {
-    window.location.replace(path);
+    try {
+      const { appReplace } = await import("@/lib/app-navigate");
+      appReplace(path);
+    } catch {
+      window.location.hash = `#${path.startsWith("/") ? path : "/" + path}`;
+    }
   }
   return { ok: true, path };
 }
@@ -1095,5 +1100,12 @@ export function initials(name: string) {
 export async function signOut() {
   await supabase.auth.signOut();
   clearPendingLoginRole();
-  if (typeof window !== "undefined") window.location.href = "/login";
+  if (typeof window !== "undefined") {
+    try {
+      const { appReplace } = await import("@/lib/app-navigate");
+      appReplace("/login");
+    } catch {
+      window.location.hash = "#/login";
+    }
+  }
 }

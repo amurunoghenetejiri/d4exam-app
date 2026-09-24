@@ -55,6 +55,20 @@ function showBootError(message: string) {
 function main() {
   try {
     installUiUnlockSafetyNet();
+window.addEventListener("hashchange", () => {
+  try {
+    unlockUi();
+  } catch {
+    /* ignore */
+  }
+});
+window.addEventListener("popstate", () => {
+  try {
+    unlockUi();
+  } catch {
+    /* ignore */
+  }
+});
     unlockUi();
 
     let rootEl = document.getElementById("root");

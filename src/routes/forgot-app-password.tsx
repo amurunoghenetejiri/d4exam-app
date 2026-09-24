@@ -125,7 +125,7 @@ function ForgotAppPasswordPage() {
             if (typeof window !== "undefined" && window.history.length > 1) {
               window.history.back();
             } else {
-              window.location.assign("/");
+              window.location.hash = "#/";
             }
           }}
           className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-slate-400 transition hover:text-white"
@@ -172,7 +172,7 @@ function ForgotAppPasswordPage() {
                   if (typeof window !== "undefined" && window.history.length > 1) {
                     window.history.back();
                   } else {
-                    window.location.assign("/");
+                    window.location.hash = "#/";
                   }
                 }}
                 className="mt-2 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 py-3 text-sm font-bold text-white transition hover:bg-blue-500"
