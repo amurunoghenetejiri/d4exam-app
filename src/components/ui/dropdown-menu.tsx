@@ -5,8 +5,23 @@ import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 
-const DropdownMenu = DropdownMenuPrimitive.Root;
+function DropdownMenu({
+  onOpenChange,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Root>) {
+  return (
+    <DropdownMenuPrimitive.Root
+      {...props}
+      onOpenChange={(open) => {
+        onOpenChange?.(open);
+        if (!open) unlockUiSoon();
+      }}
+    />
+  );
+}
+
 
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 

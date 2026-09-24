@@ -5,8 +5,23 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 
-const Select = SelectPrimitive.Root;
+function Select({
+  onOpenChange,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>) {
+  return (
+    <SelectPrimitive.Root
+      {...props}
+      onOpenChange={(open) => {
+        onOpenChange?.(open);
+        if (!open) unlockUiSoon();
+      }}
+    />
+  );
+}
+
 
 const SelectGroup = SelectPrimitive.Group;
 

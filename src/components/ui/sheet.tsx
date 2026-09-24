@@ -6,9 +6,23 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { unlockUi } from "@/lib/unlock-ui";
+import { unlockUi, unlockUiSoon } from "@/lib/unlock-ui";
 
-const Sheet = SheetPrimitive.Root;
+function Sheet({
+  onOpenChange,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof SheetPrimitive.Root>) {
+  return (
+    <SheetPrimitive.Root
+      {...props}
+      onOpenChange={(open) => {
+        onOpenChange?.(open);
+        if (!open) unlockUiSoon();
+      }}
+    />
+  );
+}
+
 
 const SheetTrigger = SheetPrimitive.Trigger;
 
@@ -31,7 +45,7 @@ const SheetOverlay = React.forwardRef<
       props.onAnimationEnd?.(e);
       try {
         const st = (e.currentTarget as HTMLElement).getAttribute("data-state");
-        if (st === "closed") unlockUi();
+        if (st === "closed") unlockUiSoon();
       } catch {
         /* ignore */
       }

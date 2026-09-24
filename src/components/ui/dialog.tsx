@@ -5,8 +5,23 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 
-const Dialog = DialogPrimitive.Root;
+function Dialog({
+  onOpenChange,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof DialogPrimitive.Root>) {
+  return (
+    <DialogPrimitive.Root
+      {...props}
+      onOpenChange={(open) => {
+        onOpenChange?.(open);
+        if (!open) unlockUiSoon();
+      }}
+    />
+  );
+}
+
 
 const DialogTrigger = DialogPrimitive.Trigger;
 

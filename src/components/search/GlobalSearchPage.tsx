@@ -23,6 +23,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSessionUser, type AppRole } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { appNavigate, appReplace } from "@/lib/app-navigate";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 
 type SearchHit = {
   id: string;
@@ -105,6 +106,14 @@ function roleHome(role: AppRole): string {
 }
 
 export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const close = () => {
+    try {
+      onClose();
+    } finally {
+      unlockUiSoon();
+    }
+  };
+
   const { data: session } = useSessionUser();
   const role = (session?.role || "student") as AppRole;
   const schoolId = session?.schoolId ?? null;
@@ -190,6 +199,7 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
     return createPortal(
       <div
         className="fixed inset-0 z-[2147483000] flex flex-col bg-white text-slate-900"
+        data-d4-global-search="open"
         style={{
           width: "100%",
           height: "100%",
@@ -230,9 +240,9 @@ export function GlobalSearchPage({ open, onClose }: { open: boolean; onClose: ()
             </div>
             <button
               type="button"
-              onClick={onClose}
+              onClick={close}
               className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-white hover:bg-white/15"
-              aria-label="Close search"
+              aria-label="Close search" data-d4-search-close="1"
             >
               <X className="h-5 w-5" />
             </button>

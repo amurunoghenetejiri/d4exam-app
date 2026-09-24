@@ -29,6 +29,25 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
     user = queryClient.getQueryData<SessionUser | null>(["session-user"]);
   }
 
+  // FAST PATH: complete cached session with matching role — never block menu navigations.
+  const roleMatches = (u: SessionUser | null | undefined) =>
+    Boolean(
+      u &&
+        (allowed.includes(u.role as AppRole) ||
+          allowed.some((r) => (u.roles || []).includes(r))),
+    );
+  const isComplete = (u: SessionUser | null | undefined) =>
+    Boolean(
+      u &&
+        u.userId &&
+        u.role &&
+        (u.role === "super_admin" || u.schoolId) &&
+        (u.fullName || u.email),
+    );
+  if (isComplete(user) && roleMatches(user)) {
+    return { user: user as SessionUser };
+  }
+
   // Incomplete = school-bound role with no schoolId. NEVER trust that cache.
   const needsSchool = (u: SessionUser | null | undefined) =>
     Boolean(u?.role && u.role !== "super_admin" && !u.schoolId);
@@ -64,7 +83,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
     const { data: sess } = await Promise.race([
       sessPromise,
       new Promise<{ data: { session: null } }>((resolve) =>
-        setTimeout(() => resolve({ data: { session: null } }), online ? 800 : 100),
+        setTimeout(() => resolve({ data: { session: null } }), online ? 400 : 80),
       ),
     ]);
     hasAuthSession = Boolean(sess.session?.access_token && sess.session.user?.id);
@@ -88,7 +107,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
       try {
         user = await Promise.race([
           fetchSessionUser(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_200)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 700)),
         ]);
       } catch {
         user = null;
@@ -99,7 +118,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
           const { repairMySessionSchool } = await import("@/lib/repair-session-school.functions");
           const fixed = await Promise.race([
             repairMySessionSchool(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_500)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
           ]);
           if (fixed && (fixed as { schoolId?: string }).schoolId) {
             const { seedLoginSchoolContext } = await import("@/lib/session");
@@ -115,7 +134,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
           await new Promise((r) => setTimeout(r, 150));
           const again = await Promise.race([
             fetchSessionUser(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_500)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
           ]);
           if (again && (!user || !isIncomplete(again))) user = again;
           else if (again && isIncomplete(user) && !isIncomplete(again)) user = again;

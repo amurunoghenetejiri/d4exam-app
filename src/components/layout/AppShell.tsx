@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { unlockUi } from "@/lib/unlock-ui";
+import { unlockUi, unlockUiSoon } from "@/lib/unlock-ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import {
@@ -152,8 +152,8 @@ function NavLinks({
                       // Same as dashboard NavCard: let Link handle routing.
                       // preventDefault + router.navigate freezes the Capacitor WebView.
                       onNavigate?.();
-                      window.setTimeout(() => unlockUi(), 0);
-                      window.setTimeout(() => unlockUi(), 120);
+                      window.setTimeout(() => unlockUiSoon(), 0);
+                      window.setTimeout(() => unlockUiSoon(), 120);
                     }}
                     className={cn(
                       "pressable relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
@@ -443,7 +443,7 @@ export function AppShell({
               aria-expanded={open}
               onClick={() => {
                 setOpen(true);
-                unlockUi();
+                unlockUiSoon();
               }}
             >
               <Menu className="h-5 w-5" />
@@ -456,7 +456,7 @@ export function AppShell({
                   aria-label="Close menu"
                   onClick={() => {
                     setOpen(false);
-                    unlockUi();
+                    unlockUiSoon();
                   }}
                 />
                 <div
@@ -478,7 +478,7 @@ export function AppShell({
                       type="button"
                       onClick={() => {
                         setOpen(false);
-                        unlockUi();
+                        unlockUiSoon();
                       }}
                       aria-label="Close menu"
                       className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
@@ -491,7 +491,7 @@ export function AppShell({
                       config={config}
                       onNavigate={() => {
                         setOpen(false);
-                        unlockUi();
+                        unlockUiSoon();
                       }}
                       badges={navBadges}
                     />
@@ -501,7 +501,7 @@ export function AppShell({
                       type="button"
                       onClick={() => {
                         setOpen(false);
-                        unlockUi();
+                        unlockUiSoon();
                         void signOut();
                       }}
                       className="pressable flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-400 transition-colors hover:bg-red-500/15 hover:text-red-300 active:scale-[0.98]"
@@ -662,8 +662,8 @@ export function AppShell({
                     to={item.to as never}
                     preload={false}
                     onClick={() => {
-                      window.setTimeout(() => unlockUi(), 0);
-                      window.setTimeout(() => unlockUi(), 120);
+                      window.setTimeout(() => unlockUiSoon(), 0);
+                      window.setTimeout(() => unlockUiSoon(), 120);
                     }}
                     className={cn(
                       "pressable relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors",

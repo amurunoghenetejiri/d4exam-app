@@ -61,7 +61,13 @@ function getRouter(): D4Router | null {
 
 function unlockAfterNav(): void {
   try {
-    void import("@/lib/unlock-ui").then((m) => m.unlockUi());
+    void import("@/lib/unlock-ui").then((m) => {
+      try {
+        m.unlockUiSoon?.() ?? m.unlockUi?.();
+      } catch {
+        m.unlockUi?.();
+      }
+    });
   } catch {
     /* ignore */
   }
