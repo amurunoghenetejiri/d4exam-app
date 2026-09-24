@@ -164,7 +164,21 @@ function HomePage() {
                 className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold sm:h-12 sm:px-7 sm:text-base"
                 asChild
               >
-                <Link to="/school-application" onClick={() => { try { unlockUiSoon(); } catch {} }}>
+                <Link
+                  to="/school-application"
+                  preload={false}
+                  onClick={(e) => {
+                    try {
+                      unlockUiSoon();
+                      // Native WebView: force hash so page always opens
+                      if (typeof window !== "undefined" && (window as unknown as { Capacitor?: unknown }).Capacitor) {
+                        e.preventDefault();
+                        window.location.hash = "#/school-application";
+                        unlockUiSoon();
+                      }
+                    } catch { /* ignore */ }
+                  }}
+                >
                   Apply — Full school
                   <ArrowRight className="ml-1.5 h-4 w-4 sm:ml-2" />
                 </Link>
@@ -175,7 +189,21 @@ function HomePage() {
                 className="h-11 shrink-0 rounded-full border-white/40 bg-white/10 px-4 text-sm font-semibold text-white hover:bg-white/20 hover:text-white sm:h-12 sm:px-7 sm:text-base"
                 asChild
               >
-                <Link to="/school-application" search={{ type: "trial" }} onClick={() => { try { unlockUiSoon(); } catch {} }}>Start Trial / Demo</Link>
+                <Link
+                  to="/school-application"
+                  search={{ type: "trial" }}
+                  preload={false}
+                  onClick={(e) => {
+                    try {
+                      unlockUiSoon();
+                      if (typeof window !== "undefined" && (window as unknown as { Capacitor?: unknown }).Capacitor) {
+                        e.preventDefault();
+                        window.location.hash = "#/school-application?type=trial";
+                        unlockUiSoon();
+                      }
+                    } catch { /* ignore */ }
+                  }}
+                >Start Trial / Demo</Link>
               </Button>
             </div>
             <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-200">
@@ -321,7 +349,21 @@ function HomePage() {
                 <Link to="/school-application" onClick={() => { try { unlockUiSoon(); } catch {} }}>Apply — Full school</Link>
               </Button>
               <Button size="lg" variant="outline" className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold sm:h-12 sm:px-6 sm:text-base" asChild>
-                <Link to="/school-application" search={{ type: "trial" }} onClick={() => { try { unlockUiSoon(); } catch {} }}>Start Trial / Demo</Link>
+                <Link
+                  to="/school-application"
+                  search={{ type: "trial" }}
+                  preload={false}
+                  onClick={(e) => {
+                    try {
+                      unlockUiSoon();
+                      if (typeof window !== "undefined" && (window as unknown as { Capacitor?: unknown }).Capacitor) {
+                        e.preventDefault();
+                        window.location.hash = "#/school-application?type=trial";
+                        unlockUiSoon();
+                      }
+                    } catch { /* ignore */ }
+                  }}
+                >Start Trial / Demo</Link>
               </Button>
             </div>
           </div>

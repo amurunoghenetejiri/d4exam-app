@@ -72,21 +72,27 @@ export function PublicLayout({ children }: { children: ReactNode }) {
   }
 
   function goTo(to: string) {
+    const path = to.startsWith("/") ? to : `/${to}`;
     setOpen(false);
     unlockUiSoon();
-    // Hash SPA navigation — never full page reload
+    // Prefer hash assignment first on WebView — most reliable, never freezes
     window.setTimeout(() => {
       try {
-        appNavigate(to);
+        const hash = `#${path}`;
+        if (window.location.hash !== hash) {
+          window.location.hash = hash;
+        } else {
+          appNavigate(path);
+        }
       } catch {
         try {
-          window.location.hash = `#${to.startsWith("/") ? to : `/${to}`}`;
+          appNavigate(path);
         } catch {
           /* ignore */
         }
       }
       unlockUiSoon();
-    }, 30);
+    }, 20);
   }
 
   const menuPortal =
@@ -97,19 +103,25 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             role="dialog"
             aria-modal="true"
             aria-label="Menu"
-            data-d4-public-menu="open"
+            data-d4-public-menu="open" data-d4-app-menu="open"
             style={{
               position: "fixed",
               top: 0,
               left: 0,
               right: 0,
               bottom: 0,
-              width: "100%",
-              height: "100%",
+              width: "100vw",
+              height: "100vh",
               minHeight: "100dvh",
               backgroundColor: "#ffffff",
               zIndex: 2147483000,
               pointerEvents: "auto",
+              isolation: "isolate",
+              transform: "translateZ(0)",
+              WebkitTransform: "translateZ(0)",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
             {/* Header */}

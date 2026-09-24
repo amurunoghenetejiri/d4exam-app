@@ -130,7 +130,8 @@ function NavLinks({
   const t = useT();
   const translateNav = (label: string) => translateNavLabel(label, t);
   return (
-    <nav className="flex flex-col gap-5 px-3 py-4" aria-label={`${config.label} navigation`}>
+    <nav className="flex flex-col gap-5 px-3 py-4" aria-label={`${config.label} navigation`}
+                    data-d4-app-menu="open">
       {config.groups.map((group, gi) => (
         <div key={gi}>
           {group.label && (

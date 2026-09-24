@@ -155,6 +155,8 @@ export function unlockUi(): void {
           if (state === "open") return;
           if (h.classList.contains("d4-fp-lock-overlay")) return;
           if (h.classList.contains("sa-mobile-menu")) return;
+          if (h.getAttribute("data-d4-public-menu") === "open") return;
+          if (h.getAttribute("data-d4-app-menu") === "open") return;
           if (h.getAttribute("data-d4-global-search") === "open") return;
           h.style.pointerEvents = "none";
         } catch {
