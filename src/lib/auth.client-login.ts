@@ -21,6 +21,8 @@ export type ClientLoginResult =
       accessToken?: string;
       refreshToken?: string;
       userId?: string;
+      schoolId?: string | null;
+      schoolCode?: string | null;
     };
 
 export async function clientSignInWithSchoolCode(
@@ -50,6 +52,8 @@ export async function clientSignInWithSchoolCode(
       accessToken: signIn.session.access_token,
       refreshToken: signIn.session.refresh_token,
       userId: signIn.user.id,
+      schoolId: null,
+      schoolCode: null,
     };
   }
 
@@ -91,15 +95,17 @@ export async function clientSignInWithSchoolCode(
       accessToken: signIn.session.access_token,
       refreshToken: signIn.session.refresh_token,
       userId: signIn.user.id,
+      schoolId,
+      schoolCode,
     };
   }
 
   // Matric / staff ID → resolve login email via RPC if available
   try {
-    const { data: resolved, error: rErr } = await supabase.rpc("resolve_login_email" as never, {
+    const { data: resolved, error: rErr } = await supabase.rpc("resolve_login_email", {
       _school_id: schoolId,
       _identifier: ident,
-    } as never);
+    });
     if (!rErr && resolved) {
       const email =
         typeof resolved === "string"
@@ -120,6 +126,8 @@ export async function clientSignInWithSchoolCode(
           accessToken: signIn.session.access_token,
           refreshToken: signIn.session.refresh_token,
           userId: signIn.user.id,
+          schoolId,
+          schoolCode,
         };
       }
     }
@@ -147,5 +155,7 @@ export async function clientSignInWithSchoolCode(
     accessToken: signIn.session.access_token,
     refreshToken: signIn.session.refresh_token,
     userId: signIn.user.id,
+    schoolId,
+    schoolCode,
   };
 }
