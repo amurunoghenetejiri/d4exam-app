@@ -64,7 +64,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
     const { data: sess } = await Promise.race([
       sessPromise,
       new Promise<{ data: { session: null } }>((resolve) =>
-        setTimeout(() => resolve({ data: { session: null } }), online ? 1_200 : 200),
+        setTimeout(() => resolve({ data: { session: null } }), online ? 800 : 100),
       ),
     ]);
     hasAuthSession = Boolean(sess.session?.access_token && sess.session.user?.id);

@@ -1,4 +1,4 @@
-import { Link, useRouter, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { unlockUi } from "@/lib/unlock-ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
@@ -125,8 +125,6 @@ function NavLinks({
   onNavigate?: () => void;
   badges?: Record<string, { dot?: "green" | "blue" | "red"; live?: boolean }>;
 }) {
-  const router = useRouter();
-
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const t = useT();
   const translateNav = (label: string) => translateNavLabel(label, t);
@@ -148,17 +146,14 @@ function NavLinks({
               return (
                 <li key={item.to}>
                   <Link
-                    to={item.to}
+                    to={item.to as never}
                     preload={false}
-                    onClick={(e) => {
-                      try {
-                        e.preventDefault();
-                        void router.navigate({ to: item.to as never });
-                      } catch {
-                        /* Link default */
-                      }
+                    onClick={() => {
+                      // Same as dashboard NavCard: let Link handle routing.
+                      // preventDefault + router.navigate freezes the Capacitor WebView.
                       onNavigate?.();
-                      window.setTimeout(() => unlockUi(), 50);
+                      window.setTimeout(() => unlockUi(), 0);
+                      window.setTimeout(() => unlockUi(), 120);
                     }}
                     className={cn(
                       "pressable relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
@@ -307,7 +302,6 @@ export function AppShell({
 }) {
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const router = useRouter();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const t = useT();
   const { data: session } = useSessionUser();
@@ -665,16 +659,11 @@ export function AppShell({
               return (
                 <li key={item.to} className="flex">
                   <Link
-                    to={item.to}
+                    to={item.to as never}
                     preload={false}
-                    onClick={(e) => {
-                      try {
-                        e.preventDefault();
-                        void router.navigate({ to: item.to as never });
-                      } catch {
-                        /* default */
-                      }
-                      window.setTimeout(() => unlockUi(), 50);
+                    onClick={() => {
+                      window.setTimeout(() => unlockUi(), 0);
+                      window.setTimeout(() => unlockUi(), 120);
                     }}
                     className={cn(
                       "pressable relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors",
