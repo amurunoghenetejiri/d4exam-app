@@ -29,35 +29,11 @@ import { isNativeShell } from "@/native/platform";
 import { applyNativeStatusBar } from "@/native/statusBar";
 import { registerAndroidBackButton } from "@/native/backButton";
 import { AnimatedSplash } from "@/components/splash/AnimatedSplash";
-import { unlockUi, installUiUnlockSafetyNet } from "@/lib/unlock-ui";
 import { DisplayPrefsBootstrap } from "@/components/DisplayPrefsBootstrap";
+import { SchoolSessionBootstrap } from "@/components/SchoolSessionBootstrap";
 import { startAccountVaultKeepAlive } from "@/lib/account-switcher";
 import { notifyWelcomeRole } from "@/lib/email-notify.functions";
 import { isSyntheticStudentEmail } from "@/lib/student-email";
-import { appNavigate, appReplace } from "@/lib/app-navigate";
-
-function goAppHome() {
-  try {
-    const hashMode =
-      typeof window !== "undefined" &&
-      (window.location.protocol === "file:" ||
-        window.location.hostname === "localhost" ||
-        window.location.hash.startsWith("#/") ||
-        isNativeShell());
-    if (hashMode) {
-      window.location.hash = "#/";
-      window.location.reload();
-      return;
-    }
-    appNavigate("/");
-  } catch {
-    try {
-      appNavigate("/");
-    } catch {
-      /* ignore */
-    }
-  }
-}
 
 function NativeBootstrap() {
   const { data: session } = useSessionUser();
@@ -87,6 +63,7 @@ function NativeBootstrap() {
           return;
         }
         (window as unknown as { __d4UnsubBack?: () => void }).__d4UnsubBack = unsubBack;
+        // Non-blocking: never stall first paint / navigation on push setup
         if (!cancelled && session?.userId) {
           window.setTimeout(() => {
             void initNativePushIfNeeded(session.userId, session.role);
@@ -108,10 +85,12 @@ function NativeBootstrap() {
   return null;
 }
 
+
 function WebPushBootstrap() {
   const { data: session } = useSessionUser();
   useEffect(() => {
     if (!session?.userId) return;
+    // One-time welcome email per account (idempotent via localStorage)
     try {
       const key = `d4_welcome_email_sent_${session.userId}`;
       if (typeof localStorage !== "undefined" && !localStorage.getItem(key)) {
@@ -127,9 +106,7 @@ function WebPushBootstrap() {
           });
         }
       }
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
     if (isNativeShell()) return;
     void initWebPushIfNeeded(session.userId, session.role);
     const onVis = () => {
@@ -153,13 +130,12 @@ function NotFoundComponent() {
           The page you're looking for doesn't exist or has been moved.
         </p>
         <div className="mt-6">
-          <button
-            type="button"
-            onClick={goAppHome}
+          <Link
+            to="/"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go home
-          </button>
+          </Link>
         </div>
       </div>
     </div>
@@ -167,14 +143,11 @@ function NotFoundComponent() {
 }
 
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
-  console.error("[D4EXAM] root error", error);
+  console.error(error);
   const router = useRouter();
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
-
-  const detail =
-    typeof error?.message === "string" && error.message.length < 180 ? error.message : null;
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background px-4">
@@ -185,39 +158,29 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
         <p className="mt-2 text-sm text-muted-foreground">
           Don't worry — D4EXAM is still running. You can try again or head back home.
         </p>
-        {detail ? (
-          <p className="mt-3 rounded-lg bg-slate-100 px-3 py-2 text-left text-xs text-slate-600 break-words">
-            {detail}
-          </p>
-        ) : null}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
-              try {
-                router.invalidate();
-              } catch {
-                /* ignore */
-              }
+              router.invalidate();
               reset();
             }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Try Again
           </button>
-          <button
-            type="button"
-            onClick={goAppHome}
+          <a
+            href="/"
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
           >
             Go Home
-          </button>
+          </a>
           <button
             type="button"
             onClick={() => {
               try {
                 window.location.reload();
               } catch {
-                goAppHome();
+                window.location.href = "/";
               }
             }}
             className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
@@ -311,6 +274,7 @@ const BOOT_SPLASH_SCRIPT = `
     if (sessionStorage.getItem('d4exam_splash_shown_v6') === '1') return;
     var el = document.getElementById('d4-boot-splash');
     if (el) el.style.display = 'flex';
+    // Stay up until React signals ready — avoids white gap between boot + app splash / fingerprint
     var hidden = false;
     function hideBoot(){
       if (hidden) return;
@@ -325,12 +289,14 @@ const BOOT_SPLASH_SCRIPT = `
       } catch(e){}
     }
     window.addEventListener('d4-hide-boot-splash', hideBoot);
+    // Absolute safety only (never leave forever)
     setTimeout(hideBoot, 1800);
   } catch(e){}
 })();
 `;
 
 function RootShell({ children }: { children: ReactNode }) {
+
   const seoJsonLd = {
     "@context": "https://schema.org",
     "@graph": [
@@ -372,7 +338,7 @@ function RootShell({ children }: { children: ReactNode }) {
 #d4-boot-splash .t{margin-top:1.25rem;font-weight:800;letter-spacing:.14em;font-size:clamp(1.5rem,6vw,2.25rem)}
 #d4-boot-splash .t span.b{color:#2563eb}
 #d4-boot-splash .s{margin-top:.5rem;font-size:10px;letter-spacing:.28em;color:#94a3b8;font-weight:600}
-#d4-boot-splash .slogan{position:absolute;bottom:max(1.5rem,env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:11px;letter-spacing:.12em;color:#94a3b8;font-weight:600;padding:0 2rem}
+#d4-boot-splash .slogan{position:absolute;bottom:max(1.5rem,env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:10px;letter-spacing:.28em;color:#94a3b8;font-weight:600;padding:0 2rem}
 #d4-boot-splash .slogan span.hi{color:#60a5fa}
 `,
           }}
@@ -394,10 +360,10 @@ function RootShell({ children }: { children: ReactNode }) {
         <script dangerouslySetInnerHTML={{ __html: BOOT_SPLASH_SCRIPT }} />
         {children}
         <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(seoJsonLd) }}
-        />
-        <Scripts />
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(seoJsonLd) }}
+          />
+          <Scripts />
       </body>
     </html>
   );
@@ -422,7 +388,7 @@ function RootComponent() {
   useEffect(() => {
     installGlobalErrorHandlers();
     startAccountVaultKeepAlive();
-    const stopUnlock = installUiUnlockSafetyNet();
+    // Clear leftover overlays that can freeze taps after splash / lock gates
     try {
       window.dispatchEvent(new Event("d4-hide-boot-splash"));
       const el = document.getElementById("d4-boot-splash");
@@ -431,25 +397,12 @@ function RootComponent() {
         el.style.pointerEvents = "none";
         el.style.display = "none";
       }
-      // Capacitor shell uses #d4-boot (not d4-boot-splash)
-      const boot = document.getElementById("d4-boot");
-      if (boot) {
-        // leave visible; capacitor-main enforces min splash time
-      }
       document.body.style.overflow = "";
       document.documentElement.style.overflow = "";
       document.body.classList.remove("d4-fp-lock-active", "d4-setup-lock-active");
-      unlockUi();
     } catch {
       /* ignore */
     }
-    return () => {
-      try {
-        stopUnlock();
-      } catch {
-        /* ignore */
-      }
-    };
   }, []);
 
   return (
@@ -467,6 +420,7 @@ function RootComponent() {
       <Outlet />
       <NativeBootstrap />
       <WebPushBootstrap />
+      <SchoolSessionBootstrap />
       <DisplayPrefsBootstrap />
       <AnimatedSplash />
       <Toaster />
