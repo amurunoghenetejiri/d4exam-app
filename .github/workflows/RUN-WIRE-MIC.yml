@@ -1,22 +1,11 @@
 name: RUN-WIRE-MIC
+# One-shot / historical patch workflow — manual only. Does not block main.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "scripts/wire_mic.py"
-      - ".github/workflows/RUN-WIRE-MIC.yml"
+
 jobs:
-  run:
+  noop:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Run wire script
-        run: |
-          set -e
-          python3 scripts/wire_mic.py
-          git config user.name "d4exam-bot"
-          git config user.email "bot@d4exam.local"
-          git add src/components/cbt/CbtExamSession.impl.tsx src/routes/officer.live-monitor.tsx
-          if git diff --cached --quiet; then echo no changes; else git commit -m "feat: wire live student mic + officer mute/focus" && git push; fi
+      - name: Disabled (no-op)
+        run: echo "Disabled one-shot workflow. Core CI is Build/Release Android APK."
