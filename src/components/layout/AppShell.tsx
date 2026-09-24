@@ -1,7 +1,8 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { unlockUi, unlockUiSoon } from "@/lib/unlock-ui";
 import { useQuery } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   Bell,
   Building2,
@@ -301,7 +302,9 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [menuMounted, setMenuMounted] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => { setMenuMounted(true); }, []);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const t = useT();
   const { data: session } = useSessionUser();
@@ -450,71 +453,87 @@ export function AppShell({
             >
               <Menu className="h-5 w-5" />
             </Button>
-            {open ? (
-              <div className="sa-mobile-menu fixed inset-0 z-[100] lg:hidden" role="dialog" aria-modal="true" aria-label={`${config.label} navigation`}>
-                <button
-                  type="button"
-                  className="absolute inset-0 bg-black/55"
-                  aria-label="Close menu"
-                  onClick={() => {
-                    setOpen(false);
-                    unlockUiSoon();
-                  }}
-                />
-                <div
-                  className={cn(
-                    "absolute inset-y-0 left-0 flex w-[min(100vw-2rem,18rem)] flex-col bg-[#0b1b3a] text-white shadow-2xl",
-                    "h-[100dvh] max-h-[100dvh]",
-                  )}
-                >
-                  <div className="flex min-h-16 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 sm:px-4 pt-[env(safe-area-inset-top,0px)]">
-                    <div className="min-w-0 flex-1">
-                      <PortalBrand
-                        isSchoolPortal={isSchoolPortal}
-                        logoUrl={logoUrl}
-                        schoolName={schoolName}
-                        homeTo={config.home}
-                      />
-                    </div>
+            {menuMounted && open
+              ? createPortal(
+                  <div
+                    className="sa-mobile-menu fixed inset-0 z-[2147483000] flex flex-col lg:hidden"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={`${config.label} navigation`}
+                    style={{
+                      position: "fixed",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      minHeight: "100dvh",
+                      zIndex: 2147483000,
+                      pointerEvents: "auto",
+                      backgroundColor: "rgba(0,0,0,0.55)",
+                    }}
+                  >
                     <button
                       type="button"
-                      onClick={() => {
-                        setOpen(false);
-                        unlockUiSoon();
-                      }}
+                      className="absolute inset-0"
                       aria-label="Close menu"
-                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                    >
-                      <X className="h-5 w-5" strokeWidth={2.25} />
-                    </button>
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                    <NavLinks
-                      config={config}
-                      onNavigate={() => {
-                        setOpen(false);
-                        unlockUiSoon();
-                      }}
-                      badges={navBadges}
-                    />
-                  </div>
-                  <div className="mt-auto shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
-                    <button
-                      type="button"
                       onClick={() => {
                         setOpen(false);
                         unlockUiSoon();
-                        void signOut();
                       }}
-                      className="pressable flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-400 transition-colors hover:bg-red-500/15 hover:text-red-300 active:scale-[0.98]"
+                    />
+                    <div
+                      className="absolute inset-y-0 left-0 flex w-[min(100%,18rem)] flex-col bg-[#0b1b3a] shadow-2xl"
+                      style={{ height: "100%", maxHeight: "100dvh" }}
                     >
-                      <LogOut className="h-4 w-4" aria-hidden />
-                      Logout
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ) : null}
+                      <div className="flex min-h-16 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 sm:px-4 pt-[env(safe-area-inset-top,0px)]">
+                        <div className="min-w-0 flex-1">
+                          <PortalBrand
+                            isSchoolPortal={isSchoolPortal}
+                            logoUrl={logoUrl}
+                            schoolName={schoolName}
+                            homeTo={config.home}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpen(false);
+                            unlockUiSoon();
+                          }}
+                          aria-label="Close menu"
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                        >
+                          <X className="h-5 w-5" strokeWidth={2.25} />
+                        </button>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                        <NavLinks
+                          config={config}
+                          onNavigate={() => {
+                            setOpen(false);
+                            unlockUiSoon();
+                          }}
+                          badges={navBadges}
+                        />
+                      </div>
+                      <div className="mt-auto shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpen(false);
+                            unlockUiSoon();
+                            void signOut();
+                          }}
+                          className="pressable flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-400 transition-colors hover:bg-red-500/15 hover:text-red-300 active:scale-[0.98]"
+                        >
+                          <LogOut className="h-4 w-4" aria-hidden />
+                          Logout
+                        </button>
+                      </div>
+                    </div>
+                  </div>,
+                  document.body,
+                )
+              : null}
 
             <span className="hidden text-sm font-bold tracking-tight text-white lg:inline">
               {config.label} Portal

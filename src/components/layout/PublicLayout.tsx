@@ -1,5 +1,6 @@
-import { Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { Watermark } from "@/components/brand/Watermark";
@@ -17,7 +18,6 @@ const links = [
   { to: "/support", label: "Support" },
 ] as const;
 
-/** Mobile menu groups — Login is a button under Apply, not a text row. */
 const menuGroups = [
   {
     title: "Platform",
@@ -39,7 +39,7 @@ const menuGroups = [
 
 export function PublicLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
-  const navigate = useNavigate();
+  const [mounted, setMounted] = useState(false);
   const appShell = useMemo(() => {
     try {
       return isAppLikeShell();
@@ -48,22 +48,138 @@ export function PublicLayout({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Lock body scroll only while menu open; always restore on unmount
+  useEffect(() => {
+    if (!open) {
+      unlockUiSoon();
+      return;
+    }
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+      unlockUiSoon();
+    };
+  }, [open]);
+
   function closeMenu() {
     setOpen(false);
     unlockUiSoon();
   }
 
   function goTo(to: string) {
-    closeMenu();
+    setOpen(false);
+    unlockUiSoon();
+    // Hash SPA navigation — never full page reload
     window.setTimeout(() => {
       try {
-        void navigate({ to: to as never });
-      } catch {
         appNavigate(to);
+      } catch {
+        try {
+          window.location.hash = `#${to.startsWith("/") ? to : `/${to}`}`;
+        } catch {
+          /* ignore */
+        }
       }
       unlockUiSoon();
-    }, 40);
+    }, 30);
   }
+
+  const menuPortal =
+    mounted && open
+      ? createPortal(
+          <div
+            className="sa-mobile-menu fixed inset-0 z-[2147483000] flex flex-col bg-white"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu"
+            data-d4-public-menu="open"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: "100%",
+              height: "100%",
+              minHeight: "100dvh",
+              backgroundColor: "#ffffff",
+              zIndex: 2147483000,
+              pointerEvents: "auto",
+            }}
+          >
+            {/* Header */}
+            <div
+              className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-4"
+              style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+            >
+              <Logo size="sm" wordmark />
+              <button
+                type="button"
+                onClick={closeMenu}
+                aria-label="Close menu"
+                className="grid h-10 w-10 place-items-center rounded-full text-slate-700 hover:bg-slate-100 active:bg-slate-200"
+              >
+                <X className="h-5 w-5" strokeWidth={2.25} />
+              </button>
+            </div>
+
+            {/* Scrollable menu body — full height, solid white */}
+            <div
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white px-4 py-5"
+              style={{ WebkitOverflowScrolling: "touch" }}
+            >
+              {menuGroups.map((g) => (
+                <div key={g.title} className="mb-6">
+                  <p className="mb-2 px-1 text-[0.7rem] font-bold uppercase tracking-wider text-primary">
+                    {g.title}
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {g.items.map((l) => (
+                      <button
+                        key={l.label}
+                        type="button"
+                        className="rounded-xl px-3 py-3.5 text-left text-base font-semibold text-slate-800 hover:bg-slate-50 active:bg-slate-100"
+                        onClick={() => goTo(l.to)}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <div className="mt-2 space-y-3 border-t border-slate-100 pt-5 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+                <button
+                  type="button"
+                  onClick={() => goTo("/school-application")}
+                  className={cn(
+                    "inline-flex h-12 w-full items-center justify-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground",
+                    "hover:bg-primary/90 active:opacity-90",
+                  )}
+                >
+                  Apply Now
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goTo("/login")}
+                  className={cn(
+                    "inline-flex h-12 w-full items-center justify-center rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800",
+                    "hover:bg-slate-50 active:bg-slate-100",
+                  )}
+                >
+                  Login
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div className="relative flex min-h-dvh flex-col bg-white">
@@ -71,7 +187,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
 
       <header className="d4-public-header fixed top-0 left-0 right-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-[1180px] items-center justify-between gap-4 px-4 sm:h-[4.5rem] sm:px-6">
-          <Link to="/" aria-label="D4EXAM home" className="shrink-0">
+          <Link to="/" aria-label="D4EXAM home" className="shrink-0" onClick={() => unlockUiSoon()}>
             <span className="inline-flex lg:hidden">
               <Logo size="sm" wordmark />
             </span>
@@ -87,6 +203,7 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                 to={l.to}
                 className="rounded-md px-3 py-2 text-sm font-semibold text-primary/80 transition-colors hover:text-primary"
                 activeProps={{ className: "text-primary" }}
+                onClick={() => unlockUiSoon()}
               >
                 {l.label}
               </Link>
@@ -95,19 +212,22 @@ export function PublicLayout({ children }: { children: ReactNode }) {
 
           <div className="hidden shrink-0 items-center gap-2 lg:flex">
             <Button variant="ghost" size="sm" className="font-semibold text-primary" asChild>
-              <Link to="/login">Login</Link>
+              <Link to="/login" onClick={() => unlockUiSoon()}>
+                Login
+              </Link>
             </Button>
             <Button size="sm" className="rounded-full px-5 font-semibold" asChild>
-              <Link to="/school-application">Apply Now</Link>
+              <Link to="/school-application" onClick={() => unlockUiSoon()}>
+                Apply Now
+              </Link>
             </Button>
           </div>
 
-          {/* Custom drawer — no Radix Sheet (avoids body pointer-events freeze on Android WebView) */}
           <Button
             type="button"
             variant="outline"
             size="icon"
-            className="d4-public-menu relative z-[90] lg:hidden"
+            className="d4-public-menu relative z-[60] lg:hidden"
             aria-label="Open menu"
             aria-expanded={open}
             onClick={() => {
@@ -117,80 +237,11 @@ export function PublicLayout({ children }: { children: ReactNode }) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-
-          {open ? (
-            <div
-              className="sa-mobile-menu fixed inset-0 z-[100] lg:hidden"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Menu"
-            >
-              <button
-                type="button"
-                className="absolute inset-0 bg-black/40"
-                aria-label="Close menu"
-                onClick={closeMenu}
-              />
-              <div className="absolute inset-y-0 right-0 flex w-[min(100%,20rem)] flex-col border-l border-slate-200 bg-white shadow-xl">
-                <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-4">
-                  <Logo size="sm" />
-                  <button
-                    type="button"
-                    onClick={closeMenu}
-                    aria-label="Close menu"
-                    className="grid h-9 w-9 place-items-center rounded-full text-slate-600 hover:bg-slate-100"
-                  >
-                    <X className="h-5 w-5" strokeWidth={2.25} />
-                  </button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
-                  {menuGroups.map((g) => (
-                    <div key={g.title} className="mb-4">
-                      <p className="mb-1 px-3 text-[0.7rem] font-bold uppercase tracking-wide text-primary">
-                        {g.title}
-                      </p>
-                      <div className="flex flex-col gap-0.5">
-                        {g.items.map((l) => (
-                          <button
-                            key={l.label}
-                            type="button"
-                            className="rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100"
-                            onClick={() => goTo(l.to)}
-                          >
-                            {l.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => goTo("/school-application")}
-                      className={cn(
-                        "inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground",
-                        "hover:bg-primary/90 active:opacity-90",
-                      )}
-                    >
-                      Apply Now
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => goTo("/login")}
-                      className={cn(
-                        "inline-flex h-10 w-full items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-semibold",
-                        "hover:bg-accent hover:text-accent-foreground active:opacity-90",
-                      )}
-                    >
-                      Login
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : null}
         </div>
       </header>
+
+      {menuPortal}
+
       <div className="d4-public-header-spacer h-14 shrink-0 sm:h-[4.5rem]" aria-hidden />
 
       <main className="relative z-10 flex-1">{children}</main>
@@ -241,7 +292,7 @@ function FooterCol({ title, items }: { title: string; items: { to: string; label
       <ul className="mt-3 space-y-2">
         {items.map((it) => (
           <li key={it.to}>
-            <Link to={it.to} className="text-sm text-slate-600 hover:text-primary">
+            <Link to={it.to} className="text-sm text-slate-600 hover:text-primary" onClick={() => unlockUiSoon()}>
               {it.label}
             </Link>
           </li>

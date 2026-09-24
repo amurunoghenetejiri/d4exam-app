@@ -43,6 +43,9 @@ export function hasVisibleBlockingOverlay(): boolean {
     const search = document.querySelector('[data-d4-global-search="open"]');
     if (search && isVisiblyBlocking(search as HTMLElement)) return true;
 
+    const publicMenu = document.querySelector('[data-d4-public-menu="open"]');
+    if (publicMenu && isVisiblyBlocking(publicMenu as HTMLElement)) return true;
+
     const opens = document.querySelectorAll(
       '[data-state="open"][role="dialog"],' +
         '[data-state="open"][data-radix-menu-content],' +

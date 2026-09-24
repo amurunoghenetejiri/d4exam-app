@@ -1,4 +1,5 @@
 import { createFileRoute, Link, redirect, isRedirect } from "@tanstack/react-router";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 import {
   ShieldCheck,
   Gauge,
@@ -163,7 +164,7 @@ function HomePage() {
                 className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold sm:h-12 sm:px-7 sm:text-base"
                 asChild
               >
-                <Link to="/school-application">
+                <Link to="/school-application" onClick={() => { try { unlockUiSoon(); } catch {} }}>
                   Apply — Full school
                   <ArrowRight className="ml-1.5 h-4 w-4 sm:ml-2" />
                 </Link>
@@ -174,7 +175,7 @@ function HomePage() {
                 className="h-11 shrink-0 rounded-full border-white/40 bg-white/10 px-4 text-sm font-semibold text-white hover:bg-white/20 hover:text-white sm:h-12 sm:px-7 sm:text-base"
                 asChild
               >
-                <Link to="/school-application" search={{ type: "trial" }}>Start Trial / Demo</Link>
+                <Link to="/school-application" search={{ type: "trial" }} onClick={() => { try { unlockUiSoon(); } catch {} }}>Start Trial / Demo</Link>
               </Button>
             </div>
             <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-200">
@@ -317,10 +318,10 @@ function HomePage() {
             </div>
             <div className="flex shrink-0 flex-row flex-nowrap items-center gap-2 sm:gap-3">
               <Button size="lg" className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold sm:h-12 sm:px-6 sm:text-base" asChild>
-                <Link to="/school-application">Apply — Full school</Link>
+                <Link to="/school-application" onClick={() => { try { unlockUiSoon(); } catch {} }}>Apply — Full school</Link>
               </Button>
               <Button size="lg" variant="outline" className="h-11 shrink-0 rounded-full px-4 text-sm font-semibold sm:h-12 sm:px-6 sm:text-base" asChild>
-                <Link to="/school-application" search={{ type: "trial" }}>Start Trial / Demo</Link>
+                <Link to="/school-application" search={{ type: "trial" }} onClick={() => { try { unlockUiSoon(); } catch {} }}>Start Trial / Demo</Link>
               </Button>
             </div>
           </div>
