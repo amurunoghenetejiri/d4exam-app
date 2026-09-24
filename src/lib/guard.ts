@@ -57,6 +57,20 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
   // Offline-first: prefer local session cache immediately so menu navigations never stall.
   const online =
     typeof navigator === "undefined" ? true : navigator.onLine !== false;
+  const isNative = (() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+      const ua = navigator.userAgent || "";
+      return Boolean(cap?.isNativePlatform?.()) || (/; wv\)/i.test(ua) && /Android/i.test(ua)) || /Capacitor/i.test(ua);
+    } catch {
+      return false;
+    }
+  })();
+  // Native: never stall the WebView longer than ~300ms on auth/network.
+  const authMs = !online ? 80 : isNative ? 300 : 400;
+  const fetchMs = !online ? 100 : isNative ? 300 : 700;
+  const repairMs = !online ? 0 : isNative ? 300 : 800;
   async function readOfflineSession(): Promise<SessionUser | null> {
     try {
       const last = readLastUserId();
@@ -83,7 +97,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
     const { data: sess } = await Promise.race([
       sessPromise,
       new Promise<{ data: { session: null } }>((resolve) =>
-        setTimeout(() => resolve({ data: { session: null } }), online ? 400 : 80),
+        setTimeout(() => resolve({ data: { session: null } }), authMs),
       ),
     ]);
     hasAuthSession = Boolean(sess.session?.access_token && sess.session.user?.id);
@@ -107,18 +121,18 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
       try {
         user = await Promise.race([
           fetchSessionUser(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 700)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), fetchMs)),
         ]);
       } catch {
         user = null;
       }
-      if ((!user || isIncomplete(user)) && hasAuthSession) {
+      if ((!user || isIncomplete(user)) && hasAuthSession && online) {
         try {
           // Server repair: write profiles.school_id from officers/teachers/roles
           const { repairMySessionSchool } = await import("@/lib/repair-session-school.functions");
           const fixed = await Promise.race([
             repairMySessionSchool(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), repairMs || 1)),
           ]);
           if (fixed && (fixed as { schoolId?: string }).schoolId) {
             const { seedLoginSchoolContext } = await import("@/lib/session");
@@ -134,7 +148,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
           await new Promise((r) => setTimeout(r, 150));
           const again = await Promise.race([
             fetchSessionUser(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), repairMs || 1)),
           ]);
           if (again && (!user || !isIncomplete(again))) user = again;
           else if (again && isIncomplete(user) && !isIncomplete(again)) user = again;
@@ -170,7 +184,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
         try {
           const hard = await Promise.race([
             fetchSessionUser(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), isNative ? 300 : 1200)),
           ]);
           // Accept resolved role even if schoolId is still hydrating (admin/officer login loop fix)
           if (

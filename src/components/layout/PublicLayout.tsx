@@ -4,16 +4,10 @@ import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { Watermark } from "@/components/brand/Watermark";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { isAppLikeShell } from "@/native/platform";
 import { cn } from "@/lib/utils";
-import { appNavigate, appReplace } from "@/lib/app-navigate";
+import { appNavigate } from "@/lib/app-navigate";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 
 const links = [
   { to: "/features", label: "Features" },
@@ -54,25 +48,21 @@ export function PublicLayout({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  /**
-   * Close the sheet first (so the slide-out animation runs), then navigate.
-   * Avoids Radix SheetClose + TanStack Link composition bugs on mobile/WebView
-   * where the menu stays open and the route never changes.
-   */
-  function goTo(to: string) {
+  function closeMenu() {
     setOpen(false);
-    // Let the close animation start, then navigate. Works on Capacitor WebView.
+    unlockUiSoon();
+  }
+
+  function goTo(to: string) {
+    closeMenu();
     window.setTimeout(() => {
       try {
         void navigate({ to: to as never });
       } catch {
-        try {
-          appNavigate(to);
-        } catch {
-          appNavigate(to);
-        }
+        appNavigate(to);
       }
-    }, 80);
+      unlockUiSoon();
+    }, 40);
   }
 
   return (
@@ -112,77 +102,93 @@ export function PublicLayout({ children }: { children: ReactNode }) {
             </Button>
           </div>
 
-          <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="d4-public-menu lg:hidden"
-                aria-label="Open menu"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent
-              side="right"
-              className="w-[min(100%,20rem)] border-l border-slate-200 bg-white p-0"
-              // Ensure body scroll lock is released cleanly when we force-close via setOpen
-              onCloseAutoFocus={(e) => e.preventDefault()}
+          {/* Custom drawer — no Radix Sheet (avoids body pointer-events freeze on Android WebView) */}
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="d4-public-menu relative z-[90] lg:hidden"
+            aria-label="Open menu"
+            aria-expanded={open}
+            onClick={() => {
+              setOpen(true);
+              unlockUiSoon();
+            }}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+
+          {open ? (
+            <div
+              className="sa-mobile-menu fixed inset-0 z-[100] lg:hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Menu"
             >
-              <SheetTitle className="sr-only">Menu</SheetTitle>
-              <div className="flex h-14 items-center justify-between border-b border-slate-200 px-4">
-                <Logo size="sm" />
-                <SheetClose asChild>
-                  <Button variant="ghost" size="icon" aria-label="Close menu">
-                    <X className="h-5 w-5" />
-                  </Button>
-                </SheetClose>
-              </div>
-              <div className="flex max-h-[calc(100dvh-3.5rem)] flex-col overflow-y-auto p-4">
-                {menuGroups.map((g) => (
-                  <div key={g.title} className="mb-4">
-                    <p className="mb-1.5 px-3 text-[11px] font-bold uppercase tracking-wide text-primary">
-                      {g.title}
-                    </p>
-                    <div className="flex flex-col gap-0.5">
-                      {g.items.map((l) => (
-                        <button
-                          key={l.label}
-                          type="button"
-                          className="rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100"
-                          onClick={() => goTo(l.to)}
-                        >
-                          {l.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <div className="mt-2 space-y-2 border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/40"
+                aria-label="Close menu"
+                onClick={closeMenu}
+              />
+              <div className="absolute inset-y-0 right-0 flex w-[min(100%,20rem)] flex-col border-l border-slate-200 bg-white shadow-xl">
+                <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-4">
+                  <Logo size="sm" />
                   <button
                     type="button"
-                    onClick={() => goTo("/school-application")}
-                    className={cn(
-                      "inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground",
-                      "hover:bg-primary/90 active:opacity-90",
-                    )}
+                    onClick={closeMenu}
+                    aria-label="Close menu"
+                    className="grid h-9 w-9 place-items-center rounded-full text-slate-600 hover:bg-slate-100"
                   >
-                    Apply Now
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => goTo("/login")}
-                    className={cn(
-                      "inline-flex h-10 w-full items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-semibold",
-                      "hover:bg-accent hover:text-accent-foreground active:opacity-90",
-                    )}
-                  >
-                    Login
+                    <X className="h-5 w-5" strokeWidth={2.25} />
                   </button>
                 </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
+                  {menuGroups.map((g) => (
+                    <div key={g.title} className="mb-4">
+                      <p className="mb-1 px-3 text-[0.7rem] font-bold uppercase tracking-wide text-primary">
+                        {g.title}
+                      </p>
+                      <div className="flex flex-col gap-0.5">
+                        {g.items.map((l) => (
+                          <button
+                            key={l.label}
+                            type="button"
+                            className="rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50 active:bg-slate-100"
+                            onClick={() => goTo(l.to)}
+                          >
+                            {l.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => goTo("/school-application")}
+                      className={cn(
+                        "inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground",
+                        "hover:bg-primary/90 active:opacity-90",
+                      )}
+                    >
+                      Apply Now
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => goTo("/login")}
+                      className={cn(
+                        "inline-flex h-10 w-full items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-semibold",
+                        "hover:bg-accent hover:text-accent-foreground active:opacity-90",
+                      )}
+                    >
+                      Login
+                    </button>
+                  </div>
+                </div>
               </div>
-            </SheetContent>
-          </Sheet>
+            </div>
+          ) : null}
         </div>
       </header>
       <div className="d4-public-header-spacer h-14 shrink-0 sm:h-[4.5rem]" aria-hidden />

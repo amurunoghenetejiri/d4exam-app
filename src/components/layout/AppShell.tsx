@@ -324,16 +324,18 @@ export function AppShell({
   const unreadQ = useUnreadNotificationCount(session?.userId);
   const unreadCount = unreadQ.data ?? 0;
 
-  // Nav activity indicators (live + pending)
+  // Nav activity indicators (live + pending) — never poll while offline
+  const shellOnline =
+    typeof navigator === "undefined" ? true : navigator.onLine !== false;
   const liveMonQ = useQuery({
     queryKey: ["nav-live-monitor", session?.schoolId, session?.role],
-    enabled: Boolean(session?.schoolId) && (
+    enabled: shellOnline && Boolean(session?.schoolId) && (
       session?.role === "examination_officer" ||
       session?.role === "school_admin" ||
       session?.role === "teacher"
     ),
     staleTime: 8_000,
-    refetchInterval: 12_000,
+    refetchInterval: shellOnline ? 12_000 : false,
     queryFn: async () => {
       const sid = session?.schoolId;
       if (!sid) return 0;
@@ -347,9 +349,9 @@ export function AppShell({
   });
   const pendingApprovalQ = useQuery({
     queryKey: ["nav-pending-approvals", session?.schoolId, session?.role],
-    enabled: Boolean(session?.schoolId) && (session?.role === "examination_officer" || session?.role === "school_admin"),
+    enabled: shellOnline && Boolean(session?.schoolId) && (session?.role === "examination_officer" || session?.role === "school_admin"),
     staleTime: 10_000,
-    refetchInterval: 20_000,
+    refetchInterval: shellOnline ? 20_000 : false,
     queryFn: async () => {
       const sid = session?.schoolId;
       if (!sid) return 0;
@@ -438,7 +440,7 @@ export function AppShell({
               type="button"
               variant="outline"
               size="icon"
-              className="sa-mobile-menu h-9 w-9 shrink-0 border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
+              className="sa-mobile-menu relative z-[90] h-9 w-9 shrink-0 border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
               aria-label="Open menu"
               aria-expanded={open}
               onClick={() => {
@@ -449,7 +451,7 @@ export function AppShell({
               <Menu className="h-5 w-5" />
             </Button>
             {open ? (
-              <div className="sa-mobile-menu fixed inset-0 z-[80] lg:hidden" role="dialog" aria-modal="true" aria-label={`${config.label} navigation`}>
+              <div className="sa-mobile-menu fixed inset-0 z-[100] lg:hidden" role="dialog" aria-modal="true" aria-label={`${config.label} navigation`}>
                 <button
                   type="button"
                   className="absolute inset-0 bg-black/55"
