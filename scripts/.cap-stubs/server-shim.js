@@ -1,18 +1,4 @@
 /* auto-generated capacitor server stubs — SPA runs offline; server work uses Supabase client or online API */
-
-/** Client SPA: useServerFn returns a callable that never hits SSR. */
-export function useServerFn(fn) {
-  return async function capServerFn(args) {
-    try {
-      if (typeof fn === "function") return await fn(args);
-      if (fn && typeof fn.handler === "function") return await fn.handler(args);
-    } catch (e) {
-      return { error: (e && e.message) || "Action unavailable offline" };
-    }
-    return { error: "This action needs the online D4EXAM service." };
-  };
-}
-
 const _noop = async () => null;
 const _ORIGIN = 'https://d4exam.name.ng';
 export const createServerFn = (opts) => {
@@ -39,6 +25,14 @@ export const createServerFn = (opts) => {
   return chain;
 };
 export const createMiddleware = () => ({ server: (h) => h });
+export function useServerFn(fn) {
+  return async function capServerFn(args) {
+    try {
+      if (typeof fn === 'function') return await fn(args);
+    } catch (e) { return { error: (e && e.message) || 'unavailable' }; }
+    return { error: 'This action needs the online D4EXAM service.' };
+  };
+}
 export const createStartHandler = () => () => {};
 export const getCookie = () => undefined;
 export const setCookie = () => {};
@@ -70,10 +64,12 @@ export const notifyTeacherCoursesAssigned = _noop;
 export const notifyWelcomeRole = _noop;
 export const processExamReminders = _noop;
 export const provisionStudentLogin = _noop;
+export const repairMySessionSchool = _noop;
 export const requestAppUnlockResetEmail = _noop;
 export const resolveStudentNamesForOfficer = _noop;
 export const reviewSchoolApplication = _noop;
 export const saveCbtResultServer = _noop;
+export const saveTeacherMarksServer = _noop;
 export const searchStudyVideos = _noop;
 export const sendAppPasswordHelpEmail = _noop;
 export const sendAppUnlockResetLinkEmail = _noop;
