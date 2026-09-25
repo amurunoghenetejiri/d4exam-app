@@ -3,9 +3,18 @@ import * as MenubarPrimitive from "@radix-ui/react-menubar";
 import { Check, ChevronRight, Circle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 
-function MenubarMenu({ ...props }: React.ComponentProps<typeof MenubarPrimitive.Menu>) {
-  return <MenubarPrimitive.Menu {...props} />;
+function MenubarMenu({ onOpenChange, ...props }: React.ComponentProps<typeof MenubarPrimitive.Menu>) {
+  return (
+    <MenubarPrimitive.Menu
+      {...props}
+      onOpenChange={(open) => {
+        onOpenChange?.(open);
+        if (!open) unlockUiSoon();
+      }}
+    />
+  );
 }
 
 function MenubarGroup({ ...props }: React.ComponentProps<typeof MenubarPrimitive.Group>) {

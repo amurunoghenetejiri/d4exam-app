@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { offlineSet, OfflineKeys } from "@/lib/offline-cache";
 import { rememberLastUserId, readLastUserId, withOfflineCache } from "@/lib/offline-query";
 import { mirrorSessionUser } from "@/lib/local-db/mirror";
+import { isOnlineNow } from "@/lib/offline-sync";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -1005,7 +1006,13 @@ export function useSessionUser() {
     queryKey: ["session-user"],
     queryFn: async () => {
       const last = readLastUserId();
-      let u = await withTimeout(fetchSessionUser(), 6000, "session");
+      const fetchCurrentSession = () => withTimeout(fetchSessionUser(), 6000, "session");
+      let u = last
+        ? await withOfflineCache(last, OfflineKeys.sessionUser, fetchCurrentSession, {
+            fallback: null,
+            localFirst: true,
+          })
+        : await fetchCurrentSession();
       // Merge login school if session still missing school (teacher/admin after unlock)
       if (u && !u.schoolId && u.role !== "super_admin") {
         const loginSchool = readLoginSchoolContext();
@@ -1079,9 +1086,10 @@ export function useSessionUser() {
     },
     staleTime: 15_000,
     gcTime: 30 * 60_000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: "always",
-    retry: 2,
+    refetchOnWindowFocus: isOnlineNow(),
+    refetchOnMount: true,
+    networkMode: "offlineFirst",
+    retry: (count) => isOnlineNow() && count < 1,
     retryDelay: 400,
   });
 }

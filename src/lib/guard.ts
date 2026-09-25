@@ -83,6 +83,15 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
     return null;
   }
 
+  if (isNative && (!user || isIncomplete(user))) {
+    const cached = await readOfflineSession();
+    if (cached) {
+      user = cached;
+      if (queryClient) queryClient.setQueryData(["session-user"], cached);
+      if (isComplete(cached) && roleMatches(cached)) return { user: cached };
+    }
+  }
+
   if ((!user || isIncomplete(user)) && !online) {
     const cached = await readOfflineSession();
     if (cached) {
@@ -126,7 +135,7 @@ export async function requireRole(role: AppRole | AppRole[], queryClient?: Query
       } catch {
         user = null;
       }
-      if ((!user || isIncomplete(user)) && hasAuthSession && online) {
+      if ((!user || isIncomplete(user)) && hasAuthSession && online && !isNative) {
         try {
           // Server repair: write profiles.school_id from officers/teachers/roles
           const { repairMySessionSchool } = await import("@/lib/repair-session-school.functions");

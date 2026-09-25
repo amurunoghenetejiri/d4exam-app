@@ -3,8 +3,22 @@ import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 
-const ContextMenu = ContextMenuPrimitive.Root;
+function ContextMenu({
+  onOpenChange,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Root>) {
+  return (
+    <ContextMenuPrimitive.Root
+      {...props}
+      onOpenChange={(open) => {
+        onOpenChange?.(open);
+        if (!open) unlockUiSoon();
+      }}
+    />
+  );
+}
 
 const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
 

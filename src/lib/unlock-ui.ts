@@ -189,7 +189,15 @@ export function installUiUnlockSafetyNet(): () => void {
       const peBody = window.getComputedStyle(document.body).pointerEvents;
       const peHtml = window.getComputedStyle(document.documentElement).pointerEvents;
 
-      if ((peBody === "none" || peHtml === "none") && !blocking) {
+      if (
+        !blocking &&
+        (peBody === "none" ||
+          peHtml === "none" ||
+          document.body.hasAttribute("data-scroll-locked") ||
+          document.documentElement.hasAttribute("data-scroll-locked") ||
+          document.body.style.overflow === "hidden" ||
+          document.documentElement.style.overflow === "hidden")
+      ) {
         unlockUi();
       }
 

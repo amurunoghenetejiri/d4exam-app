@@ -38,6 +38,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import type { RoleConfig } from "@/components/navigation/navConfig";
 import { useT } from "@/lib/i18n";
+import { isOnlineNow } from "@/lib/offline-sync";
 
 import { GlobalSearchPage } from "@/components/search/GlobalSearchPage";
 
@@ -310,6 +311,7 @@ export function AppShell({
   const t = useT();
   const { data: session } = useSessionUser();
   const { data: school } = useSchoolIdentity(session?.schoolId);
+  const shellOnline = isOnlineNow();
 
   useRealtimeInvalidate(
     `shell-notifs-${session?.userId ?? "x"}`,
@@ -321,7 +323,7 @@ export function AppShell({
       ["rows", "notifications"],
       ["student-dashboard-notifs"],
     ],
-    Boolean(session?.userId),
+    shellOnline && Boolean(session?.userId),
     400,
   );
 
@@ -329,8 +331,6 @@ export function AppShell({
   const unreadCount = unreadQ.data ?? 0;
 
   // Nav activity indicators (live + pending) — never poll while offline
-  const shellOnline =
-    typeof navigator === "undefined" ? true : navigator.onLine !== false;
   const liveMonQ = useQuery({
     queryKey: ["nav-live-monitor", session?.schoolId, session?.role],
     enabled: shellOnline && Boolean(session?.schoolId) && (
