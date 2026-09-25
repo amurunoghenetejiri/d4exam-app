@@ -7,7 +7,6 @@ import { Watermark } from "@/components/brand/Watermark";
 import { Button } from "@/components/ui/button";
 import { isAppLikeShell } from "@/native/platform";
 import { cn } from "@/lib/utils";
-import { appNavigate } from "@/lib/app-navigate";
 import { unlockUiSoon } from "@/lib/unlock-ui";
 
 const links = [
@@ -71,30 +70,6 @@ export function PublicLayout({ children }: { children: ReactNode }) {
     unlockUiSoon();
   }
 
-  function goTo(to: string) {
-    const path = to.startsWith("/") ? to : `/${to}`;
-    setOpen(false);
-    unlockUiSoon();
-    // Prefer hash assignment first on WebView — most reliable, never freezes
-    window.setTimeout(() => {
-      try {
-        const hash = `#${path}`;
-        if (window.location.hash !== hash) {
-          window.location.hash = hash;
-        } else {
-          appNavigate(path);
-        }
-      } catch {
-        try {
-          appNavigate(path);
-        } catch {
-          /* ignore */
-        }
-      }
-      unlockUiSoon();
-    }, 20);
-  }
-
   const menuPortal =
     mounted && open
       ? createPortal(
@@ -152,40 +127,40 @@ export function PublicLayout({ children }: { children: ReactNode }) {
                   </p>
                   <div className="flex flex-col gap-1">
                     {g.items.map((l) => (
-                      <button
+                      <Link
                         key={l.label}
-                        type="button"
+                        to={l.to}
                         className="rounded-xl px-3 py-3.5 text-left text-base font-semibold text-slate-800 hover:bg-slate-50 active:bg-slate-100"
-                        onClick={() => goTo(l.to)}
+                        onClick={closeMenu}
                       >
                         {l.label}
-                      </button>
+                      </Link>
                     ))}
                   </div>
                 </div>
               ))}
 
               <div className="mt-2 space-y-3 border-t border-slate-100 pt-5 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
-                <button
-                  type="button"
-                  onClick={() => goTo("/school-application")}
+                <Link
+                  to="/school-application"
+                  onClick={closeMenu}
                   className={cn(
                     "inline-flex h-12 w-full items-center justify-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground",
                     "hover:bg-primary/90 active:opacity-90",
                   )}
                 >
                   Apply Now
-                </button>
-                <button
-                  type="button"
-                  onClick={() => goTo("/login")}
+                </Link>
+                <Link
+                  to="/login"
+                  onClick={closeMenu}
                   className={cn(
                     "inline-flex h-12 w-full items-center justify-center rounded-full border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800",
                     "hover:bg-slate-50 active:bg-slate-100",
                   )}
                 >
                   Login
-                </button>
+                </Link>
               </div>
             </div>
           </div>,
