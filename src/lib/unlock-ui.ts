@@ -111,7 +111,8 @@ export function unlockUi(): void {
     });
 
     // Closed / invisible fixed layers must not intercept taps
-    document.querySelectorAll('[data-state="closed"]').forEach((el) => {
+    // Only portal layers (direct body children) — never scan the whole tree.
+    document.querySelectorAll('body > [data-state="closed"], body > div > [data-state="closed"]').forEach((el) => {
       try {
         const h = el as HTMLElement;
         const style = window.getComputedStyle(h);
@@ -183,43 +184,25 @@ export function unlockUiSoon(): void {
 export function installUiUnlockSafetyNet(): () => void {
   if (typeof window === "undefined") return () => undefined;
 
+  // Cheap check only: reading inline styles/attributes never forces layout.
+  // (Previous version scanned every closed element with getComputedStyle each
+  // 200ms + every tap, which saturated the Android main thread = freeze.)
+  let last = 0;
   const tick = () => {
+    const now = Date.now();
+    if (now - last < 150) return;
+    last = now;
     try {
-      const blocking = hasVisibleBlockingOverlay();
-      const peBody = window.getComputedStyle(document.body).pointerEvents;
-      const peHtml = window.getComputedStyle(document.documentElement).pointerEvents;
-
-      if (
-        !blocking &&
-        (peBody === "none" ||
-          peHtml === "none" ||
-          document.body.hasAttribute("data-scroll-locked") ||
-          document.documentElement.hasAttribute("data-scroll-locked") ||
-          document.body.style.overflow === "hidden" ||
-          document.documentElement.style.overflow === "hidden")
-      ) {
-        unlockUi();
-      }
-
-      if (!blocking) {
-        document.querySelectorAll('[data-state="closed"]').forEach((el) => {
-          try {
-            const h = el as HTMLElement;
-            const st = window.getComputedStyle(h);
-            if (
-              (st.position === "fixed" || st.position === "absolute") &&
-              st.pointerEvents !== "none"
-            ) {
-              const r = h.getBoundingClientRect();
-              if (r.width > 40 && r.height > 40) {
-                h.style.pointerEvents = "none";
-              }
-            }
-          } catch {
-            /* ignore */
-          }
-        });
-      }
+      const b = document.body;
+      const h = document.documentElement;
+      const locked =
+        b.style.pointerEvents === "none" ||
+        h.style.pointerEvents === "none" ||
+        b.hasAttribute("data-scroll-locked") ||
+        h.hasAttribute("data-scroll-locked") ||
+        b.style.overflow === "hidden" ||
+        h.style.overflow === "hidden";
+      if (locked && !hasVisibleBlockingOverlay()) unlockUi();
     } catch {
       /* ignore */
     }
@@ -227,14 +210,11 @@ export function installUiUnlockSafetyNet(): () => void {
 
   const onPointer = () => tick();
   window.addEventListener("pointerdown", onPointer, true);
-  window.addEventListener("touchstart", onPointer, true);
   window.addEventListener("touchend", onPointer, true);
-  window.addEventListener("focusin", onPointer, true);
-  window.addEventListener("click", onPointer, true);
   window.addEventListener("hashchange", () => unlockUiSoon(), true);
   window.addEventListener("popstate", () => unlockUiSoon(), true);
 
-  const id = window.setInterval(tick, 200);
+  const id = window.setInterval(tick, 500);
 
   let backSub: { remove: () => Promise<void> } | null = null;
   void (async () => {
