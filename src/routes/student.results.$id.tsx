@@ -16,12 +16,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { SchoolResultHeader } from "@/components/brand/SchoolResultHeader";
 import { useStudentContext } from "@/lib/student";
-import { useSessionUser } from "@/lib/session";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import { cn } from "@/lib/utils";
-import { withOfflineCache } from "@/lib/offline-query";
-import { OfflineKeys } from "@/lib/offline-cache";
 
 export const Route = createFileRoute("/student/results/$id")({
   head: () => ({
@@ -110,7 +107,6 @@ function scoreTone(pct: number | null, passFail: string | null, released: boolea
 function ResultDetailPage() {
   const { id } = Route.useParams();
   const { data: student, isLoading: sLoading } = useStudentContext();
-  const { data: user } = useSessionUser();
 
   useRealtimeInvalidate(
     `student-result-detail-${id}`,
@@ -125,36 +121,70 @@ function ResultDetailPage() {
     queryKey: ["student-result-detail", id, student?.studentId],
     enabled: Boolean(id && student?.studentId),
     staleTime: 10_000,
+    retry: 2,
     queryFn: async () => {
       if (!student?.studentId) return null;
-      const uid = user?.userId ?? student.profileId;
-      return withOfflineCache(
-        uid,
-        `${OfflineKeys.studentResults}::detail::${id}`,
-        async () => {
-          const select = `id, exam_id, student_id, attempt_id, total_score, max_score, percentage, grade, pass_fail,
-           correct_count, wrong_count, unanswered_count, status, security_review_status,
-           released_at, created_at,
-           examinations(title, duration_minutes, scheduled_start, scheduled_end, courses(code, name))`;
-          const byId = await supabase
-            .from("results")
-            .select(select)
-            .eq("student_id", student.studentId)
-            .eq("id", id)
+      // Flat select first — nested examinations(courses) often fails under RLS
+      const cols =
+        "id, exam_id, student_id, attempt_id, total_score, max_score, percentage, grade, pass_fail, correct_count, wrong_count, unanswered_count, status, security_review_status, released_at, created_at";
+      let row: Record<string, unknown> | null = null;
+      const byId = await supabase
+        .from("results")
+        .select(cols)
+        .eq("student_id", student.studentId)
+        .eq("id", id)
+        .maybeSingle();
+      if (byId.error) console.warn("[student-result-detail]", byId.error.message);
+      if (byId.data) row = byId.data as Record<string, unknown>;
+      if (!row) {
+        const byExam = await supabase
+          .from("results")
+          .select(cols)
+          .eq("student_id", student.studentId)
+          .eq("exam_id", id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (byExam.data) row = byExam.data as Record<string, unknown>;
+      }
+      if (!row) return null;
+
+      // Enrich exam + course
+      const examId = String(row.exam_id || "");
+      let examinations: ResultRow["examinations"] = null;
+      if (examId) {
+        const eq = await supabase
+          .from("examinations")
+          .select("title, duration_minutes, scheduled_start, scheduled_end, courses(code, name)")
+          .eq("id", examId)
+          .maybeSingle();
+        if (eq.data) {
+          examinations = eq.data as ResultRow["examinations"];
+        } else {
+          const simple = await supabase
+            .from("examinations")
+            .select("title, duration_minutes, scheduled_start, scheduled_end")
+            .eq("id", examId)
             .maybeSingle();
-          if (byId.data) return byId.data as unknown as ResultRow;
-          const byExam = await supabase
-            .from("results")
-            .select(select)
+          if (simple.data) {
+            examinations = { ...(simple.data as object), courses: null } as ResultRow["examinations"];
+          }
+        }
+        // Student RLS sometimes blocks examinations — try via own exam_attempts
+        if (!examinations?.title) {
+          const att = await supabase
+            .from("exam_attempts")
+            .select("examinations(title, duration_minutes, scheduled_start, scheduled_end, courses(code, name))")
             .eq("student_id", student.studentId)
-            .eq("exam_id", id)
-            .order("created_at", { ascending: false })
+            .eq("exam_id", examId)
+            .order("submitted_at", { ascending: false, nullsFirst: false })
             .limit(1)
             .maybeSingle();
-          return (byExam.data as unknown as ResultRow) ?? null;
-        },
-        { schoolId: student.schoolId, fallback: null },
-      );
+          const emb = (att.data as { examinations?: ResultRow["examinations"] } | null)?.examinations;
+          if (emb?.title) examinations = emb;
+        }
+      }
+      return { ...row, examinations } as unknown as ResultRow;
     },
   });
 
@@ -230,15 +260,37 @@ function ResultDetailPage() {
     );
   }
 
-  const statusLower = String(r.status || "").toLowerCase();
+  const statusLower = String(r.status || "").toLowerCase().replace(/\s+/g, "_");
+  const srs = String(r.security_review_status || "").toLowerCase().replace(/\s+/g, "_");
   const isTerminated =
     statusLower === "terminated" ||
-    String(r.security_review_status || "").toLowerCase() === "terminated";
-  const isPub = !isTerminated && (statusLower === "published" || Boolean(r.released_at));
-  const isHeld =
+    statusLower === "cancelled" ||
+    srs === "terminated" ||
+    srs === "cancelled";
+  const isPub =
+    !isTerminated &&
+    (statusLower === "published" || srs === "accepted" || Boolean(r.released_at));
+  const isOfficerReview =
     !isPub &&
     !isTerminated &&
-    (statusLower === "pending" || statusLower === "held" || statusLower === "processing" || !r.released_at);
+    (srs === "flagged" ||
+      srs === "further_review" ||
+      srs === "under_review" ||
+      srs === "review" ||
+      srs === "pending_review" ||
+      srs === "pending" ||
+      statusLower === "flagged");
+  const isTeacherMark =
+    !isPub &&
+    !isTerminated &&
+    !isOfficerReview &&
+    (statusLower === "processing" ||
+      statusLower === "awaiting_marking" ||
+      statusLower === "pending_marking" ||
+      srs === "awaiting_marking" ||
+      srs === "pending_marking");
+  const isHeld =
+    !isPub && !isTerminated && !isOfficerReview && !isTeacherMark;
 
   const pct = r.percentage != null ? Math.round(Number(r.percentage)) : null;
   const pass = String(r.pass_fail || "").toLowerCase() === "pass";
@@ -334,14 +386,38 @@ function ResultDetailPage() {
             </div>
           </div>
         </div>
+      ) : isOfficerReview ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 print:border-amber-300">
+          <div className="flex items-start gap-2">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <div>
+              <p className="text-sm font-bold text-amber-900">Result under officer review</p>
+              <p className="mt-0.5 text-xs text-amber-800">
+                Your result is under Examination Officer review. Scores stay hidden until the review
+                is complete and the result is released.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : isTeacherMark ? (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <Clock className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
+            <div>
+              <p className="text-sm font-bold text-sky-900">Awaiting teacher mark</p>
+              <p className="mt-0.5 text-xs text-sky-800">
+                Not yet marked by the teacher. Written or essay parts still need marking before this
+                result can be released.
+              </p>
+            </div>
+          </div>
+        </div>
       ) : isHeld ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 print:border-amber-300">
           <div className="flex items-start gap-2">
             <Clock className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
             <div>
-              <p className="text-sm font-bold text-amber-900">
-                {statusLower === "processing" ? "Result pending" : "Result held"}
-              </p>
+              <p className="text-sm font-bold text-amber-900">Result held</p>
               <p className="mt-0.5 text-xs text-amber-800">
                 Your result is held pending Examination Officer release. Scores stay hidden until
                 the officer publishes them.
