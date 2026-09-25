@@ -1,8 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { unlockUi, unlockUiSoon } from "@/lib/unlock-ui";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useState, type ReactNode } from "react";
 import {
   Bell,
   Building2,
@@ -23,6 +21,7 @@ import { Watermark } from "@/components/brand/Watermark";
 import { InstallAndPushPrompt } from "@/components/InstallAndPushPrompt";
 import { NetworkBanner } from "@/components/NetworkBanner";
 import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,7 +37,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "@/lib/realtime";
 import type { RoleConfig } from "@/components/navigation/navConfig";
 import { useT } from "@/lib/i18n";
-import { isOnlineNow } from "@/lib/offline-sync";
+import { appNavigate } from "@/lib/app-navigate";
 
 import { GlobalSearchPage } from "@/components/search/GlobalSearchPage";
 
@@ -131,8 +130,7 @@ function NavLinks({
   const t = useT();
   const translateNav = (label: string) => translateNavLabel(label, t);
   return (
-    <nav className="flex flex-col gap-5 px-3 py-4" aria-label={`${config.label} navigation`}
-                    data-d4-app-menu="open">
+    <nav className="flex flex-col gap-5 px-3 py-4" aria-label={`${config.label} navigation`}>
       {config.groups.map((group, gi) => (
         <div key={gi}>
           {group.label && (
@@ -149,14 +147,17 @@ function NavLinks({
               return (
                 <li key={item.to}>
                   <Link
-                    to={item.to as never}
+                    to={item.to}
                     preload={false}
-                    onClick={() => {
-                      // Same as dashboard NavCard: let Link handle routing.
-                      // preventDefault + router.navigate freezes the Capacitor WebView.
+                    onClick={(e) => {
                       onNavigate?.();
-                      window.setTimeout(() => unlockUiSoon(), 0);
-                      window.setTimeout(() => unlockUiSoon(), 120);
+                      // Capacitor WebView: ensure route change even if Link is swallowed
+                      try {
+                        e.preventDefault();
+                        appNavigate(item.to);
+                      } catch {
+                        /* Link default */
+                      }
                     }}
                     className={cn(
                       "pressable relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition-colors",
@@ -171,6 +172,9 @@ function NavLinks({
                       <item.icon
                         className={cn(
                           "h-4 w-4",
+                          (item.to.includes("live-monitor") || item.to.includes("live-exams")) &&
+                            !isLive &&
+                            "text-white",
                           isLive && "animate-pulse text-emerald-400",
                         )}
                         aria-hidden
@@ -304,14 +308,11 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [menuMounted, setMenuMounted] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  useEffect(() => { setMenuMounted(true); }, []);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const t = useT();
   const { data: session } = useSessionUser();
   const { data: school } = useSchoolIdentity(session?.schoolId);
-  const shellOnline = isOnlineNow();
 
   useRealtimeInvalidate(
     `shell-notifs-${session?.userId ?? "x"}`,
@@ -323,23 +324,23 @@ export function AppShell({
       ["rows", "notifications"],
       ["student-dashboard-notifs"],
     ],
-    shellOnline && Boolean(session?.userId),
+    Boolean(session?.userId),
     400,
   );
 
   const unreadQ = useUnreadNotificationCount(session?.userId);
   const unreadCount = unreadQ.data ?? 0;
 
-  // Nav activity indicators (live + pending) — never poll while offline
+  // Nav activity indicators (live + pending)
   const liveMonQ = useQuery({
     queryKey: ["nav-live-monitor", session?.schoolId, session?.role],
-    enabled: shellOnline && Boolean(session?.schoolId) && (
+    enabled: Boolean(session?.schoolId) && (
       session?.role === "examination_officer" ||
       session?.role === "school_admin" ||
       session?.role === "teacher"
     ),
     staleTime: 8_000,
-    refetchInterval: shellOnline ? 12_000 : false,
+    refetchInterval: 12_000,
     queryFn: async () => {
       const sid = session?.schoolId;
       if (!sid) return 0;
@@ -353,9 +354,9 @@ export function AppShell({
   });
   const pendingApprovalQ = useQuery({
     queryKey: ["nav-pending-approvals", session?.schoolId, session?.role],
-    enabled: shellOnline && Boolean(session?.schoolId) && (session?.role === "examination_officer" || session?.role === "school_admin"),
+    enabled: Boolean(session?.schoolId) && (session?.role === "examination_officer" || session?.role === "school_admin"),
     staleTime: 10_000,
-    refetchInterval: shellOnline ? 20_000 : false,
+    refetchInterval: 20_000,
     queryFn: async () => {
       const sid = session?.schoolId;
       if (!sid) return 0;
@@ -439,102 +440,66 @@ export function AppShell({
       >
         <div className="mx-auto grid h-12 max-w-[1400px] grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-2.5 sm:h-16 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:gap-3 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-            {/* Capacitor-safe drawer — no Radix Sheet (avoids body pointer-events lock / freeze) */}
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              className="sa-mobile-menu relative z-[90] h-9 w-9 shrink-0 border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
-              aria-label="Open menu"
-              aria-expanded={open}
-              onClick={() => {
-                setOpen(true);
-                unlockUiSoon();
-              }}
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-            {menuMounted && open
-              ? createPortal(
-                  <div
-                    className="sa-mobile-menu fixed inset-0 z-[2147483000] flex flex-col lg:hidden"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label={`${config.label} navigation`}
-                    style={{
-                      position: "fixed",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      minHeight: "100dvh",
-                      zIndex: 2147483000,
-                      pointerEvents: "auto",
-                      backgroundColor: "rgba(0,0,0,0.55)",
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="absolute inset-0"
-                      aria-label="Close menu"
-                      onClick={() => {
-                        setOpen(false);
-                        unlockUiSoon();
-                      }}
+            <Sheet open={open} onOpenChange={setOpen} modal>
+              <SheetTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="sa-mobile-menu h-9 w-9 shrink-0 border-white/25 bg-white/5 text-white hover:bg-white/10 hover:text-white lg:hidden"
+                  onClick={() => setOpen(true)}
+                  aria-label="Open menu"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side="left"
+                hideClose
+                className={cn(
+                  "flex flex-col gap-0 border-r-0 bg-[#0b1b3a] p-0 text-white",
+                  "!inset-y-0 !top-0 !bottom-0",
+                  "!h-[100dvh] !min-h-[100dvh] !max-h-[100dvh]",
+                  "w-[min(100vw-2rem,18rem)]",
+                )}
+              >
+                <SheetTitle className="sr-only">{config.label} navigation</SheetTitle>
+                <div className="flex min-h-16 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 sm:px-4 pt-[env(safe-area-inset-top,0px)]">
+                  <div className="min-w-0 flex-1">
+                    <PortalBrand
+                      isSchoolPortal={isSchoolPortal}
+                      logoUrl={logoUrl}
+                      schoolName={schoolName}
+                      homeTo={config.home}
                     />
-                    <div
-                      className="absolute inset-y-0 left-0 flex w-[min(100%,18rem)] flex-col bg-[#0b1b3a] shadow-2xl"
-                      style={{ height: "100%", maxHeight: "100dvh" }}
-                    >
-                      <div className="flex min-h-16 shrink-0 items-center justify-between gap-2 border-b border-white/10 px-3 sm:px-4 pt-[env(safe-area-inset-top,0px)]">
-                        <div className="min-w-0 flex-1">
-                          <PortalBrand
-                            isSchoolPortal={isSchoolPortal}
-                            logoUrl={logoUrl}
-                            schoolName={schoolName}
-                            homeTo={config.home}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOpen(false);
-                            unlockUiSoon();
-                          }}
-                          aria-label="Close menu"
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                        >
-                          <X className="h-5 w-5" strokeWidth={2.25} />
-                        </button>
-                      </div>
-                      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                        <NavLinks
-                          config={config}
-                          onNavigate={() => {
-                            setOpen(false);
-                            unlockUiSoon();
-                          }}
-                          badges={navBadges}
-                        />
-                      </div>
-                      <div className="mt-auto shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOpen(false);
-                            unlockUiSoon();
-                            void signOut();
-                          }}
-                          className="pressable flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-400 transition-colors hover:bg-red-500/15 hover:text-red-300 active:scale-[0.98]"
-                        >
-                          <LogOut className="h-4 w-4" aria-hidden />
-                          Logout
-                        </button>
-                      </div>
-                    </div>
-                  </div>,
-                  document.body,
-                )
-              : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    aria-label="Close menu"
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white/90 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                  >
+                    <X className="h-5 w-5" strokeWidth={2.25} />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                  <NavLinks config={config} onNavigate={() => setOpen(false)} badges={navBadges} />
+                </div>
+                <div className="mt-auto shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      void signOut();
+                    }}
+                    className="pressable flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-red-400 transition-colors hover:bg-red-500/15 hover:text-red-300 active:scale-[0.98]"
+                  >
+                    <LogOut className="h-4 w-4" aria-hidden />
+                    Logout
+                  </button>
+                </div>
+              </SheetContent>
+            </Sheet>
 
             <span className="hidden text-sm font-bold tracking-tight text-white lg:inline">
               {config.label} Portal
@@ -678,25 +643,28 @@ export function AppShell({
                   : pathname === item.to || pathname.startsWith(`${item.to}/`);
               const badge = navBadges[item.to];
               const isLive = Boolean(badge?.live);
+              const isMonitor =
+                item.to.includes("live-monitor") || item.to.includes("live-exams");
               return (
                 <li key={item.to} className="flex">
                   <Link
-                    to={item.to as never}
+                    to={item.to}
                     preload={false}
-                    onClick={() => {
-                      window.setTimeout(() => unlockUiSoon(), 0);
-                      window.setTimeout(() => unlockUiSoon(), 120);
-                    }}
                     className={cn(
                       "pressable relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors",
                       active ? "text-white" : "text-slate-400 hover:text-white",
+                      isMonitor && !isLive && "text-white",
                       isLive && "text-emerald-400",
                     )}
                     aria-current={active ? "page" : undefined}
                   >
                     <span className="relative">
                       <item.icon
-                        className={cn("h-5 w-5", isLive && "animate-pulse text-emerald-400")}
+                        className={cn(
+                          "h-5 w-5",
+                          isMonitor && !isLive && "text-white",
+                          isLive && "animate-pulse text-emerald-400",
+                        )}
                         aria-hidden
                       />
                       {!isLive && badge?.dot ? (
