@@ -2,12 +2,21 @@ import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
 import { cn } from "@/lib/utils";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 
 const Drawer = ({
   shouldScaleBackground = true,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof DrawerPrimitive.Root>) => (
-  <DrawerPrimitive.Root shouldScaleBackground={shouldScaleBackground} {...props} />
+  <DrawerPrimitive.Root
+    shouldScaleBackground={shouldScaleBackground}
+    {...props}
+    onOpenChange={(open) => {
+      onOpenChange?.(open);
+      if (!open) unlockUiSoon();
+    }}
+  />
 );
 Drawer.displayName = "Drawer";
 

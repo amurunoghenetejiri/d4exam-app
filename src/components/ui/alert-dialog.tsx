@@ -3,8 +3,22 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 
-const AlertDialog = AlertDialogPrimitive.Root;
+function AlertDialog({
+  onOpenChange,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Root>) {
+  return (
+    <AlertDialogPrimitive.Root
+      {...props}
+      onOpenChange={(open) => {
+        onOpenChange?.(open);
+        if (!open) unlockUiSoon();
+      }}
+    />
+  );
+}
 
 const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
 

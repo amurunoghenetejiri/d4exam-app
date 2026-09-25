@@ -3,6 +3,7 @@
  * Never force-exit during an active CBT examination route.
  */
 import { isNativeShell } from "@/native/platform";
+import { unlockUiSoon } from "@/lib/unlock-ui";
 
 const EXIT_WINDOW_MS = 2000;
 let lastBackAt = 0;
@@ -66,6 +67,18 @@ export async function registerAndroidBackButton(): Promise<() => void> {
     handle = await App.addListener("backButton", ({ canGoBack }) => {
       try {
         const path = window.location.pathname || "/";
+        const drawer = document.querySelector('.sa-mobile-menu[role="dialog"]');
+        if (drawer) {
+          drawer.querySelector<HTMLElement>('button[aria-label="Close menu"]')?.click();
+          unlockUiSoon();
+          return;
+        }
+        const search = document.querySelector('[data-d4-global-search="open"]');
+        if (search) {
+          search.querySelector<HTMLElement>("[data-d4-search-close]")?.click();
+          unlockUiSoon();
+          return;
+        }
         // Close Settings overlays (manual / help) before leaving the page
         try {
           const w = window as unknown as { __d4SettingsOverlayOpen?: boolean };
@@ -90,6 +103,7 @@ export async function registerAndroidBackButton(): Promise<() => void> {
         }
         if (canGoBack && !isRootishPath(path)) {
           window.history.back();
+          unlockUiSoon();
           lastBackAt = 0;
           return;
         }
