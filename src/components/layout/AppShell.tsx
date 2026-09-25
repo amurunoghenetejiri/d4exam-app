@@ -311,6 +311,7 @@ export function AppShell({
   const t = useT();
   const { data: session } = useSessionUser();
   const { data: school } = useSchoolIdentity(session?.schoolId);
+  const shellOnline = isOnlineNow();
 
   useRealtimeInvalidate(
     `shell-notifs-${session?.userId ?? "x"}`,
@@ -330,7 +331,6 @@ export function AppShell({
   const unreadCount = unreadQ.data ?? 0;
 
   // Nav activity indicators (live + pending) — never poll while offline
-  const shellOnline = isOnlineNow();
   const liveMonQ = useQuery({
     queryKey: ["nav-live-monitor", session?.schoolId, session?.role],
     enabled: shellOnline && Boolean(session?.schoolId) && (
