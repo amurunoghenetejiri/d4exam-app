@@ -85,13 +85,20 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    overflow-x: hidden;
+    overflow-y: auto;
+    height: auto;
+    min-height: 100%;
+  }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
     overflow-x: hidden;
-  }
-  html {
-    overflow-x: hidden;
+    overflow-y: auto;
+    height: auto;
+    min-height: 100%;
+    overscroll-behavior-y: auto;
   }
 }
 
@@ -603,25 +610,4 @@ html.d4-monitor-desktop-site .sa-main {
 /* Force multi-column monitor cards like desktop without forcing 1100px viewport */
 html.d4-monitor-desktop-site .d4-monitor-grid {
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)) !important;
-}
-
-
-/* d4-ui-unlock: never leave the Capacitor shell untappable */
-html body {
-  pointer-events: auto;
-}
-/* When Radix locks scroll, still allow interaction with the app shell after sheets close */
-html body[data-scroll-locked]:not(:has([data-state="open"])) {
-  pointer-events: auto !important;
-  overflow: auto !important;
-}
-
-
-/* d4-ui-unlock-hard: Capacitor must stay tappable */
-html, body, #root {
-  pointer-events: auto !important;
-}
-body[data-scroll-locked] {
-  pointer-events: auto !important;
-  overflow: auto !important;
 }
