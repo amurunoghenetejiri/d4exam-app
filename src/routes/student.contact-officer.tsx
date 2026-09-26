@@ -11,8 +11,7 @@ import {
   Search,
   Send,
   User,
-  X,
-} from "lucide-react";
+  X,, Clock} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,9 +22,21 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SplitHandle } from "@/components/dashboard/SplitHandle";
 import { isOnlineNow } from "@/lib/offline-sync";
+import { enqueueOutbox, listOutbox, removeOutbox, markOutboxFailed, markOutboxUploading, blobToDataUrlIfSmall, dataUrlToBlob, canRetry, subscribeOutbox, notifyOutbox } from "@/lib/message-outbox";
 import { joinMessagingPresence, ticksFor } from "@/lib/messaging-presence";
 import { uploadMessageMedia } from "@/lib/message-media";
-import { VoiceBubble, ImageBubble, ImageLightbox, VideoBubble, FileBubble, VideoLightbox, LongPressMenu, VoiceRecorderBar, lastSeenLabel, parseMediaUrls, attachmentLabel, parseOfficerReply } from "@/components/messaging/MessageMedia";
+import { VoiceBubble, ImageBubble, ImageLightbox, VideoBubble, FileBubble, VideoLightbox, LongPressMenu, {(uploadPct != null && uploadPct < 100) ? (
+        <div className="mx-3 mb-1 h-1 overflow-hidden rounded-full bg-slate-200">
+          <div className="h-full bg-[#1e3a5f] transition-all" style={{ width: `${uploadPct}%` }} />
+        </div>
+      ) : null}
+      {failedIds.size > 0 ? (
+        <div className="mx-3 mb-1 flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-900">
+          <span>{failedIds.size} message{failedIds.size > 1 ? "s" : ""} waiting to send</span>
+          <button type="button" className="rounded-md bg-[#1e3a5f] px-2 py-0.5 font-semibold text-white" onClick={() => { notifyOutbox(); window.dispatchEvent(new Event("online")); }}>Retry</button>
+        </div>
+      ) : null}
+VoiceRecorderBar, lastSeenLabel, parseMediaUrls, attachmentLabel, parseOfficerReply } from "@/components/messaging/MessageMedia";
 
 export const Route = createFileRoute("/student/contact-officer")({
   head: () => ({ meta: [{ title: "Messages — D4EXAM" }] }),
@@ -80,8 +91,9 @@ function formatTime(iso: string) {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
-function Ticks({ state }: { state: "none" | "sent" | "delivered" | "read" }) {
+function Ticks({ state }: { state: "none" | "sent" | "delivered" | "read" | "pending" }) {
   if (state === "none") return null;
+  if (state === "pending") return <Clock className="inline h-3.5 w-3.5 text-slate-400" aria-label="Pending" />;
   if (state === "sent") return <Check className="inline h-3.5 w-3.5 text-slate-400" aria-label="Sent" />;
   if (state === "delivered") return <CheckCheck className="inline h-3.5 w-3.5 text-slate-400" aria-label="Delivered" />;
   return <CheckCheck className="inline h-3.5 w-3.5 text-[#2563eb]" aria-label="Read" />;
@@ -143,10 +155,76 @@ function Page() {
   const swipeRef = useRef<{ key: string; id: string; x: number } | null>(null);
   const [swipeDx, setSwipeDx] = useState<Record<string, number>>({});
   const [highlightKey, setHighlightKey] = useState<string | null>(null);
-  const [optimisticMsgs, setOptimisticMsgs] = useState<ChatMsg[]>([]);
+  const [optimisticMsgs, setOptimisticMsgs] = useState<ChatMsg[]>([])
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set())
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [nearBottom, setNearBottom] = useState(true);
   const [newBelow, setNewBelow] = useState(0);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  // Flush offline outbox when back online
+  useEffect(() => {
+    let busy = false;
+    const flush = async () => {
+      if (busy || !isOnlineNow() || !schoolId) return;
+      busy = true;
+      try {
+        const items = listOutbox("student").filter((x) => x.status === "queued" || (x.status === "failed" && canRetry(x)));
+        for (const item of items) {
+          try {
+            markOutboxUploading(item.clientId);
+            setUploadPct(15);
+            let mediaUrl = item.mediaUrl || null;
+            let mediaType = item.mediaType || null;
+            if (item.blobDataUrl && !mediaUrl) {
+              const blob = dataUrlToBlob(item.blobDataUrl);
+              if (blob) {
+                setUploadPct(40);
+                const up = await uploadMessageMedia(blob, mediaType || "file");
+                mediaUrl = up.url;
+                mediaType = up.type || mediaType;
+              }
+            }
+            setUploadPct(70);
+            const name = session?.fullName || student?.fullName || "Student";
+            const payload: Record<string, unknown> = {
+              school_id: schoolId,
+              student_id: studentId || null,
+              student_user_id: userId || null,
+              student_name: name,
+              student_matric: student?.matric || null,
+              exam_id: null,
+              exam_title: null,
+              subject: null,
+              body: item.text || (mediaUrl ? "(attachment)" : ""),
+              status: "open",
+              attachment_url: mediaUrl,
+              attachment_type: mediaType,
+              reply_to_id: item.replyToId || null,
+            };
+            const { error } = await supabase.from("student_officer_reports").insert(payload as never);
+            if (error) throw error;
+            removeOutbox(item.clientId);
+            setOptimisticMsgs((prev) => prev.filter((m) => m.reportId !== item.clientId));
+            setFailedIds((s) => { const n = new Set(s); n.delete(item.clientId); return n; });
+            setUploadPct(100);
+            await qc.invalidateQueries({ queryKey: ["student-my-reports"] });
+          } catch (e) {
+            markOutboxFailed(item.clientId, e instanceof Error ? e.message : "flush failed");
+            setFailedIds((s) => new Set(s).add(item.clientId));
+          }
+        }
+      } finally {
+        busy = false;
+        setTimeout(() => setUploadPct(null), 600);
+      }
+    };
+    const onOnline = () => { void flush(); };
+    window.addEventListener("online", onOnline);
+    const unsub = subscribeOutbox(() => { if (isOnlineNow()) void flush(); });
+    if (isOnlineNow()) void flush();
+    return () => { window.removeEventListener("online", onOnline); unsub(); };
+  }, [schoolId, studentId, userId, session, student, qc]);
+
 
   const scrollToMessage = useCallback((reportId: string, prefer: "s" | "o" | "any" = "any") => {
     const tryIds =
@@ -513,7 +591,7 @@ function Page() {
         setComposeOpen(false);
         setInChat(true);
         setLocallyRead(false);
-        await qc.invalidateQueries({ queryKey: ["student-my-reports"] }); setOptimisticMsgs((prev) => prev.filter((m) => m.reportId !== clientId));
+        await qc.invalidateQueries({ queryKey: ["student-my-reports"] }); setOptimisticMsgs((prev) => prev.filter((m) => m.reportId !== clientId)); try { removeOutbox(clientId); setFailedIds((s) => { const n = new Set(s); n.delete(clientId); return n; }); } catch {}
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Could not send");
       } finally {
@@ -678,7 +756,7 @@ function Page() {
     setClearOpen(false);
     setInChat(false);
     setChatMenuOpen(false);
-    await qc.invalidateQueries({ queryKey: ["student-my-reports"] }); setOptimisticMsgs((prev) => prev.filter((m) => m.reportId !== clientId));
+    await qc.invalidateQueries({ queryKey: ["student-my-reports"] }); setOptimisticMsgs((prev) => prev.filter((m) => m.reportId !== clientId)); try { removeOutbox(clientId); setFailedIds((s) => { const n = new Set(s); n.delete(clientId); return n; }); } catch {}
   }
 
   const filteredShow =

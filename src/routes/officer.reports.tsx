@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SplitHandle } from "@/components/dashboard/SplitHandle";
 import { isOnlineNow } from "@/lib/offline-sync";
+import { enqueueOutbox, removeOutbox, markOutboxFailed, notifyOutbox, listOutbox, canRetry, subscribeOutbox, markOutboxUploading } from "@/lib/message-outbox";
 import { joinMessagingPresence, ticksFor } from "@/lib/messaging-presence";
 import { uploadMessageMedia } from "@/lib/message-media";
 import { VoiceBubble, ImageBubble, ImageLightbox, VoiceRecorderBar, lastSeenLabel, parseMediaUrls, attachmentLabel, encodeOfficerMedia, parseOfficerReply } from "@/components/messaging/MessageMedia";
@@ -130,6 +131,9 @@ function Page() {
   const [locallyReadThreads, setLocallyReadThreads] = useState<Record<string, boolean>>({});
   const [renameOpen, setRenameOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [videoLightboxSrc, setVideoLightboxSrc] = useState<string | null>(null);
+  const [optimisticMsgs, setOptimisticMsgs] = useState<{ key: string; side: "out"; text: string; at: string; attachment_url?: string | null; attachment_type?: string | null; reportId: string }[]>([]) ;
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
   const [clearOpen, setClearOpen] = useState(false);
   const [renameVal, setRenameVal] = useState("");
   const [nickMap, setNickMap] = useState<Record<string, string>>(() => {
@@ -260,8 +264,8 @@ function Page() {
         });
       }
     }
-    return out;
-  }, [active]);
+    const pending = optimisticMsgs.filter((m) => !out.some((x) => x.key === m.key)); return [...out, ...pending];
+  }, [active, optimisticMsgs]);
 
   useEffect(() => {
     if (!schoolId || !userId) return;
@@ -616,7 +620,7 @@ sendLock.current = true;
                 m.side === "out"
                   ? ticksFor({ isMine: true, createdAt: m.at, peerOnline: true, peerReadAt: studentReadAt })
                   : "none";
-              const outTick = tick === "read" ? "read" : tick === "none" ? "none" : "delivered";
+              const outTick = (m.reportId?.startsWith("opt-") || m.key?.startsWith("opt-")) ? "pending" : tick === "read" ? "read" : tick === "none" ? "none" : "delivered";
               const hasContent =
                 Boolean(m.attachment_url) ||
                 (Boolean(m.text) && m.text.trim() !== "" && m.text.trim() !== "(attachment)");
@@ -769,6 +773,7 @@ sendLock.current = true;
         </div>
       )}
 
+      {videoLightboxSrc ? <VideoLightbox src={videoLightboxSrc} onClose={() => setVideoLightboxSrc(null)} /> : null}
       {lightboxSrc ? (
         <ImageLightbox
           urls={(() => {
