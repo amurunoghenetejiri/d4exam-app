@@ -1,0 +1,22 @@
+name: apply-msg-ux-v3
+on:
+  workflow_dispatch:
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore MessageMedia from web + apply patches
+        run: |
+          curl -sL "https://raw.githubusercontent.com/amurunoghenetejiri/d4exam-web/main/src/components/messaging/MessageMedia.tsx" -o src/components/messaging/MessageMedia.tsx
+          curl -sL "https://raw.githubusercontent.com/amurunoghenetejiri/d4exam-web/main/src/routes/officer.reports.tsx" -o src/routes/officer.reports.tsx
+          wc -l src/components/messaging/MessageMedia.tsx src/routes/officer.reports.tsx
+      - name: Commit restore
+        run: |
+          git config user.name d4exam-bot
+          git config user.email bot@d4exam.local
+          git add -A
+          git commit -m "Restore MessageMedia and officer.reports from web" || true
+          git push origin main
