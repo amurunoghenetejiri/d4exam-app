@@ -1,0 +1,24 @@
+name: Messaging UX fix
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/msg-ux-fix.py"
+      - ".github/workflows/msg-ux-fix.yml"
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply UX fixes
+        run: |
+          set -euo pipefail
+          python3 scripts/msg-ux-fix.py
+          git config user.name d4exam-bot
+          git config user.email bot@d4exam.local
+          git add -A
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git commit -m "fix(messaging): voice duration/play, blue recorder, multi-image swipe, menu/back, silent offline send, hide offline pill"
+          git push
