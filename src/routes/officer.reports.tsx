@@ -328,10 +328,6 @@ function Page() {
   const sendReply = useCallback(async (text: string, attach?: { url: string; type: string } | null) => {
     if (sendLock.current || !active || !userId) return;
     if (!text.trim() && !attach) return;
-    if (!isOnlineNow()) {
-      toast.error("Internet connection is required to send messages.");
-      return;
-    }
     sendLock.current = true;
     setSending(true);
     try {
@@ -486,7 +482,7 @@ function Page() {
           <div className="shrink-0 border-b px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
             <div className="mb-2 flex items-center gap-2">
               <button type="button" onClick={() => navigate({ to: "/officer" })} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10" aria-label="Back">
-                <ArrowLeft className="h-5 w-5" />
+                <ArrowLeft className="h-5 w-5 text-white stroke-[2.5]" />
               </button>
               <div>
                 <h1 className="text-lg font-extrabold">Messages</h1>
@@ -576,7 +572,7 @@ function Page() {
         <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", !threadKey && "hidden lg:flex")}>
           <div className="relative z-40 flex shrink-0 items-center gap-3 border-b border-white/10 bg-[#0b1b3a] px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white">
             <button type="button" onClick={() => setThreadKey(null)} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10">
-              <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft className="h-5 w-5 text-white stroke-[2.5]" />
             </button>
             <span className={cn("relative grid h-10 w-10 place-items-center rounded-full text-sm font-bold text-white", avatarColor(active.key))}>
               {initials(active.student_name)}
@@ -716,23 +712,23 @@ function Page() {
               }}
             />
             <div className="flex items-end gap-1.5">
-              <button type="button" className="mb-1 grid h-9 w-9 place-items-center rounded-full text-white/90 hover:bg-white/10" onClick={() => fileRef.current?.click()}>
-                <Paperclip className="h-5 w-5" />
+              <button type="button" className="mb-0.5 grid h-11 w-11 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25" onClick={() => fileRef.current?.click()}>
+                <Paperclip className="h-6 w-6" />
               </button>
               <div className="flex min-w-0 flex-1 items-end rounded-full border border-white/20 bg-white px-3">
                 <textarea value={reply} onChange={(e) => onTyping(e.target.value)} rows={1} placeholder="Type your message…" className="max-h-24 min-h-[36px] w-full resize-none bg-transparent py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400" />
               </div>
               {reply.trim() || pendingAttach ? (
-                <button type="button" disabled={sending} onClick={() => void sendReply(reply, pendingAttach)} className="mb-0.5 grid h-10 w-10 place-items-center rounded-full bg-[#2563eb] text-white">
+                <button type="button" disabled={sending} onClick={() => void sendReply(reply, pendingAttach)} className="mb-0.5 grid h-12 w-12 place-items-center rounded-full bg-[#2563eb] text-white shadow-md">
                   <Send className="h-4 w-4" />
                 </button>
               ) : (
                 <button
                   type="button"
-                  className={cn("mb-0.5 grid h-10 w-10 place-items-center rounded-full text-white", recording ? "bg-red-500" : "bg-[#0b1b3a]")}
+                  className={cn("mb-0.5 grid h-12 w-12 place-items-center rounded-full text-white shadow-md", recording ? "bg-[#2563eb]" : "bg-white/20 ring-2 ring-white/40")}
                   onClick={() => { if (!recording) void startRec(); }}
                 >
-                  <Mic className="h-4 w-4" />
+                  <Mic className="h-6 w-6" />
                 </button>
               )}
             </div>

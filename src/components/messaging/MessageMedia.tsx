@@ -219,9 +219,7 @@ export function VoiceBubble({
             }}
           />
           <div className={cn("mt-1 flex items-center gap-1 text-[10px] font-medium tabular-nums", own ? "text-slate-400" : "text-white/80")}>
-            <span>{fmtDur(playing ? cur : 0)}</span>
-            <span className="opacity-50">/</span>
-            <span className="opacity-80">{fmtDur(dur)}</span>
+            <span>{fmtDur(playing ? cur : (dur > 0 ? dur : 0))}</span>
           </div>
         </div>
         <div className="relative shrink-0">
@@ -298,7 +296,7 @@ export function VoiceRecorderBar({
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
   const ss = String(seconds % 60).padStart(2, "0");
   return (
-    <div className="mb-2 select-none rounded-2xl border border-red-100 bg-gradient-to-b from-red-50 to-white px-3 py-3 shadow-sm">
+    <div className="mb-2 select-none rounded-2xl border border-blue-100 bg-gradient-to-b from-blue-50 to-white px-3 py-3 shadow-sm">
       <div className="mb-3 flex flex-col items-center gap-1">
         <WaveBars active={recording && !paused} />
         <p className="text-sm font-bold tabular-nums text-slate-700">{mm}:{ss}</p>
@@ -322,7 +320,7 @@ export function VoiceRecorderBar({
               <span className="text-[10px] font-semibold">Play</span>
             </button>
             <button type="button" onClick={onContinue} className="flex flex-col items-center gap-1">
-              <span className="grid h-14 w-14 place-items-center rounded-full bg-red-500 text-white shadow-md">
+              <span className="grid h-14 w-14 place-items-center rounded-full bg-[#2563eb] text-white shadow-md">
                 <Mic className="h-6 w-6" />
               </span>
               <span className="text-[10px] font-semibold text-slate-600">Continue</span>

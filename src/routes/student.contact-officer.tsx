@@ -454,10 +454,6 @@ function Page() {
       if (sendLock.current) return;
       if (!schoolId) return;
       if (!text.trim() && !attach) return;
-      if (!isOnlineNow()) {
-        toast.error("Internet connection is required to send messages.");
-        return;
-      }
       sendLock.current = true;
       setSending(true);
       try {
@@ -672,7 +668,7 @@ function Page() {
       <div className="shrink-0 border-b border-slate-100 bg-white px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] lg:pt-4">
         <div className="mb-2 flex items-center gap-2">
           <button type="button" onClick={() => navigate({ to: "/student" })} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden" aria-label="Back">
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="h-5 w-5 text-white stroke-[2.5]" />
           </button>
           <div className="min-w-0 flex-1">
             <h1 className="text-lg font-extrabold text-slate-900">Messages</h1>
@@ -788,7 +784,7 @@ function Page() {
       </div>
       <div className="relative z-30 flex shrink-0 items-center gap-3 border-b border-white/10 bg-[#0b1b3a] px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white lg:pt-3">
         <button type="button" onClick={() => setInChat(false)} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden">
-          <ArrowLeft className="h-5 w-5" />
+          <ArrowLeft className="h-5 w-5 text-white stroke-[2.5]" />
         </button>
         <span className="relative grid h-10 w-10 place-items-center rounded-full bg-white/15 ring-2 ring-white/90 shadow-md">
           <User className="h-5 w-5 text-white" />
@@ -812,7 +808,7 @@ function Page() {
           </button>
           {chatMenuOpen ? (
             <div className="absolute right-0 z-[70] mt-1 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-              <button type="button" className="block w-full px-3 py-2.5 text-left text-sm hover:bg-slate-50" onClick={() => { setRenameVal(officerNickname); setRenameOpen(true); setChatMenuOpen(false); }}>Rename</button>
+              <button type="button" className="block w-full px-3 py-2.5 text-left text-sm font-semibold text-slate-900 hover:bg-slate-50" onClick={() => { setRenameVal(officerNickname); setRenameOpen(true); setChatMenuOpen(false); }}>Rename</button>
               <button type="button" className="block w-full px-3 py-2.5 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { setClearOpen(true); setChatMenuOpen(false); }}>Clear chat</button>
             </div>
           ) : null}
@@ -1060,19 +1056,19 @@ function Page() {
         ) : null}
         <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx" multiple className="hidden" onChange={(e) => { const fs = e.target.files; if (fs?.length) void onFile(fs); e.target.value = ""; }} />
         <div className="flex items-end gap-1.5">
-          <button type="button" className="mb-1 grid h-9 w-9 place-items-center rounded-full text-white/90 hover:bg-white/10" onClick={() => fileRef.current?.click()} aria-label="Attach file">
-            <Paperclip className="h-5 w-5" />
+          <button type="button" className="mb-0.5 grid h-11 w-11 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25" onClick={() => fileRef.current?.click()} aria-label="Attach file">
+            <Paperclip className="h-6 w-6" />
           </button>
           <div className="flex min-w-0 flex-1 items-end rounded-full border border-white/20 bg-white px-3">
             <textarea value={replyText} onChange={(e) => onTyping(e.target.value)} rows={1} placeholder="Type your message…" className="max-h-24 min-h-[36px] w-full resize-none bg-transparent py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400" />
           </div>
           {replyText.trim() || pendingAttach ? (
-            <button type="button" disabled={sending} onClick={() => void sendMessage(replyText, pendingAttach)} className="mb-0.5 grid h-10 w-10 place-items-center rounded-full bg-[#2563eb] text-white" aria-label="Send">
+            <button type="button" disabled={sending} onClick={() => void sendMessage(replyText, pendingAttach)} className="mb-0.5 grid h-12 w-12 place-items-center rounded-full bg-[#2563eb] text-white shadow-md" aria-label="Send">
               <Send className="h-4 w-4" />
             </button>
           ) : (
-            <button type="button" className={cn("mb-0.5 grid h-10 w-10 place-items-center rounded-full text-white", recording ? "bg-red-500" : "bg-[#0b1b3a]")} onClick={() => (recording ? stopRecKeep() : void startRec())} aria-label="Record voice">
-              <Mic className="h-4 w-4" />
+            <button type="button" className={cn("mb-0.5 grid h-12 w-12 place-items-center rounded-full text-white shadow-md", recording ? "bg-[#2563eb]" : "bg-white/20 ring-2 ring-white/40")} onClick={() => (recording ? stopRecKeep() : void startRec())} aria-label="Record voice">
+              <Mic className="h-6 w-6" />
             </button>
           )}
         </div>
@@ -1124,7 +1120,7 @@ function Page() {
           <div className="flex min-h-0 flex-1 flex-col bg-white">
             <div className="flex items-center gap-2 border-b px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
               <button type="button" onClick={() => setComposeOpen(false)} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10">
-                <ArrowLeft className="h-5 w-5" />
+                <ArrowLeft className="h-5 w-5 text-white stroke-[2.5]" />
               </button>
               <h2 className="font-extrabold">New Message</h2>
             </div>
