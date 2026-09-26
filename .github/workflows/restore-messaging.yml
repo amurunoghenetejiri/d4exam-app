@@ -1,10 +1,6 @@
 name: Restore messaging page
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "patches/co-navy-menu.patch"
-      - ".github/workflows/restore-messaging.yml"
 jobs:
   restore:
     runs-on: ubuntu-latest
@@ -14,35 +10,70 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Restore good contact-officer and apply navy/menu patch
+      - name: Restore good contact-officer and apply navy/menu
         run: |
           set -euo pipefail
           git show fcc7193f980d8392846f52806535aa48f55e90bf:src/routes/student.contact-officer.tsx > src/routes/student.contact-officer.tsx
-          if [ -f patches/co-navy-menu.patch ]; then
-            patch -p1 --fuzz=3 -f < patches/co-navy-menu.patch || true
-          fi
           python3 - <<'PY'
 from pathlib import Path
 p = Path("src/routes/student.contact-officer.tsx")
 t = p.read_text()
+# back button white
+t = t.replace(
+  'className="grid h-9 w-9 place-items-center rounded-full hover:bg-slate-100 lg:hidden"',
+  'className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden"',
+)
+# status color
+t = t.replace(
+  'officerOnline ? "text-emerald-600" : "text-slate-400"',
+  'officerOnline ? "text-emerald-400" : "text-white/60"',
+)
+# menu button
+t = t.replace(
+  'className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100" onClick={() => setChatMenuOpen((v) => !v)}',
+  'className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10" onClick={() => setChatMenuOpen((v) => !v)}',
+)
+# menu dropdown z + backdrop
+old_menu = '''          {chatMenuOpen ? (
+            <div className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+              <button type="button" className="block w-full px-3 py-2.5 text-left text-sm hover:bg-slate-50" onClick={() => { setRenameVal(officerNickname); setRenameOpen(true); setChatMenuOpen(false); }}>Rename</button>
+              <button type="button" className="block w-full px-3 py-2.5 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { setClearOpen(true); setChatMenuOpen(false); }}>Clear chat</button>
+            </div>
+          ) : null}'''
+new_menu = '''          {chatMenuOpen ? (
+            <>
+              <button type="button" className="fixed inset-0 z-[69]" aria-label="Close menu" onClick={() => setChatMenuOpen(false)} />
+              <div className="absolute right-0 z-[70] mt-1 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
+                <button type="button" className="block w-full px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-50" onClick={() => { setRenameVal(officerNickname); setRenameOpen(true); setChatMenuOpen(false); }}>Rename</button>
+                <button type="button" className="block w-full px-3 py-2.5 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { setClearOpen(true); setChatMenuOpen(false); }}>Clear chat</button>
+              </div>
+            </>
+          ) : null}'''
+if old_menu in t:
+    t = t.replace(old_menu, new_menu)
+# composer navy
 t = t.replace(
   'className="relative z-10 shrink-0 border-t bg-white px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"',
   'className="relative z-10 shrink-0 border-t border-white/10 bg-[#0b1b3a] px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-white"',
 )
-if "z-[70]" not in t and "chatMenuOpen" in t:
-    t = t.replace(
-      'className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"',
-      'className="absolute right-0 z-[70] mt-1 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl"',
-    )
+# input area
+t = t.replace(
+  'className="mb-1 grid h-9 w-9 place-items-center rounded-full text-slate-500" onClick={() => fileRef.current?.click()} aria-label="Attach file"',
+  'className="mb-1 grid h-9 w-9 place-items-center rounded-full text-white/80 hover:bg-white/10" onClick={() => fileRef.current?.click()} aria-label="Attach file"',
+)
+t = t.replace(
+  'className="flex min-w-0 flex-1 items-end rounded-full border bg-slate-50 px-3"',
+  'className="flex min-w-0 flex-1 items-end rounded-full border border-white/20 bg-white/10 px-3"',
+)
+t = t.replace(
+  'className="max-h-24 min-h-[36px] w-full resize-none bg-transparent py-2 text-sm outline-none"',
+  'className="max-h-24 min-h-[36px] w-full resize-none bg-transparent py-2 text-sm text-white placeholder:text-white/50 outline-none"',
+)
 p.write_text(t)
-print("navy/menu checks:", "0b1b3a" in t, "z-[70]" in t, "PLACEHOLDER" not in t)
+print("restored", len(t), "z70", "z-[70]" in t, "navy", "0b1b3a" in t and "border-t border-white" in t)
 PY
           git config user.name "d4exam-bot"
           git config user.email "bot@d4exam.local"
           git add src/routes/student.contact-officer.tsx
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-            exit 0
-          fi
-          git commit -m "fix(messaging): restore contact-officer + navy chrome + menu z-70 outside close"
+          git commit -m "fix(messaging): restore contact-officer + navy chrome + menu z-70 outside close" || true
           git push
