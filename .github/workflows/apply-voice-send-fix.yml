@@ -1,0 +1,27 @@
+name: apply-voice-send-fix
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/apply-voice-send-fix.py
+      - .github/workflows/apply-voice-send-fix.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply fixes
+        run: python3 scripts/apply-voice-send-fix.py
+      - name: Commit
+        run: |
+          git config user.name "d4exam-bot"
+          git config user.email "bot@d4exam.local"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes"
+          else
+            git commit -m "fix: voice send (no lock race), mic to Send, bold mic, back, rename, reply You"
+            git push
+          fi
