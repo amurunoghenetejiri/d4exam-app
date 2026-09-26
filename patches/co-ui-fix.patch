@@ -1,1 +1,134 @@
-PLACEHOLDER
+--- a/src/routes/student.contact-officer.tsx
++++ b/src/routes/student.contact-officer.tsx
+@@ -415,8 +415,14 @@
+     const lastMsg = chatMessages[chatMessages.length - 1];
+     let preview = "";
+     if (lastMsg) {
+-      if (lastMsg.attachment_type) {
+-        preview = attachmentLabel(lastMsg.attachment_type, lastMsg.attachment_url);
++      if (lastMsg.attachment_type === "audio") {
++        preview = "🎤 " + attachmentLabel(lastMsg.attachment_type, lastMsg.attachment_url);
++      } else if (lastMsg.attachment_type === "image" || lastMsg.attachment_type === "images") {
++        preview = "📷 " + attachmentLabel(lastMsg.attachment_type, lastMsg.attachment_url);
++      } else if (lastMsg.attachment_type === "video" || lastMsg.attachment_type === "videos") {
++        preview = "🎥 " + attachmentLabel(lastMsg.attachment_type, lastMsg.attachment_url);
++      } else if (lastMsg.attachment_type) {
++        preview = "📎 " + attachmentLabel(lastMsg.attachment_type, lastMsg.attachment_url);
+       } else if (lastMsg.text && lastMsg.text !== "(attachment)") {
+         preview = lastMsg.text;
+       } else {
+@@ -711,9 +717,18 @@
+               </span>
+               <div className="min-w-0 flex-1">
+                 <div className="flex justify-between gap-2">
+-                  <p className="truncate text-sm font-bold">{officerNickname}</p>
+-                  <span className="flex shrink-0 items-center gap-1 text-[10px] text-slate-400">
+-                    {formatWhen(listPreview.at)}
++                  <p className="truncate text-sm font-bold text-slate-900">{officerNickname}</p>
++                  <span className="shrink-0 text-[10px] font-medium text-slate-400">{formatWhen(listPreview.at)}</span>
++                </div>
++                <div className="mt-0.5 flex items-center justify-between gap-2">
++                  <p className="line-clamp-1 min-w-0 flex-1 text-xs text-slate-500">
++                    {officerRecording
++                      ? "🎤 Recording…"
++                      : officerTyping
++                        ? "Typing…"
++                        : listPreview.preview || "Conversation"}
++                  </p>
++                  <span className="flex shrink-0 items-center gap-1">
+                     {listPreview.isOut && listPreview.tick !== "none" ? (
+                       listPreview.tick === "read" ? (
+                         <CheckCheck className="h-3.5 w-3.5 text-[#2563eb]" />
+@@ -723,19 +738,14 @@
+                       ) : (
+                         <CheckCheck className="h-3.5 w-3.5 text-slate-400" />
+                       )
+                     ) : null}
++                    {listPreview.unread > 0 ? (
++                      <span className="grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
++                        {listPreview.unread > 99 ? "99+" : listPreview.unread}
++                      </span>
++                    ) : null}
+                   </span>
+                 </div>
+-                <p className="line-clamp-1 text-xs text-slate-500">
+-                  {officerRecording
+-                    ? "Recording voice note…"
+-                    : officerTyping
+-                      ? "Typing…"
+-                      : listPreview.preview || "Conversation"}
+-                </p>
+               </div>
+-              {listPreview.unread > 0 ? (
+-                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" title={`${listPreview.unread} unread`} />
+-              ) : null}
+             </button>
+           </li>
+         ) : (
+@@ -799,31 +809,34 @@
+         )}
+       </div>
+       <div className="relative z-10 flex shrink-0 items-center gap-3 border-b bg-white px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] lg:pt-3">
+-        <button type="button" onClick={() => setInChat(false)} className="grid h-9 w-9 place-items-center rounded-full hover:bg-slate-100 lg:hidden">
++        <button type="button" onClick={() => setInChat(false)} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden">
+           <ArrowLeft className="h-5 w-5" />
+         </button>
+-        <span className="relative grid h-10 w-10 place-items-center rounded-full bg-[#0b1b3a] text-white">
++        <span className="relative grid h-10 w-10 place-items-center rounded-full bg-white/15 text-white">
+           <User className="h-5 w-5" />
+-          <span className={cn("absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white", officerOnline ? "bg-emerald-400" : "bg-slate-300")} />
++          <span className={cn("absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#0b1b3a]", officerOnline ? "bg-emerald-400" : "bg-slate-400")} />
+         </span>
+         <div className="min-w-0 flex-1">
+-          <p className="truncate text-sm font-bold">{officerNickname}</p>
+-          <p className={cn("text-[11px] font-medium", officerOnline ? "text-emerald-600" : "text-slate-400")}>
++          <p className="truncate text-sm font-bold text-white">{officerNickname}</p>
++          <p className={cn("text-[11px] font-medium", officerOnline ? "text-emerald-300" : "text-white/60")}>
+             {officerRecording
+               ? "Recording…"
+               : officerTyping
+                 ? "Typing…"
+                 : officerOnline
+                   ? "Online"
+                   : lastSeenLabel(officerLastSeen)}
+           </p>
+         </div>
+         <div className="relative">
+-          <button type="button" className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100" onClick={() => setChatMenuOpen((v) => !v)} aria-label="Chat actions">
++          <button type="button" className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10" onClick={(e) => { e.stopPropagation(); setChatMenuOpen((v) => !v); }} aria-label="Chat actions">
+             <span className="text-lg leading-none">⋮</span>
+           </button>
+           {chatMenuOpen ? (
+-            <div className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
++            <>
++              <button type="button" className="fixed inset-0 z-[60] cursor-default bg-black/20" aria-label="Close menu" onClick={() => setChatMenuOpen(false)} />
++              <div className="absolute right-0 z-[70] mt-1 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-slate-800 shadow-xl">
+               <button type="button" className="block w-full px-3 py-2.5 text-left text-sm hover:bg-slate-50" onClick={() => { setRenameVal(officerNickname); setRenameOpen(true); setChatMenuOpen(false); }}>Rename</button>
+               <button type="button" className="block w-full px-3 py-2.5 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { setClearOpen(true); setChatMenuOpen(false); }}>Clear chat</button>
+             </div>
++            </>
+           ) : null}
+         </div>
+       </div>
+@@ -975,7 +988,7 @@
+         {officerTyping ? <p className="text-center text-xs text-slate-500">Officer is typing…</p> : null}
+         <div ref={chatEndRef} />
+       </div>
+-      <div className="relative z-10 shrink-0 border-t bg-white px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
++      <div className="relative z-10 shrink-0 border-t border-white/10 bg-[#0b1b3a] px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+         {replyTo ? (
+           <div className="mb-2 flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
+             <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#0b1b3a] text-white">
+@@ -1048,10 +1061,10 @@
+         ) : null}
+         <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx" multiple className="hidden" onChange={(e) => { const fs = e.target.files; if (fs?.length) void onFile(fs); e.target.value = ""; }} />
+         <div className="flex items-end gap-1.5">
+-          <button type="button" className="mb-1 grid h-9 w-9 place-items-center rounded-full text-slate-500" onClick={() => fileRef.current?.click()} aria-label="Attach file">
++          <button type="button" className="mb-1 grid h-9 w-9 place-items-center rounded-full text-white/80 hover:bg-white/10" onClick={() => fileRef.current?.click()} aria-label="Attach file">
+             <Paperclip className="h-5 w-5" />
+           </button>
+-          <div className="flex min-w-0 flex-1 items-end rounded-full border bg-slate-50 px-3">
++          <div className="flex min-w-0 flex-1 items-end rounded-full border border-white/20 bg-white px-3">
+             <textarea value={replyText} onChange={(e) => onTyping(e.target.value)} rows={1} placeholder="Type your message…" className="max-h-24 min-h-[36px] w-full resize-none bg-transparent py-2 text-sm outline-none" />
+           </div>
+           {replyText.trim() || pendingAttach ? (
