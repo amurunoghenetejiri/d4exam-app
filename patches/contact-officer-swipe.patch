@@ -1,0 +1,216 @@
+--- a/src/routes/student.contact-officer.tsx
++++ b/src/routes/student.contact-officer.tsx
+@@ -7,6 +7,7 @@
+   CheckCheck,
+   Mic,
+   Paperclip,
++  Reply,
+   Search,
+   Send,
+   User,
+@@ -60,6 +61,7 @@
+   attachment_type?: string | null;
+   reportId: string;
+   replyPreview?: string | null;
++  replyToKey?: string | null;
+ };
+ 
+ type TabKey = "inbox" | "sent" | "all";
+@@ -137,7 +139,27 @@
+   const sendLock = useRef(false);
+   const chatEndRef = useRef<HTMLDivElement>(null);
+   const fileRef = useRef<HTMLInputElement>(null);
+-  const swipeRef = useRef<{ id: string; x: number } | null>(null);
++  const swipeRef = useRef<{ key: string; id: string; x: number } | null>(null);
++  const [swipeDx, setSwipeDx] = useState<Record<string, number>>({});
++  const [highlightKey, setHighlightKey] = useState<string | null>(null);
++
++  const scrollToMessage = useCallback((reportId: string, prefer: "s" | "o" | "any" = "any") => {
++    const tryIds =
++      prefer === "s"
++        ? [`msg-${reportId}-s`, `msg-${reportId}-o`]
++        : prefer === "o"
++          ? [`msg-${reportId}-o`, `msg-${reportId}-s`]
++          : [`msg-${reportId}-s`, `msg-${reportId}-o`, `msg-${reportId}`];
++    for (const id of tryIds) {
++      const el = document.getElementById(id);
++      if (el) {
++        el.scrollIntoView({ behavior: "smooth", block: "center" });
++        setHighlightKey(id.replace(/^msg-/, ""));
++        window.setTimeout(() => setHighlightKey(null), 1600);
++        return;
++      }
++    }
++  }, []);
+ 
+   const [examSearch, setExamSearch] = useState("");
+   const [selectedExamIds, setSelectedExamIds] = useState<string[]>([]);
+@@ -228,9 +250,17 @@
+     const out: ChatMsg[] = [];
+     for (const r of rows) {
+       let replyPreview: string | null = null;
++      let replyToKey: string | null = null;
+       if (r.reply_to_id && byId.has(r.reply_to_id)) {
+         const parent = byId.get(r.reply_to_id)!;
+-        replyPreview = parent.officer_reply || parent.body;
++        // Prefer linking to the officer bubble if that report was answered, else student body
++        if ((parent.officer_reply || "").trim()) {
++          replyPreview = parent.officer_reply;
++          replyToKey = `${parent.id}-o`;
++        } else {
++          replyPreview = parent.body;
++          replyToKey = `${parent.id}-s`;
++        }
+       }
+       const bodyText = (r.body || "").trim();
+       const hasMedia = Boolean(r.attachment_url);
+@@ -245,6 +275,7 @@
+           attachment_type: r.attachment_type,
+           reportId: r.id,
+           replyPreview,
++          replyToKey,
+         });
+       }
+       const replyText = (r.officer_reply || "").trim();
+@@ -775,7 +806,7 @@
+           ) : null}
+         </div>
+       </div>
+-      <div className="relative z-10 min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
++      <div className="relative z-10 min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-3">
+         {chatMessages.map((m) => {
+           const tick =
+             m.side === "out"
+@@ -798,34 +829,82 @@
+             Boolean(m.attachment_url) ||
+             (Boolean(m.text) && m.text.trim() !== "" && m.text.trim() !== "(attachment)");
+           if (!hasContent) return null;
++          const dx = swipeDx[m.key] || 0;
++          const replyArmed = dx > 48;
+           return (
+             <div
+               key={m.key}
+-              className={cn("flex w-full touch-pan-y select-none", m.side === "out" ? "justify-end" : "justify-start gap-2")}
++              className={cn(
++                "relative flex w-full select-none",
++                m.side === "out" ? "justify-end" : "justify-start gap-2",
++                highlightKey === m.key && "z-10",
++              )}
+               onCopy={(e) => e.preventDefault()}
+               onContextMenu={(e) => e.preventDefault()}
+-              onTouchStart={(e) => {
+-                swipeRef.current = { id: m.reportId, x: e.touches[0]?.clientX ?? 0 };
+-                startLP();
+-              }}
+-              onTouchMove={endLP}
+-              onTouchEnd={(e) => {
+-                endLP();
+-                const s = swipeRef.current;
+-                swipeRef.current = null;
+-                if (!s) return;
+-                const x = e.changedTouches[0]?.clientX ?? 0;
+-                if (x - s.x > 56) {
+-                  setReplyTo({
+-                    id: m.reportId,
+-                    text: (m.text && m.text !== "(attachment)" ? m.text : m.attachment_type || "Attachment").slice(0, 120),
++            >
++              {/* Reply affordance revealed while dragging */}
++              <div
++                className={cn(
++                  "pointer-events-none absolute left-2 top-1/2 z-0 flex -translate-y-1/2 items-center transition-opacity",
++                  replyArmed ? "opacity-100" : "opacity-0",
++                )}
++                aria-hidden
++              >
++                <span className="grid h-8 w-8 place-items-center rounded-full bg-[#2563eb] text-white shadow">
++                  <Reply className="h-4 w-4" />
++                </span>
++              </div>
++              <div
++                className={cn(
++                  "relative z-[1] flex max-w-full touch-pan-y will-change-transform",
++                  m.side === "out" ? "justify-end" : "justify-start gap-2",
++                  highlightKey === m.key && "rounded-2xl ring-2 ring-[#2563eb] ring-offset-2",
++                )}
++                style={{ transform: `translateX(${Math.min(Math.max(dx, 0), 72)}px)`, transition: dx === 0 ? "transform 0.2s ease-out" : "none" }}
++                onTouchStart={(e) => {
++                  swipeRef.current = { key: m.key, id: m.reportId, x: e.touches[0]?.clientX ?? 0 };
++                  startLP();
++                }}
++                onTouchMove={(e) => {
++                  endLP();
++                  const s = swipeRef.current;
++                  if (!s || s.key !== m.key) return;
++                  const x = e.touches[0]?.clientX ?? 0;
++                  const next = Math.min(Math.max(x - s.x, 0), 72);
++                  setSwipeDx((prev) => (prev[m.key] === next ? prev : { ...prev, [m.key]: next }));
++                }}
++                onTouchEnd={(e) => {
++                  endLP();
++                  const s = swipeRef.current;
++                  swipeRef.current = null;
++                  const finalDx = swipeDx[m.key] || 0;
++                  setSwipeDx((prev) => {
++                    const n = { ...prev };
++                    delete n[m.key];
++                    return n;
+                   });
+-                }
+-              }}
+-              onMouseDown={startLP}
+-              onMouseUp={endLP}
+-              onMouseLeave={endLP}
+-            >
++                  if (!s) return;
++                  const x = e.changedTouches[0]?.clientX ?? 0;
++                  if (x - s.x > 56 || finalDx > 48) {
++                    setReplyTo({
++                      id: m.reportId,
++                      text: (m.text && m.text !== "(attachment)" ? m.text : m.attachment_type || "Attachment").slice(0, 120),
++                    });
++                  }
++                }}
++                onTouchCancel={() => {
++                  endLP();
++                  swipeRef.current = null;
++                  setSwipeDx((prev) => {
++                    const n = { ...prev };
++                    delete n[m.key];
++                    return n;
++                  });
++                }}
++                onMouseDown={startLP}
++                onMouseUp={endLP}
++                onMouseLeave={endLP}
++              >
+               {m.side === "in" ? (
+                 <span className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#0b1b3a] text-white">
+                   <User className="h-3.5 w-3.5" />
+@@ -861,8 +940,17 @@
+                       type="button"
+                       className={cn("mb-1.5 w-full rounded-lg border-l-2 px-2 py-1 text-left text-[11px]", m.side === "out" ? "border-blue-400 bg-slate-50 text-slate-600" : "border-white/50 bg-white/15 text-blue-50")}
+                       onClick={() => {
+-                        const el = document.getElementById(`msg-${m.reportId}`);
+-                        el?.scrollIntoView({ behavior: "smooth", block: "center" });
++                        if (m.replyToKey) {
++                          const el = document.getElementById(`msg-${m.replyToKey}`);
++                          if (el) {
++                            el.scrollIntoView({ behavior: "smooth", block: "center" });
++                            setHighlightKey(m.replyToKey);
++                            window.setTimeout(() => setHighlightKey(null), 1600);
++                            return;
++                          }
++                        }
++                        const parentId = (rows.find((r) => r.id === m.reportId)?.reply_to_id) || m.reportId;
++                        scrollToMessage(parentId);
+                       }}
+                     >
+                       {m.replyPreview.slice(0, 100)}
+@@ -880,6 +968,7 @@
+                   </p>
+                 </div>
+               )}
++              </div>
+             </div>
+           );
+         })}

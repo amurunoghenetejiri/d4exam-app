@@ -1,0 +1,27 @@
+name: Apply messaging patch
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "patches/contact-officer-swipe.patch"
+      - ".github/workflows/apply-messaging-patch.yml"
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: |
+          set -euo pipefail
+          patch -p1 < patches/contact-officer-swipe.patch
+          git config user.name "d4exam-bot"
+          git config user.email "bot@d4exam.local"
+          git add src/routes/student.contact-officer.tsx
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "Messaging: finger-follow swipe reply, scroll-to-message, no overlap"
+          git push
