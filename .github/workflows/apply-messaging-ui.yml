@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - "patches/mm-seek.patch"
+      - "patches/co-ui-fix.patch"
       - ".github/workflows/apply-messaging-ui.yml"
 jobs:
   apply:
@@ -11,16 +13,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Decode and apply patches
+      - name: Apply patches
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import base64, pathlib, subprocess, os
-          # patches are applied from remote raw files for reliability
-          import urllib.request
-          # Use local embedded minimal approach - write MessageMedia seek + co UI from known good URLs after commit
-          print('will use curl approach')
-          PY
-          # Pull fixed files from a gist-like approach: apply from d4exam-app branch tip after manual
-          echo 'Applying via curl from workspace is not available; using inline python to write key files'
-          echo 'FAIL intentional if not replaced'
+          patch -p1 < patches/mm-seek.patch
+          patch -p1 < patches/co-ui-fix.patch
+          git config user.name "d4exam-bot"
+          git config user.email "bot@d4exam.local"
+          git add src/components/messaging/MessageMedia.tsx src/routes/student.contact-officer.tsx
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git commit -m "Messaging UI: wave seek, list polish, navy chrome, menu z-index"
+          git push

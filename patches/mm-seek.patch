@@ -1,0 +1,116 @@
+--- a/src/components/messaging/MessageMedia.tsx
++++ b/src/components/messaging/MessageMedia.tsx
+@@ -11,27 +11,80 @@
+   return `${m}:${sec.toString().padStart(2, "0")}`;
+ }
+ 
+-function WaveBars({ active, light }: { active?: boolean; light?: boolean }) {
++function WaveBars({
++  active,
++  light,
++  progress = 0,
++  onSeek,
++}: {
++  active?: boolean;
++  light?: boolean;
++  /** 0..1 playback progress for the white line through the waves */
++  progress?: number;
++  onSeek?: (ratio: number) => void;
++}) {
+   // Continuous wave-line style (matches messaging mockup)
+   const heights = [6, 10, 14, 18, 12, 8, 16, 20, 14, 9, 13, 19, 11, 7, 15, 17, 12, 8, 14, 18, 10, 6, 12, 16, 11, 8, 13, 9];
+-  return (
+-    <div className="flex h-7 flex-1 items-center gap-[2.5px] overflow-hidden">
+-      {heights.map((h, i) => (
++  const trackRef = useRef<HTMLDivElement>(null);
++  const pct = Math.max(0, Math.min(1, progress));
++  const filledCount = Math.round(pct * heights.length);
++
++  const seekFromClientX = (clientX: number) => {
++    const el = trackRef.current;
++    if (!el || !onSeek) return;
++    const rect = el.getBoundingClientRect();
++    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)));
++    onSeek(ratio);
++  };
++
++  return (
++    <div
++      ref={trackRef}
++      className={cn("relative flex h-7 flex-1 items-center gap-[2.5px] overflow-hidden", onSeek && "cursor-pointer touch-none")}
++      onPointerDown={(e) => {
++        if (!onSeek) return;
++        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
++        seekFromClientX(e.clientX);
++      }}
++      onPointerMove={(e) => {
++        if (!onSeek || e.buttons !== 1) return;
++        seekFromClientX(e.clientX);
++      }}
++    >
++      {heights.map((h, i) => {
++        const passed = i < filledCount;
++        return (
+           <span
+             key={i}
+             className={cn(
+-              "w-[2.5px] shrink-0 rounded-full transition-all",
+-              light ? "bg-white/85" : "bg-[#60a5fa]",
+-              active && "animate-pulse",
++              "w-[2.5px] shrink-0 rounded-full transition-colors",
++              light
++                ? passed
++                  ? "bg-white"
++                  : "bg-white/35"
++                : passed
++                  ? "bg-[#2563eb]"
++                  : "bg-[#93c5fd]/70",
++              active && !passed && "animate-pulse",
+             )}
+             style={{
+-              height: active ? h + (i % 3) : h,
+-              opacity: active ? 1 : 0.85,
++              height: active && !passed ? h + (i % 3) : h,
+               animationDelay: `${i * 28}ms`,
+               animationDuration: "0.9s",
+             }}
+           />
+-      ))}
++        );
++      })}
++      {/* Draggable seek knob */}
++      {onSeek ? (
++        <span
++          className={cn(
++            "pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full shadow",
++            light ? "bg-white" : "bg-[#2563eb]",
++          )}
++          style={{ left: `${pct * 100}%` }}
++        />
++      ) : null}
+     </div>
+   );
+ }
+@@ -169,7 +222,18 @@
+           )}
+           aria-label={playing ? "Pause" : "Play"}
+         >
+           {playing ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
+         </button>
+         <div className="min-w-0 flex-1 py-0.5">
+-          <WaveBars active={playing} light={!own} />
++          <WaveBars
++            active={playing}
++            light={!own}
++            progress={dur > 0 ? cur / dur : 0}
++            onSeek={(ratio) => {
++              const a = audioRef.current;
++              if (!a || !Number.isFinite(a.duration) || a.duration <= 0) return;
++              const t = ratio * a.duration;
++              a.currentTime = t;
++              setCur(t);
++            }}
++          />
+           <div className={cn("mt-1 flex items-center gap-1 text-[10px] font-medium tabular-nums", own ? "text-slate-400" : "text-white/80")}>
+             <span>{fmtDur(playing ? cur : 0)}</span>
+             <span className="opacity-50">/</span>
