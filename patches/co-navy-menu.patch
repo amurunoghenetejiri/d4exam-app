@@ -1,0 +1,63 @@
+--- a/src/routes/student.contact-officer.tsx
++++ b/src/routes/student.contact-officer.tsx
+@@ -785,7 +785,7 @@
+         )}
+       </div>
+       <div className="relative z-30 flex shrink-0 items-center gap-3 border-b border-white/10 bg-[#0b1b3a] px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white lg:pt-3">
+-        <button type="button" onClick={() => setInChat(false)} className="grid h-9 w-9 place-items-center rounded-full hover:bg-slate-100 lg:hidden">
++        <button type="button" onClick={() => setInChat(false)} className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden">
+           <ArrowLeft className="h-5 w-5" />
+         </button>
+         <span className="relative grid h-10 w-10 place-items-center rounded-full bg-[#0b1b3a] text-white">
+@@ -794,7 +794,7 @@
+         </span>
+         <div className="min-w-0 flex-1">
+           <p className="truncate text-sm font-bold">{officerNickname}</p>
+-          <p className={cn("text-[11px] font-medium", officerOnline ? "text-emerald-600" : "text-slate-400")}>
++          <p className={cn("text-[11px] font-medium", officerOnline ? "text-emerald-400" : "text-white/60")}>
+             {officerRecording
+               ? "Recording…"
+               : officerTyping
+@@ -805,14 +805,17 @@
+           </p>
+         </div>
+         <div className="relative">
+-          <button type="button" className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100" onClick={() => setChatMenuOpen((v) => !v)} aria-label="Chat actions">
++          <button type="button" className="grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10" onClick={() => setChatMenuOpen((v) => !v)} aria-label="Chat actions">
+             <span className="text-lg leading-none">⋮</span>
+           </button>
+           {chatMenuOpen ? (
+-            <div className="absolute right-0 z-20 mt-1 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+-              <button type="button" className="block w-full px-3 py-2.5 text-left text-sm hover:bg-slate-50" onClick={() => { setRenameVal(officerNickname); setRenameOpen(true); setChatMenuOpen(false); }}>Rename</button>
+-              <button type="button" className="block w-full px-3 py-2.5 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { setClearOpen(true); setChatMenuOpen(false); }}>Clear chat</button>
+-            </div>
++            <>
++              <button type="button" className="fixed inset-0 z-[69]" aria-label="Close menu" onClick={() => setChatMenuOpen(false)} />
++              <div className="absolute right-0 z-[70] mt-1 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl">
++                <button type="button" className="block w-full px-3 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-50" onClick={() => { setRenameVal(officerNickname); setRenameOpen(true); setChatMenuOpen(false); }}>Rename</button>
++                <button type="button" className="block w-full px-3 py-2.5 text-left text-sm text-red-600 hover:bg-red-50" onClick={() => { setClearOpen(true); setChatMenuOpen(false); }}>Clear chat</button>
++              </div>
++            </>
+           ) : null}
+         </div>
+       </div>
+@@ -985,7 +988,7 @@
+         <div ref={chatEndRef} />
+       </div>
+-      <div className="relative z-10 shrink-0 border-t bg-white px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
++      <div className="relative z-10 shrink-0 border-t border-white/10 bg-[#0b1b3a] px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-white">
+         {replyTo ? (
+           <div className="mb-2 flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
+             <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#0b1b3a] text-white">
+@@ -1058,10 +1061,10 @@
+         <div className="flex items-end gap-1.5">
+-          <button type="button" className="mb-1 grid h-9 w-9 place-items-center rounded-full text-slate-500" onClick={() => fileRef.current?.click()} aria-label="Attach file">
++          <button type="button" className="mb-1 grid h-9 w-9 place-items-center rounded-full text-white/80 hover:bg-white/10" onClick={() => fileRef.current?.click()} aria-label="Attach file">
+             <Paperclip className="h-5 w-5" />
+           </button>
+-          <div className="flex min-w-0 flex-1 items-end rounded-full border bg-slate-50 px-3">
+-            <textarea value={replyText} onChange={(e) => onTyping(e.target.value)} rows={1} placeholder="Type your message…" className="max-h-24 min-h-[36px] w-full resize-none bg-transparent py-2 text-sm outline-none" />
++          <div className="flex min-w-0 flex-1 items-end rounded-full border border-white/20 bg-white/10 px-3">
++            <textarea value={replyText} onChange={(e) => onTyping(e.target.value)} rows={1} placeholder="Type your message…" className="max-h-24 min-h-[36px] w-full resize-none bg-transparent py-2 text-sm text-white placeholder:text-white/50 outline-none" />
+           </div>
+ 
