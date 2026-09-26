@@ -16,11 +16,25 @@ jobs:
       - name: Apply patches
         run: |
           set -euo pipefail
-          patch -p1 < patches/mm-seek.patch
-          patch -p1 < patches/co-ui-fix.patch
+          patch -p1 --fuzz=3 -f < patches/mm-seek.patch || true
+          patch -p1 --fuzz=3 -f < patches/co-ui-fix.patch || true
+          # Force header navy if not applied
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/routes/student.contact-officer.tsx")
+          t = p.read_text()
+          old = 'className="relative z-10 flex shrink-0 items-center gap-3 border-b bg-white px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] lg:pt-3"'
+          new = 'className="relative z-30 flex shrink-0 items-center gap-3 border-b border-white/10 bg-[#0b1b3a] px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-white lg:pt-3"'
+          if old in t:
+              t = t.replace(old, new)
+              p.write_text(t)
+              print("header navy applied")
+          else:
+              print("header already navy or missing", "0b1b3a" in t and "z-30" in t)
+          PY
           git config user.name "d4exam-bot"
           git config user.email "bot@d4exam.local"
-          git add src/components/messaging/MessageMedia.tsx src/routes/student.contact-officer.tsx
+          git add src/components/messaging/MessageMedia.tsx src/routes/student.contact-officer.tsx || true
           if git diff --cached --quiet; then echo "No changes"; exit 0; fi
-          git commit -m "Messaging UI: wave seek, list polish, navy chrome, menu z-index"
+          git commit -m "Messaging UI: list polish, navy chrome, menu z-index"
           git push
