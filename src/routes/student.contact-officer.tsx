@@ -907,7 +907,7 @@ function Page() {
                   if (x - s.x > 56 || finalDx > 48) {
                     setReplyTo({
                       id: m.reportId,
-                      text: (m.attachment_type === "audio" ? "Voice note" : m.text && m.text !== "(attachment)" ? m.text : attachmentLabel(m.attachment_type, m.attachment_url)).slice(0, 120),
+                      text: (m.attachment_type === "audio" ? "🎤 Voice note" : m.text && m.text !== "(attachment)" && m.text !== "Open attachment" ? m.text : attachmentLabel(m.attachment_type, m.attachment_url)).slice(0, 120),
                       fromSelf: m.side === "out",
                     });
                   }
@@ -980,7 +980,7 @@ function Page() {
                       {m.replyPreview.slice(0, 100)}
                     </button>
                   ) : null}
-{m.text && m.text !== "(attachment)" ? <p className="whitespace-pre-wrap break-words">{m.text}</p> : null}
+{m.text && m.text !== "(attachment)" && m.text !== "Open attachment" ? <p className="whitespace-pre-wrap break-words">{m.text}</p> : null}
                   <p className={cn("mt-1 flex items-center justify-end gap-1 text-[10px]", m.side === "out" ? "text-slate-400" : "text-blue-100")}>
                     {formatTime(m.at)}
                     {m.side === "out" ? <Ticks state={outTick === "none" ? "delivered" : outTick} /> : null}
@@ -1064,11 +1064,12 @@ function Page() {
               void sendPendingAudio();
             }}
           />
-        ) : null}
+        ) : (
+          <>
         <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx" multiple className="hidden" onChange={(e) => { const fs = e.target.files; if (fs?.length) void onFile(fs); e.target.value = ""; }} />
         <div className="flex items-end gap-1.5">
-          <button type="button" className="mb-0.5 grid h-11 w-11 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25" onClick={() => fileRef.current?.click()} aria-label="Attach file">
-            <Paperclip className="h-6 w-6" />
+          <button type="button" className="mb-0.5 grid h-9 w-9 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25" onClick={() => fileRef.current?.click()} aria-label="Attach file">
+            <Paperclip className="h-4 w-4" />
           </button>
           <div className="flex min-w-0 flex-1 items-end rounded-full border border-white/20 bg-white px-3">
             <textarea value={replyText} onChange={(e) => onTyping(e.target.value)} rows={1} placeholder="Type your message…" className="max-h-24 min-h-[36px] w-full resize-none bg-transparent py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400" />
@@ -1078,11 +1079,13 @@ function Page() {
               <Send className="h-4 w-4" />
             </button>
           ) : (
-            <button type="button" className={cn("mb-0.5 grid h-10 w-10 place-items-center rounded-full text-white shadow-md", recording ? "bg-[#2563eb]" : "bg-white/20 ring-2 ring-white/40")} onClick={() => (recording || pendingAudio || pendingAudioUrl ? void sendPendingAudio() : void startRec())} aria-label="Record voice">
-              {recording || pendingAudio || pendingAudioUrl ? <Send className="h-5 w-5" /> : <Mic className="h-5 w-5 stroke-[2.5]" />}
+            <button type="button" className={cn("mb-0.5 grid h-9 w-9 place-items-center rounded-full text-white shadow-md", recording ? "bg-[#2563eb]" : "bg-white/20 ring-2 ring-white/40")} onClick={() => (recording || pendingAudio || pendingAudioUrl ? void sendPendingAudio() : void startRec())} aria-label="Record voice">
+              {recording || pendingAudio || pendingAudioUrl ? <Send className="h-5 w-5" /> : <Mic className="h-4 w-4 stroke-[2.5]" />}
             </button>
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   ) : (
