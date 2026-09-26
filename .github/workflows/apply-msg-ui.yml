@@ -1,0 +1,43 @@
+name: Apply messaging UI files
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "patches/msg-ui/**"
+      - ".github/workflows/apply-msg-ui.yml"
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode and write messaging files
+        run: |
+          set -euo pipefail
+          mkdir -p src/components/messaging src/routes
+          python3 - <<'PY'
+          import base64, pathlib
+          mapping = {
+            "patches/msg-ui/MessageMedia.tsx.b64": "src/components/messaging/MessageMedia.tsx",
+            "patches/msg-ui/student.contact-officer.tsx.b64": "src/routes/student.contact-officer.tsx",
+            "patches/msg-ui/officer.reports.tsx.b64": "src/routes/officer.reports.tsx",
+          }
+          for src, dest in mapping.items():
+              p = pathlib.Path(src)
+              if not p.exists():
+                  print("missing", src)
+                  continue
+              data = base64.b64decode(p.read_text().strip())
+              pathlib.Path(dest).write_bytes(data)
+              print("wrote", dest, len(data))
+          PY
+          git config user.name "d4exam-bot"
+          git config user.email "bot@d4exam.local"
+          git add src/components/messaging/MessageMedia.tsx src/routes/student.contact-officer.tsx src/routes/officer.reports.tsx
+          if git diff --cached --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "fix(messaging): header avatar ring, menu z-70 rename, reply preview on voice, officer voice notes, seek within waves, navy composer"
+          git push
