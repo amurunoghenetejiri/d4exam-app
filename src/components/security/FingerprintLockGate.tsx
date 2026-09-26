@@ -27,7 +27,7 @@ import {
   readPendingLoginRole,
   type AppRole,
 } from "@/lib/session";
-import { isNativeShell } from "@/native/platform";
+import { isNativeShell, waitForNativeShell } from "@/native/platform";
 import {
   authenticateWithFingerprint,
   checkFingerprintAvailable,
@@ -47,7 +47,7 @@ import {
 } from "@/lib/fingerprint-lock";
 import { readLastUserId } from "@/lib/offline-query";
 import { cn } from "@/lib/utils";
-import { appNavigate, appReplace } from "@/lib/app-navigate";
+import { appNavigate } from "@/lib/app-navigate";
 
 const SPLASH_SESSION_KEY = "d4exam_splash_shown_v6";
 /** App theme navy — matches Capacitor status bar / splash */
@@ -137,10 +137,69 @@ function lastKnownRole(): AppRole | null {
 }
 
 export function FingerprintLockGate() {
-  const native = isNativeShell();
+  const [native, setNative] = useState(() => isNativeShell());
   const { data: session } = useSessionUser();
+
+  useEffect(() => {
+    if (native) return;
+    let cancelled = false;
+    void waitForNativeShell(10_000).then((ok) => {
+      if (!cancelled && (ok || isNativeShell())) setNative(true);
+    });
+    const onReady = () => {
+      if (isNativeShell()) setNative(true);
+    };
+    window.addEventListener("d4-native-ready", onReady);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("d4-native-ready", onReady);
+    };
+  }, [native]);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [locked, setLocked] = useState(false);
+
+  // Prevent password keystrokes from reaching focused inputs under the lock overlay
+  useEffect(() => {
+    if (!locked) {
+      try {
+        document.documentElement.removeAttribute("data-d4-unlock-inert");
+        document.getElementById("root")?.removeAttribute("inert");
+        document.getElementById("app")?.removeAttribute("inert");
+        const main = document.querySelector("main");
+        main?.removeAttribute("inert");
+      } catch { /* ignore */ }
+      return;
+    }
+    try {
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && typeof ae.blur === "function" && ae !== document.body) {
+        // blur everything except elements inside the lock portal
+        const inLock = ae.closest?.("[data-d4-lock-gate]");
+        if (!inLock) ae.blur();
+      }
+      document.documentElement.setAttribute("data-d4-unlock-inert", "1");
+      // Mark app shell inert so inputs under the overlay cannot receive focus/input
+      const root = document.getElementById("root") || document.getElementById("app");
+      if (root) root.setAttribute("inert", "");
+      document.querySelectorAll("main, [data-d4-shell]").forEach((el) => {
+        try { el.setAttribute("inert", ""); } catch { /* ignore */ }
+      });
+    } catch { /* ignore */ }
+    return () => {
+      try {
+        document.documentElement.removeAttribute("data-d4-unlock-inert");
+        document.getElementById("root")?.removeAttribute("inert");
+        document.getElementById("app")?.removeAttribute("inert");
+        document.querySelectorAll("[inert]").forEach((el) => {
+          // only clear ones we likely set - if lock portal is not parent
+          if (!(el as HTMLElement).closest?.("[data-d4-lock-gate]")) {
+            try { el.removeAttribute("inert"); } catch { /* ignore */ }
+          }
+        });
+      } catch { /* ignore */ }
+    };
+  }, [locked]);
+
   const [failedMsg, setFailedMsg] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "scanning" | "success" | "failed">("idle");
   const [pageReady, setPageReady] = useState(false);
@@ -216,6 +275,34 @@ export function FingerprintLockGate() {
   const [hwState, setHwState] = useState<"pending" | "yes" | "no">("pending");
   /** Soft prompt: enable fingerprint after password unlock */
   const [offerEnableFp, setOfferEnableFp] = useState(false);
+
+  // Detect real device biometric support (was imported but never called — hwState stayed pending)
+  useEffect(() => {
+    if (!native) {
+      setHwState("no");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const avail = await checkFingerprintAvailable();
+        if (cancelled) return;
+        if (avail.ok && avail.hasFingerprint !== false) {
+          setHwState("yes");
+        } else if (avail.reason === "timeout") {
+          // Keep pending briefly — do not force password-only on slow devices
+          setHwState("yes");
+        } else {
+          setHwState("no");
+        }
+      } catch {
+        if (!cancelled) setHwState("yes"); // prefer FP UI; prompt will fail gracefully
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [native]);
   const [enableFpBusy, setEnableFpBusy] = useState(false);
   /** User explicitly chose password — do not auto-switch back until unlock cycle resets */
   const userPickedPasswordRef = useRef(false);
@@ -299,27 +386,20 @@ export function FingerprintLockGate() {
     setLocked(false);
     setLogoutConfirm(false);
     try {
-      void import("@/lib/unlock-ui").then((m) => m.unlockUi());
-    } catch {
-      /* ignore */
-    }
-    try {
-      appReplace("/login");
+      appNavigate("/login");
     } catch {
       try {
-        appNavigate("/login");
+        window.location.href = "/login";
       } catch {
-        window.location.hash = "#/login";
+        window.location.assign("/login");
       }
     }
-    // Hard fallback — hash only, never path load that freezes WebView
+    // Hard fallback so unlock screen never traps the user
     window.setTimeout(() => {
       try {
-        const h = String(window.location.hash || "");
-        if (!h.includes("login")) {
-          window.location.hash = "#/login";
+        if (!String(window.location.href || "").includes("login")) {
+          window.location.assign("/login");
         }
-        void import("@/lib/unlock-ui").then((m) => m.unlockUi());
       } catch {
         /* ignore */
       }
@@ -349,6 +429,11 @@ export function FingerprintLockGate() {
         hwState !== "no",
     );
     const unlockConfigured = hasAppPw || fpEnabled;
+    if (!native) {
+      // Website / non-Capacitor: never full-screen lock (blocks menu & taps)
+      setLocked(false);
+      return;
+    }
     if (!uid || !unlockConfigured) {
       setLocked(false);
       return;
@@ -488,11 +573,6 @@ export function FingerprintLockGate() {
   }, [locked, splashDone, native]);
 
   function finishUnlock(opts?: { fromPassword?: boolean }) {
-    try {
-      void import("@/lib/unlock-ui").then((m) => m.unlockUi());
-    } catch {
-      /* ignore */
-    }
     setFingerprintLocked(false);
     clearBackgroundMark();
     markSessionUnlocked();
@@ -554,11 +634,20 @@ export function FingerprintLockGate() {
       if (runningRef.current) {
         runningRef.current = false;
         setStatus("failed");
-        setFailedMsg("Fingerprint timed out. Tap the fingerprint to try again.");
+        setFailedMsg("Fingerprint timed out. Tap the fingerprint to try again, or use your app password.");
       }
-    }, 18_000);
+    }, 90_000);
 
     try {
+      const avail = await checkFingerprintAvailable();
+      if (!avail.ok) {
+        setHwState("no");
+        setMode("password");
+        setStatus("failed");
+        setFailedMsg(avail.message || "Fingerprint is not available on this device. Use your app password.");
+        return;
+      }
+      setHwState("yes");
       const result = await authenticateWithFingerprint({
         reason: "Unlock D4EXAM",
         title: "D4EXAM",
@@ -641,6 +730,13 @@ export function FingerprintLockGate() {
   }, [locked]);
 
   if (!locked || isPublicAuthPath) {
+    try {
+      document.body.classList.remove("d4-fp-lock-active");
+      document.body.style.pointerEvents = "";
+      document.documentElement.style.pointerEvents = "";
+    } catch {
+      /* ignore */
+    }
     return null;
   }
   // Never return a blank navy: if splash is slow, still render unlock UI
@@ -664,7 +760,24 @@ export function FingerprintLockGate() {
 
   return createPortal(
     <div
+      data-d4-lock-gate=""
       className="d4-fp-lock-overlay"
+      onMouseDown={(e) => {
+        const el = e.target as HTMLElement | null;
+        if (el && el.tagName !== "INPUT" && el.tagName !== "TEXTAREA" && el.tagName !== "BUTTON") {
+          const input = e.currentTarget.querySelector<HTMLInputElement>('input[data-d4-lock-input]');
+          input?.focus();
+        }
+      }}
+      onKeyDownCapture={(e) => {
+        const ae = document.activeElement as HTMLElement | null;
+        if (ae && !ae.closest?.("[data-d4-lock-gate]")) {
+          e.preventDefault();
+          e.stopPropagation();
+          const input = (e.currentTarget as HTMLElement).querySelector<HTMLInputElement>("input[data-d4-lock-input]");
+          input?.focus();
+        }
+      }}
       style={{
         position: "fixed",
         top: 0,
@@ -763,6 +876,7 @@ export function FingerprintLockGate() {
             <h2 className="text-lg font-bold text-white sm:text-xl md:text-2xl">Unlock D4EXAM</h2>
             <p className="mt-1 text-center text-sm text-slate-400 md:text-base">Enter your app password</p>
             <input
+              data-d4-lock-input=""
               type="password"
               name="d4-app-unlock"
               autoComplete="off"
@@ -793,14 +907,9 @@ export function FingerprintLockGate() {
                 setLocked(false);
                 setFingerprintLocked(false);
                 try {
-                  void import("@/lib/unlock-ui").then((m) => m.unlockUi());
+                  window.location.assign("/forgot-app-password");
                 } catch {
-                  /* ignore */
-                }
-                try {
-                  appNavigate("/forgot-app-password");
-                } catch {
-                  window.location.hash = "#/forgot-app-password";
+                  window.location.href = "/forgot-app-password";
                 }
               }}
               className="mt-3 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-300 hover:underline"
