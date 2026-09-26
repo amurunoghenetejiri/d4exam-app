@@ -1,0 +1,15 @@
+--- a/src/routes/student.contact-officer.tsx
++++ b/src/routes/student.contact-officer.tsx
+@@ -80,9 +80,9 @@
+ }
+ function Ticks({ state }: { state: "none" | "sent" | "delivered" | "read" }) {
+   if (state === "none") return null;
+-  if (state === "sent") return <Check className="inline h-3.5 w-3.5 text-blue-100" aria-label="Sent" />;
+-  if (state === "delivered") return <CheckCheck className="inline h-3.5 w-3.5 text-blue-100" aria-label="Delivered" />;
+-  return <CheckCheck className="inline h-3.5 w-3.5 text-[#0b1b3a]" aria-label="Read" />;
++  if (state === "sent") return <Check className="inline h-3.5 w-3.5 text-slate-400" aria-label="Sent" />;
++  if (state === "delivered") return <CheckCheck className="inline h-3.5 w-3.5 text-slate-400" aria-label="Delivered" />;
++  return <CheckCheck className="inline h-3.5 w-3.5 text-[#2563eb]" aria-label="Read" />;
+ }
+ 
+ function Page() {

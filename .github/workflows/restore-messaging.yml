@@ -1,0 +1,30 @@
+name: Restore messaging page
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "patches/contact-officer.patch"
+      - ".github/workflows/restore-messaging.yml"
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore and patch contact-officer
+        run: |
+          set -euo pipefail
+          git show eaf364a34daf885a0f6a97bc3da20d2a8b06457d:src/routes/student.contact-officer.tsx > src/routes/student.contact-officer.tsx
+          patch -p1 < patches/contact-officer.patch
+          git config user.name "d4exam-bot"
+          git config user.email "bot@d4exam.local"
+          git add src/routes/student.contact-officer.tsx
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Restore messaging: voice fixes, list ticks/unread, school logo watermark"
+          git push
