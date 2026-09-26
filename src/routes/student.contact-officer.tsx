@@ -25,7 +25,7 @@ import { SplitHandle } from "@/components/dashboard/SplitHandle";
 import { isOnlineNow } from "@/lib/offline-sync";
 import { joinMessagingPresence, ticksFor } from "@/lib/messaging-presence";
 import { uploadMessageMedia } from "@/lib/message-media";
-import { VoiceBubble, ImageBubble, ImageLightbox, LongPressMenu, VoiceRecorderBar, lastSeenLabel, parseMediaUrls, attachmentLabel, parseOfficerReply } from "@/components/messaging/MessageMedia";
+import { VoiceBubble, ImageBubble, ImageLightbox, VideoBubble, FileBubble, VideoLightbox, LongPressMenu, VoiceRecorderBar, lastSeenLabel, parseMediaUrls, attachmentLabel, parseOfficerReply } from "@/components/messaging/MessageMedia";
 
 export const Route = createFileRoute("/student/contact-officer")({
   head: () => ({ meta: [{ title: "Messages — D4EXAM" }] }),
@@ -110,7 +110,7 @@ function Page() {
   const [recSecs, setRecSecs] = useState(0);
   const [pendingAudio, setPendingAudio] = useState<Blob | null>(null);
   const [pendingAttach, setPendingAttach] = useState<{ url: string; type: string } | null>(null);
-  const [replyTo, setReplyTo] = useState<{ id: string; text: string } | null>(null);
+  const [replyTo, setReplyTo] = useState<{ id: string; text: string; fromSelf?: boolean } | null>(null);
   const [chatMenuOpen, setChatMenuOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
@@ -125,6 +125,7 @@ function Page() {
   const [listPct, setListPct] = useState(38);
   const [locallyRead, setLocallyRead] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [videoLightboxSrc, setVideoLightboxSrc] = useState<string | null>(null);
   const [menuMsg, setMenuMsg] = useState<ChatMsg | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editText, setEditText] = useState("");
@@ -906,7 +907,8 @@ function Page() {
                   if (x - s.x > 56 || finalDx > 48) {
                     setReplyTo({
                       id: m.reportId,
-                      text: (m.text && m.text !== "(attachment)" ? m.text : m.attachment_type || "Attachment").slice(0, 120),
+                      text: (m.attachment_type === "audio" ? "Voice note" : m.text && m.text !== "(attachment)" ? m.text : attachmentLabel(m.attachment_type, m.attachment_url)).slice(0, 120),
+                      fromSelf: m.side === "out",
                     });
                   }
                 }}
@@ -945,6 +947,10 @@ function Page() {
                     />
                   );
                 })()
+              ) : (m.attachment_type === "video" || m.attachment_type === "videos") && m.attachment_url ? (
+                <VideoBubble id={`msg-${m.key}`} src={parseMediaUrls(m.attachment_url)[0]} mine={m.side === "out"} timeLabel={formatTime(m.at)} tick={m.side === "out" ? outTick : "none"} onOpen={() => setVideoLightboxSrc(parseMediaUrls(m.attachment_url)[0])} />
+              ) : m.attachment_type === "file" && m.attachment_url ? (
+                <FileBubble id={`msg-${m.key}`} src={m.attachment_url} mine={m.side === "out"} timeLabel={formatTime(m.at)} tick={m.side === "out" ? outTick : "none"} />
               ) : (
                 <div
                   id={`msg-${m.key}`}
@@ -974,12 +980,7 @@ function Page() {
                       {m.replyPreview.slice(0, 100)}
                     </button>
                   ) : null}
-                  {m.attachment_type === "file" && m.attachment_url ? (
-                    <button type="button" className="mb-1 block text-left underline" onClick={() => setLightboxSrc(m.attachment_url!)}>
-                      Open attachment
-                    </button>
-                  ) : null}
-                  {m.text && m.text !== "(attachment)" ? <p className="whitespace-pre-wrap break-words">{m.text}</p> : null}
+{m.text && m.text !== "(attachment)" ? <p className="whitespace-pre-wrap break-words">{m.text}</p> : null}
                   <p className={cn("mt-1 flex items-center justify-end gap-1 text-[10px]", m.side === "out" ? "text-slate-400" : "text-blue-100")}>
                     {formatTime(m.at)}
                     {m.side === "out" ? <Ticks state={outTick === "none" ? "delivered" : outTick} /> : null}
@@ -1000,7 +1001,7 @@ function Page() {
               <User className="h-4 w-4" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-bold text-blue-800">{officerNickname}</p>
+              <p className="text-[11px] font-bold text-blue-800">{replyTo.fromSelf ? "You" : officerNickname}</p>
               <p className="line-clamp-2 text-xs text-slate-700">{replyTo.text}</p>
             </div>
             <button type="button" onClick={() => setReplyTo(null)} className="text-slate-400" aria-label="Cancel reply">
@@ -1073,12 +1074,12 @@ function Page() {
             <textarea value={replyText} onChange={(e) => onTyping(e.target.value)} rows={1} placeholder="Type your message…" className="max-h-24 min-h-[36px] w-full resize-none bg-transparent py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400" />
           </div>
           {replyText.trim() || pendingAttach ? (
-            <button type="button" disabled={sending} onClick={() => void sendMessage(replyText, pendingAttach)} className="mb-0.5 grid h-12 w-12 place-items-center rounded-full bg-[#2563eb] text-white shadow-md" aria-label="Send">
+            <button type="button" disabled={sending} onClick={() => void sendMessage(replyText, pendingAttach)} className="mb-0.5 grid h-10 w-10 place-items-center rounded-full bg-[#2563eb] text-white shadow-md" aria-label="Send">
               <Send className="h-4 w-4" />
             </button>
           ) : (
-            <button type="button" className={cn("mb-0.5 grid h-12 w-12 place-items-center rounded-full text-white shadow-md", recording ? "bg-[#2563eb]" : "bg-white/20 ring-2 ring-white/40")} onClick={() => (recording || pendingAudio || pendingAudioUrl ? void sendPendingAudio() : void startRec())} aria-label="Record voice">
-              {recording || pendingAudio || pendingAudioUrl ? <Send className="h-5 w-5" /> : <Mic className="h-7 w-7 stroke-[2.5]" />}
+            <button type="button" className={cn("mb-0.5 grid h-10 w-10 place-items-center rounded-full text-white shadow-md", recording ? "bg-[#2563eb]" : "bg-white/20 ring-2 ring-white/40")} onClick={() => (recording || pendingAudio || pendingAudioUrl ? void sendPendingAudio() : void startRec())} aria-label="Record voice">
+              {recording || pendingAudio || pendingAudioUrl ? <Send className="h-5 w-5" /> : <Mic className="h-5 w-5 stroke-[2.5]" />}
             </button>
           )}
         </div>
@@ -1201,6 +1202,9 @@ function Page() {
         </div>
       ) : null}
 
+      {videoLightboxSrc ? (
+        <VideoLightbox src={videoLightboxSrc} onClose={() => setVideoLightboxSrc(null)} />
+      ) : null}
       {lightboxSrc ? (
         <ImageLightbox
           urls={(() => {
