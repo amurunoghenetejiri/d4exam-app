@@ -13,3 +13,336 @@
  }
  
  function Page() {
+@@ -271,11 +271,6 @@
+     }).length;
+   }, [rows, locallyRead]);
+ 
+-  const listPreview = useMemo(() => {
+-    if (!latest) return null;
+-    const lastMsg = chatMessages[chatMessages.length - 1];
+-    return { preview: lastMsg?.text || "", at: lastMsg?.at || latest.created_at, unread: inboxUnread };
+-  }, [latest, chatMessages, inboxUnread]);
+ 
+   useEffect(() => {
+     if (!schoolId || !userId) return;
+@@ -346,15 +341,26 @@
+   useEffect(() => {
+     if (!recording) {
+       if (recTimer.current) clearInterval(recTimer.current);
++      recTimer.current = null;
+       setRecSecs(0);
+       return;
+     }
+-    setRecSecs(0);
+-    recTimer.current = setInterval(() => setRecSecs((s) => s + 1), 1000);
++    if (recPaused) {
++      if (recTimer.current) clearInterval(recTimer.current);
++      recTimer.current = null;
++      return;
++    }
++    // Keep seconds when resuming; only start interval when actively recording
++    if (!recTimer.current) {
++      recTimer.current = setInterval(() => setRecSecs((s) => s + 1), 1000);
++    }
+     return () => {
+-      if (recTimer.current) clearInterval(recTimer.current);
++      if (recTimer.current) {
++        clearInterval(recTimer.current);
++        recTimer.current = null;
++      }
+     };
+-  }, [recording]);
++  }, [recording, recPaused]);
+ 
+   const selectedTitles = useMemo(
+     () => exams.filter((e) => selectedExamIds.includes(e.id)).map((e) => e.title),
+@@ -372,6 +378,37 @@
+     }
+     return m ? new Date(m).toISOString() : null;
+   }, [rows]);
++
++  const listPreview = useMemo(() => {
++    if (!latest) return null;
++    const lastMsg = chatMessages[chatMessages.length - 1];
++    let preview = "";
++    if (lastMsg) {
++      if (lastMsg.attachment_type) {
++        preview = attachmentLabel(lastMsg.attachment_type, lastMsg.attachment_url);
++      } else if (lastMsg.text && lastMsg.text !== "(attachment)") {
++        preview = lastMsg.text;
++      } else {
++        preview = "Conversation";
++      }
++    }
++    const isOut = lastMsg?.side === "out";
++    const tick = isOut
++      ? ticksFor({
++          isMine: true,
++          createdAt: lastMsg?.at || latest.created_at,
++          peerOnline: true,
++          peerReadAt: maxOfficerRead,
++        })
++      : "none";
++    return {
++      preview,
++      at: lastMsg?.at || latest.created_at,
++      unread: inboxUnread,
++      isOut,
++      tick: tick as "none" | "sent" | "delivered" | "read",
++    };
++  }, [latest, chatMessages, inboxUnread, maxOfficerRead]);
+ 
+   const sendMessage = useCallback(
+     async (text: string, attach?: { url: string; type: string } | null) => {
+@@ -458,15 +495,25 @@
+         const blob = new Blob(chunks.current, { type: "audio/webm" });
+         if (blob.size >= 200) {
+           setPendingAudio(blob);
+-          setPendingAudioUrl(URL.createObjectURL(blob));
++          setPendingAudioUrl((prev) => {
++            if (prev) URL.revokeObjectURL(prev);
++            return URL.createObjectURL(blob);
++          });
+         }
+         setRecording(false);
+         setRecPaused(false);
+       };
+       mediaRec.current = rec;
+-      rec.start();
++      // timeslice so pause captures data up to the pause point
++      rec.start(250);
+       setRecording(true);
++      setRecPaused(false);
++      setRecSecs(0);
+       setPendingAudio(null);
++      setPendingAudioUrl((prev) => {
++        if (prev) URL.revokeObjectURL(prev);
++        return null;
++      });
+       presenceApi.current?.setRecording(true, studentId || userId);
+     } catch {
+       toast.error("Microphone permission is required for voice notes");
+@@ -475,42 +522,67 @@
+ 
+   function cancelRec() {
+     try {
+-      mediaRec.current?.stop();
++      if (mediaRec.current && mediaRec.current.state !== "inactive") {
++        mediaRec.current.stop();
++      }
+     } catch {
+       /* ignore */
+     }
++    mediaRec.current = null;
+     chunks.current = [];
+     setPendingAudio(null);
++    setPendingAudioUrl((prev) => {
++      if (prev) URL.revokeObjectURL(prev);
++      return null;
++    });
+     setRecording(false);
++    setRecPaused(false);
++    setRecSecs(0);
+     presenceApi.current?.setRecording(false, studentId || userId);
+   }
+ 
+   function stopRecKeep() {
+     try {
+-      mediaRec.current?.stop();
++      if (mediaRec.current && mediaRec.current.state !== "inactive") {
++        mediaRec.current.stop();
++      }
+     } catch {
+       /* ignore */
+     }
+   }
+ 
+   async function sendPendingAudio() {
++    if (sendLock.current) return;
+     if (!pendingAudio && !recording) return;
+-    if (recording) {
+-      stopRecKeep();
+-      // wait briefly for onstop
+-      await new Promise((r) => setTimeout(r, 120));
+-    }
+-    const blob = pendingAudio || (chunks.current.length ? new Blob(chunks.current, { type: "audio/webm" }) : null);
+-    if (!blob || blob.size < 200) {
+-      cancelRec();
+-      return;
+-    }
++    sendLock.current = true;
++    const wasRecording = recording;
++    // Collapse recorder UI immediately
++    setRecording(false);
++    setRecPaused(false);
++    presenceApi.current?.setRecording(false, studentId || userId);
+     try {
++      if (wasRecording) {
++        stopRecKeep();
++        await new Promise((r) => setTimeout(r, 200));
++      }
++      const blob =
++        pendingAudio ||
++        (chunks.current.length ? new Blob(chunks.current, { type: "audio/webm" }) : null);
++      if (!blob || blob.size < 200) {
++        cancelRec();
++        return;
++      }
++      setPendingAudio(null);
++      setPendingAudioUrl((prev) => {
++        if (prev) URL.revokeObjectURL(prev);
++        return null;
++      });
+       const up = await uploadMessageMedia(blob, "audio/webm", `msg/${schoolId}/${userId}`);
+-      setPendingAudio(null);
+       await sendMessage("", { url: up.url, type: "audio" });
+     } catch (e) {
+       toast.error(e instanceof Error ? e.message : "Could not send voice note");
++    } finally {
++      sendLock.current = false;
+     }
+   }
+ 
+@@ -609,11 +681,30 @@
+               <div className="min-w-0 flex-1">
+                 <div className="flex justify-between gap-2">
+                   <p className="truncate text-sm font-bold">{officerNickname}</p>
+-                  <span className="text-[10px] text-slate-400">{formatWhen(listPreview.at)}</span>
++                  <span className="flex shrink-0 items-center gap-1 text-[10px] text-slate-400">
++                    {formatWhen(listPreview.at)}
++                    {listPreview.isOut && listPreview.tick !== "none" ? (
++                      listPreview.tick === "read" ? (
++                        <CheckCheck className="h-3.5 w-3.5 text-[#2563eb]" />
++                      ) : listPreview.tick === "sent" ? (
++                        <Check className="h-3.5 w-3.5 text-slate-400" />
++                      ) : (
++                        <CheckCheck className="h-3.5 w-3.5 text-slate-400" />
++                      )
++                    ) : null}
++                  </span>
+                 </div>
+-                <p className="line-clamp-1 text-xs text-slate-500">{listPreview.preview || "Conversation"}</p>
++                <p className="line-clamp-1 text-xs text-slate-500">
++                  {officerRecording
++                    ? "Recording voice note…"
++                    : officerTyping
++                      ? "Typing…"
++                      : listPreview.preview || "Conversation"}
++                </p>
+               </div>
+-              {listPreview.unread > 0 ? <span className="mt-1 grid h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">{listPreview.unread}</span> : null}
++              {listPreview.unread > 0 ? (
++                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" title={`${listPreview.unread} unread`} />
++              ) : null}
+             </button>
+           </li>
+         ) : (
+@@ -623,9 +714,36 @@
+     </div>
+   );
+ 
++  const schoolLogoUrl = (student as { schoolLogoUrl?: string | null; logoUrl?: string | null } | null | undefined)?.schoolLogoUrl
++    || (student as { logoUrl?: string | null } | null | undefined)?.logoUrl
++    || null;
++  const schoolName = (student as { schoolName?: string | null } | null | undefined)?.schoolName || null;
++
+   const chatPane = inChat ? (
+-    <div className="flex h-full min-h-0 w-full flex-1 flex-col select-none" style={{ background: "linear-gradient(180deg, #f0f7ff 0%, #f8fafc 40%, #eef6ff 100%)" }}>
+-      <div className="flex shrink-0 items-center gap-3 border-b bg-white px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] lg:pt-3">
++    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col select-none" style={{ background: "linear-gradient(180deg, #f0f7ff 0%, #f8fafc 40%, #eef6ff 100%)" }}>
++      {/* School logo watermark — soft, non-interactive */}
++      <div aria-hidden className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center overflow-hidden">
++        {schoolLogoUrl ? (
++          <img
++            src={schoolLogoUrl}
++            alt=""
++            className="h-[min(55vh,420px)] w-auto max-w-[70%] select-none object-contain opacity-[0.08]"
++            style={{ filter: "grayscale(1) brightness(0.95)" }}
++            loading="eager"
++            decoding="async"
++          />
++        ) : (
++          <img
++            src="/logo.png"
++            alt=""
++            className="h-[min(55vh,420px)] w-auto max-w-[70%] select-none object-contain opacity-[0.07]"
++            style={{ filter: "grayscale(1) brightness(0.9)" }}
++            loading="eager"
++            decoding="async"
++          />
++        )}
++      </div>
++      <div className="relative z-10 flex shrink-0 items-center gap-3 border-b bg-white px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] lg:pt-3">
+         <button type="button" onClick={() => setInChat(false)} className="grid h-9 w-9 place-items-center rounded-full hover:bg-slate-100 lg:hidden">
+           <ArrowLeft className="h-5 w-5" />
+         </button>
+@@ -657,7 +775,7 @@
+           ) : null}
+         </div>
+       </div>
+-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
++      <div className="relative z-10 min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
+         {chatMessages.map((m) => {
+           const tick =
+             m.side === "out"
+@@ -768,7 +886,7 @@
+         {officerTyping ? <p className="text-center text-xs text-slate-500">Officer is typing…</p> : null}
+         <div ref={chatEndRef} />
+       </div>
+-      <div className="shrink-0 border-t bg-white px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
++      <div className="relative z-10 shrink-0 border-t bg-white px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+         {replyTo ? (
+           <div className="mb-2 flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
+             <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#0b1b3a] text-white">
+@@ -807,21 +925,26 @@
+             }}
+             onPause={() => {
+               try {
+-                mediaRec.current?.pause();
+-                setRecPaused(true);
+-                // snapshot for preview while paused
+-                const blob = new Blob(chunks.current, { type: "audio/webm" });
+-                if (blob.size >= 200) {
+-                  if (pendingAudioUrl) URL.revokeObjectURL(pendingAudioUrl);
+-                  setPendingAudio(blob);
+-                  setPendingAudioUrl(URL.createObjectURL(blob));
++                if (mediaRec.current && mediaRec.current.state === "recording") {
++                  mediaRec.current.pause();
++                  setRecPaused(true);
++                  const blob = new Blob(chunks.current, { type: "audio/webm" });
++                  if (blob.size >= 200) {
++                    setPendingAudio(blob);
++                    setPendingAudioUrl((prev) => {
++                      if (prev) URL.revokeObjectURL(prev);
++                      return URL.createObjectURL(blob);
++                    });
++                  }
+                 }
+               } catch { /* ignore */ }
+             }}
+             onContinue={() => {
+               try {
+-                mediaRec.current?.resume();
+-                setRecPaused(false);
++                if (mediaRec.current && mediaRec.current.state === "paused") {
++                  mediaRec.current.resume();
++                  setRecPaused(false);
++                }
+               } catch { /* ignore */ }
+             }}
+             onPreviewPlay={() => {
+@@ -830,13 +953,7 @@
+               void a.play().catch(() => {});
+             }}
+             onSend={() => {
+-              void (async () => {
+-                if (recording) {
+-                  try { mediaRec.current?.stop(); } catch { /* ignore */ }
+-                  await new Promise((r) => setTimeout(r, 180));
+-                }
+-                await sendPendingAudio();
+-              })();
++              void sendPendingAudio();
+             }}
+           />
+         ) : null}
