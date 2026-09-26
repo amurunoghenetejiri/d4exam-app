@@ -1,0 +1,24 @@
+name: Apply contact-officer UI patch
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "patches/co-ui-fix.patch"
+      - ".github/workflows/apply-co-ui.yml"
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: |
+          set -euo pipefail
+          patch -p1 < patches/co-ui-fix.patch
+          git config user.name "d4exam-bot"
+          git config user.email "bot@d4exam.local"
+          git add src/routes/student.contact-officer.tsx
+          if git diff --cached --quiet; then echo "No changes"; exit 0; fi
+          git commit -m "Messaging UI: list polish, navy header/composer, menu z-index"
+          git push
