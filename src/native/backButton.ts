@@ -3,7 +3,6 @@
  * Never force-exit during an active CBT examination route.
  */
 import { isNativeShell } from "@/native/platform";
-import { unlockUiSoon } from "@/lib/unlock-ui";
 
 const EXIT_WINDOW_MS = 2000;
 let lastBackAt = 0;
@@ -67,18 +66,6 @@ export async function registerAndroidBackButton(): Promise<() => void> {
     handle = await App.addListener("backButton", ({ canGoBack }) => {
       try {
         const path = window.location.pathname || "/";
-        const drawer = document.querySelector('.sa-mobile-menu[role="dialog"]');
-        if (drawer) {
-          drawer.querySelector<HTMLElement>('button[aria-label="Close menu"]')?.click();
-          unlockUiSoon();
-          return;
-        }
-        const search = document.querySelector('[data-d4-global-search="open"]');
-        if (search) {
-          search.querySelector<HTMLElement>("[data-d4-search-close]")?.click();
-          unlockUiSoon();
-          return;
-        }
         // Close Settings overlays (manual / help) before leaving the page
         try {
           const w = window as unknown as { __d4SettingsOverlayOpen?: boolean };
@@ -101,9 +88,32 @@ export async function registerAndroidBackButton(): Promise<() => void> {
           if (canGoBack) window.history.back();
           return;
         }
+        // Messaging: close chat pane before leaving the route
+        if (/contact-officer|officer\/reports|\/messages/i.test(path)) {
+          let handled = false;
+          const mark = () => { handled = true; };
+          window.addEventListener("d4-messaging-back-handled", mark, { once: true });
+          window.dispatchEvent(new CustomEvent("d4-messaging-back"));
+          window.setTimeout(() => {
+            window.removeEventListener("d4-messaging-back-handled", mark);
+          }, 0);
+          // Pages set handled via synchronous close; if still in messaging root, fall through
+          // Always prefer in-app navigation first
+          if (canGoBack && !isRootishPath(path)) {
+            // If chat was open, page closes it without history change — detect via flag
+            const w = window as unknown as { __d4MsgInChat?: boolean };
+            if (w.__d4MsgInChat) {
+              w.__d4MsgInChat = false;
+              lastBackAt = 0;
+              return;
+            }
+            window.history.back();
+            lastBackAt = 0;
+            return;
+          }
+        }
         if (canGoBack && !isRootishPath(path)) {
           window.history.back();
-          unlockUiSoon();
           lastBackAt = 0;
           return;
         }
