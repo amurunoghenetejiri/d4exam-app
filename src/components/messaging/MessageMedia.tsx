@@ -11,32 +11,75 @@ function fmtDur(s: number) {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
-function WaveBars({ active, light }: { active?: boolean; light?: boolean }) {
-  // Continuous wave-line style (matches messaging mockup)
+function WaveBars({
+  active,
+  light,
+  progress = 0,
+  onSeek,
+}: {
+  active?: boolean;
+  light?: boolean;
+  progress?: number;
+  onSeek?: (ratio: number) => void;
+}) {
   const heights = [6, 10, 14, 18, 12, 8, 16, 20, 14, 9, 13, 19, 11, 7, 15, 17, 12, 8, 14, 18, 10, 6, 12, 16, 11, 8, 13, 9];
+  const trackRef = useRef<HTMLDivElement>(null);
+  const pct = Math.max(0, Math.min(1, progress));
+  const filledCount = Math.round(pct * heights.length);
+
+  const seekFromClientX = (clientX: number) => {
+    const el = trackRef.current;
+    if (!el || !onSeek) return;
+    const rect = el.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)));
+    onSeek(ratio);
+  };
+
   return (
-    <div className="flex h-7 flex-1 items-center gap-[2.5px] overflow-hidden">
-      {heights.map((h, i) => (
+    <div
+      ref={trackRef}
+      className={cn("relative flex h-7 flex-1 items-center gap-[2.5px] overflow-hidden", onSeek && "cursor-pointer touch-none")}
+      onPointerDown={(e) => {
+        if (!onSeek) return;
+        (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+        seekFromClientX(e.clientX);
+      }}
+      onPointerMove={(e) => {
+        if (!onSeek || e.buttons !== 1) return;
+        seekFromClientX(e.clientX);
+      }}
+    >
+      {heights.map((h, i) => {
+        const passed = i < filledCount;
+        return (
+          <span
+            key={i}
+            className={cn(
+              "w-[2.5px] shrink-0 rounded-full transition-colors",
+              light ? (passed ? "bg-white" : "bg-white/35") : (passed ? "bg-[#2563eb]" : "bg-[#93c5fd]/70"),
+              active && !passed && "animate-pulse",
+            )}
+            style={{
+              height: active && !passed ? h + (i % 3) : h,
+              animationDelay: `${i * 28}ms`,
+              animationDuration: "0.9s",
+            }}
+          />
+        );
+      })}
+      {onSeek ? (
         <span
-          key={i}
           className={cn(
-            "w-[2.5px] shrink-0 rounded-full transition-all",
-            light ? "bg-white/85" : "bg-[#60a5fa]",
-            active && "animate-pulse",
+            "pointer-events-none absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full shadow",
+            light ? "bg-white" : "bg-[#2563eb]",
           )}
-          style={{
-            height: active ? h + (i % 3) : h,
-            opacity: active ? 1 : 0.85,
-            animationDelay: `${i * 28}ms`,
-            animationDuration: "0.9s",
-          }}
+          style={{ left: `${pct * 100}%` }}
         />
-      ))}
+      ) : null}
     </div>
   );
 }
 
-/** Seekable progress track with draggable ball */
 function SeekBar({
   value,
   max,
@@ -50,7 +93,6 @@ function SeekBar({
 }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
-
   const seekFromClientX = (clientX: number) => {
     const el = trackRef.current;
     if (!el || max <= 0) return;
@@ -58,11 +100,10 @@ function SeekBar({
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     onSeek(ratio * max);
   };
-
   return (
     <div
       ref={trackRef}
-      className={cn("relative h-5 flex-1 cursor-pointer touch-none", light ? "" : "")}
+      className={cn("relative h-5 flex-1 cursor-pointer touch-none")}
       onPointerDown={(e) => {
         (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
         seekFromClientX(e.clientX);
@@ -73,17 +114,8 @@ function SeekBar({
       }}
     >
       <div className={cn("absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full", light ? "bg-white/30" : "bg-slate-200")} />
-      <div
-        className={cn("absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full", light ? "bg-white" : "bg-[#2563eb]")}
-        style={{ width: `${pct}%` }}
-      />
-      <div
-        className={cn(
-          "absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full shadow",
-          light ? "bg-white" : "bg-[#2563eb]",
-        )}
-        style={{ left: `${pct}%` }}
-      />
+      <div className={cn("absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full", light ? "bg-white" : "bg-[#2563eb]")} style={{ width: `${pct}%` }} />
+      <div className={cn("absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full shadow", light ? "bg-white" : "bg-[#2563eb]")} style={{ left: `${pct}%` }} />
     </div>
   );
 }
@@ -143,7 +175,6 @@ export function VoiceBubble({
     }
   };
 
-  // Own messages = white (right); received = blue (left)
   const own = mine;
   return (
     <div
@@ -156,9 +187,7 @@ export function VoiceBubble({
       <div
         className={cn(
           "relative flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 shadow-sm",
-          own
-            ? "border border-slate-200 bg-white text-slate-800"
-            : "bg-[#2563eb] text-white",
+          own ? "border border-slate-200 bg-white text-slate-800" : "bg-[#2563eb] text-white",
         )}
         onCopy={(e) => e.preventDefault()}
         onContextMenu={(e) => e.preventDefault()}
@@ -175,7 +204,18 @@ export function VoiceBubble({
           {playing ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4" />}
         </button>
         <div className="min-w-0 flex-1 py-0.5">
-          <WaveBars active={playing} light={!own} />
+          <WaveBars
+            active={playing}
+            light={!own}
+            progress={dur > 0 ? cur / dur : 0}
+            onSeek={(ratio) => {
+              const a = audioRef.current;
+              if (!a || !Number.isFinite(a.duration) || a.duration <= 0) return;
+              const t = ratio * a.duration;
+              a.currentTime = t;
+              setCur(t);
+            }}
+          />
           <div className={cn("mt-1 flex items-center gap-1 text-[10px] font-medium tabular-nums", own ? "text-slate-400" : "text-white/80")}>
             <span>{fmtDur(playing ? cur : 0)}</span>
             <span className="opacity-50">/</span>
@@ -232,12 +272,6 @@ export function VoiceBubble({
   );
 }
 
-/**
- * Recording UI:
- * - Recording: Cancel | Pause | Send (send stops + uploads immediately)
- * - Paused: Cancel | Play (preview) | Continue | Send
- * No "Ready to send" intermediate — Send always finalizes.
- */
 export function VoiceRecorderBar({
   recording,
   paused,
@@ -261,7 +295,6 @@ export function VoiceRecorderBar({
 }) {
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
   const ss = String(seconds % 60).padStart(2, "0");
-
   return (
     <div className="mb-2 select-none rounded-2xl border border-red-100 bg-gradient-to-b from-red-50 to-white px-3 py-3 shadow-sm">
       <div className="mb-3 flex flex-col items-center gap-1">
@@ -278,7 +311,6 @@ export function VoiceRecorderBar({
           </span>
           <span className="text-[10px] font-semibold">Cancel</span>
         </button>
-
         {paused ? (
           <>
             <button type="button" onClick={onPreviewPlay} className="flex flex-col items-center gap-1 text-slate-600">
@@ -302,7 +334,6 @@ export function VoiceRecorderBar({
             <span className="text-[10px] font-semibold text-slate-600">Pause</span>
           </button>
         )}
-
         <button type="button" onClick={onSend} className="flex flex-col items-center gap-1">
           <span className="grid h-11 w-11 place-items-center rounded-full bg-[#2563eb] text-white shadow-md">
             <Play className="ml-0.5 h-5 w-5" />
@@ -321,9 +352,7 @@ export function parseMediaUrls(url: string | null | undefined): string[] {
     try {
       const arr = JSON.parse(s) as unknown;
       if (Array.isArray(arr)) return arr.map(String).filter(Boolean);
-    } catch {
-      /* fall through */
-    }
+    } catch { /* fall through */ }
   }
   if (s.includes("||")) return s.split("||").map((x) => x.trim()).filter(Boolean);
   return [s];
@@ -396,45 +425,18 @@ export function ImageLightbox({
   useEffect(() => setI(index), [index]);
   if (!list.length) return null;
   const cur = list[Math.min(i, list.length - 1)];
-
   return (
     <div className="fixed inset-0 z-[90] flex flex-col bg-black">
       <div className="flex items-center justify-between px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white" aria-label="Close">
           <X className="h-5 w-5" />
         </button>
-        <p className="text-sm font-semibold text-white">
-          {list.length > 1 ? `${i + 1} / ${list.length}` : "Photo"}
-        </p>
+        <p className="text-sm font-semibold text-white">{list.length > 1 ? `${i + 1} / ${list.length}` : "Photo"}</p>
         <span className="w-10" />
       </div>
-      <div
-        className="flex min-h-0 flex-1 items-center justify-center"
-        onTouchStart={(e) => {
-          (e.currentTarget as HTMLElement).dataset.tx = String(e.touches[0]?.clientX ?? 0);
-        }}
-        onTouchEnd={(e) => {
-          const start = Number((e.currentTarget as HTMLElement).dataset.tx || 0);
-          const end = e.changedTouches[0]?.clientX ?? 0;
-          const dx = end - start;
-          if (dx > 50) setI((v) => Math.max(0, v - 1));
-          if (dx < -50) setI((v) => Math.min(list.length - 1, v + 1));
-        }}
-      >
+      <div className="flex min-h-0 flex-1 items-center justify-center">
         <img src={cur} alt="" className="max-h-full max-w-full object-contain" />
       </div>
-      {list.length > 1 ? (
-        <div className="flex justify-center gap-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          {list.map((_, idx) => (
-            <button
-              key={idx}
-              type="button"
-              className={cn("h-2 w-2 rounded-full", idx === i ? "bg-white" : "bg-white/40")}
-              onClick={() => setI(idx)}
-            />
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -456,10 +458,7 @@ export function LongPressMenu({
           <button
             key={it.label}
             type="button"
-            className={cn(
-              "flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-left text-sm font-semibold last:border-0",
-              it.danger ? "text-red-600" : "text-slate-800",
-            )}
+            className={cn("flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-left text-sm font-semibold last:border-0", it.danger ? "text-red-600" : "text-slate-800")}
             onClick={() => {
               it.onClick();
               onClose();
@@ -471,9 +470,7 @@ export function LongPressMenu({
             {it.label}
           </button>
         ))}
-        <button type="button" className="w-full px-4 py-3.5 text-sm font-bold text-slate-500" onClick={onClose}>
-          Cancel
-        </button>
+        <button type="button" className="w-full px-4 py-3.5 text-sm font-bold text-slate-500" onClick={onClose}>Cancel</button>
       </div>
     </div>
   );
