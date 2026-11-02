@@ -108,16 +108,7 @@ public class MainActivity extends AppCompatActivity {
         ));
         root.addView(web);
 
-        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(100);
-        FrameLayout.LayoutParams pp = new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(3)
-        );
-        pp.gravity = Gravity.TOP;
-        progress.setLayoutParams(pp);
-        progress.setVisibility(View.GONE);
-        root.addView(progress);
+        /* progress bar removed for native-app feel */
 
         // Splash overlay (same navy branding as d4exam-web)
         splash = new FrameLayout(this);
@@ -217,9 +208,9 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     if (progress == null) return;
                     if (newProgress >= 100) {
-                        progress.setVisibility(View.GONE);
+                        /* no top progress bar in app */
                     } else {
-                        progress.setVisibility(View.VISIBLE);
+                        /* no top progress bar in app */
                         progress.setProgress(newProgress);
                     }
                     if (newProgress > 60) hideSplash();
