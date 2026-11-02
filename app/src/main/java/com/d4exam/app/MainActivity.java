@@ -16,6 +16,10 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.CookieManager;
+import android.webkit.WebStorage;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
@@ -183,6 +187,30 @@ public class MainActivity extends AppCompatActivity {
         } catch (Throwable ignored) {
         }
 
+        // Persist login session across app restarts
+        try {
+            CookieManager cm = CookieManager.getInstance();
+            cm.setAcceptCookie(true);
+            if (Build.VERSION.SDK_INT >= 21) {
+                cm.setAcceptThirdPartyCookies(web, true);
+            }
+        } catch (Throwable ignored) {
+        }
+
+        // Offline: use HTTP cache from previous online visits
+        try {
+            if (isOnline()) {
+                s.setCacheMode(WebSettings.LOAD_DEFAULT);
+            } else {
+                s.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            }
+        } catch (Throwable ignored) {
+            try {
+                if (!isOnline()) s.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            } catch (Throwable ignored2) {
+            }
+        }
+
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView view, int newProgress) {
@@ -275,7 +303,7 @@ public class MainActivity extends AppCompatActivity {
             + "font-weight:700;padding:12px 22px;font-size:1rem}"
             + "</style></head><body>"
             + "<h1><span>D4EXAM</span></h1>"
-            + "<p>You're offline or the server is unreachable. Check your connection and retry.</p>"
+            + "<p>No network. D4EXAM UI is served from the cloud (Vercel) and data from Supabase. After you open the app once online, pages may load from cache offline. Connect and Retry.</p>"
             + "<button onclick=\"location.href='" + APP_URLS[0] + "'\">Retry</button>"
             + "</body></html>";
         try {
@@ -304,6 +332,17 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private boolean isOnline() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            if (cm == null) return true;
+            NetworkInfo n = cm.getActiveNetworkInfo();
+            return n != null && n.isConnected();
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
     private int dp(int v) {
         float d = getResources().getDisplayMetrics().density;
         return Math.round(v * d);
@@ -329,7 +368,14 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         try {
-            if (web != null) web.onResume();
+            if (web != null) {
+                web.onResume();
+                try {
+                    WebSettings s = web.getSettings();
+                    s.setCacheMode(isOnline() ? WebSettings.LOAD_DEFAULT : WebSettings.LOAD_CACHE_ELSE_NETWORK);
+                } catch (Throwable ignored) {
+                }
+            }
         } catch (Throwable ignored) {
         }
     }
