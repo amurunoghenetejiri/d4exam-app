@@ -458,8 +458,8 @@ public class MainActivity extends AppCompatActivity {
 
                     @Override
                     public void onAuthenticationError(int errorCode, CharSequence errString) {
-                        String code = (errorCode == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED
-                            || errorCode == BiometricPrompt.BIOMETRIC_ERROR_NEGATIVE_BUTTON)
+                        String code = (errorCode == 10 /* USER_CANCELED */
+                            || errorCode == 13 /* NEGATIVE_BUTTON */)
                             ? "cancelled" : "failed";
                         notifyJs(false, code, String.valueOf(errString));
                     }
