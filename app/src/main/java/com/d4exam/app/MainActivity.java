@@ -58,6 +58,11 @@ public class MainActivity extends AppCompatActivity {
     private static final int COLOR_NAVY = Color.parseColor("#0b1b3a");
     private static final int REQ_PERMS = 4401;
     private static final String CHANNEL_ID = "d4exam_alerts";
+
+    /** When the activity went to background (0 = unknown / cold). */
+    private long appPausedAt = 0L;
+    /** App lock only after this many ms away (matches web FP_LOCK_GRACE_MS). */
+    private static final long APP_LOCK_GRACE_MS = 10_000L;
     private static final int NOTIF_TEST_ID = 9001;
 
     private WebView web;
@@ -257,12 +262,57 @@ public class MainActivity extends AppCompatActivity {
 
     private void injectNativeFlag() {
         try {
+            // Mark native shell so web UI prefers fingerprint (not password-first),
+            // and clear sticky lock if this session was already unlocked (stops lock-on-every-page).
             web.evaluateJavascript(
-                "window.__D4_NATIVE__=true;"
+                "(function(){"
+                    + "try{window.__D4_NATIVE__=true;}catch(e){}"
+                    + "try{document.documentElement.setAttribute('data-d4-native','android');}catch(e){}"
                     + "try{window.localStorage.setItem('d4exam_native_shell_v1','android');}catch(e){}"
-                    + "try{window.dispatchEvent(new Event('d4-native-ready'));}catch(e){}",
+                    + "try{"
+                    + "var u=window.sessionStorage.getItem('d4_fp_session_unlocked_v1');"
+                    + "if(u==='1'){window.localStorage.removeItem('d4_fp_locked_v1');"
+                    + "window.sessionStorage.removeItem('d4_fp_bg_at_v1');}"
+                    + "}catch(e){}"
+                    + "try{window.dispatchEvent(new Event('d4-native-ready'));}catch(e){}"
+                    + "})();",
                 null
             );
+        } catch (Throwable ignored) {
+        }
+    }
+
+    /** After resume: only ask web to lock if away >= 10s; otherwise keep unlocked. */
+    private void applyLockGraceOnResume() {
+        if (web == null) return;
+        long away = (appPausedAt > 0L) ? (System.currentTimeMillis() - appPausedAt) : 0L;
+        appPausedAt = 0L;
+        try {
+            if (away > 0L && away < APP_LOCK_GRACE_MS) {
+                // Quick return — clear any lock flags so in-app flow stays open
+                web.evaluateJavascript(
+                    "(function(){try{"
+                        + "window.localStorage.removeItem('d4_fp_locked_v1');"
+                        + "window.sessionStorage.removeItem('d4_fp_bg_at_v1');"
+                        + "window.sessionStorage.setItem('d4_fp_session_unlocked_v1','1');"
+                        + "window.dispatchEvent(new Event('d4-session-refresh'));"
+                        + "}catch(e){}})();",
+                    null
+                );
+            } else if (away >= APP_LOCK_GRACE_MS) {
+                // Away long enough — mark background time in the past so web lock gate engages
+                web.evaluateJavascript(
+                    "(function(){try{"
+                        + "window.sessionStorage.setItem('d4_fp_bg_at_v1',String(Date.now()-11000));"
+                        + "window.localStorage.setItem('d4_fp_locked_v1','1');"
+                        + "window.sessionStorage.removeItem('d4_fp_session_unlocked_v1');"
+                        + "window.dispatchEvent(new Event('visibilitychange'));"
+                        + "window.dispatchEvent(new Event('d4-session-refresh'));"
+                        + "}catch(e){}})();",
+                    null
+                );
+            }
+            injectNativeFlag();
         } catch (Throwable ignored) {
         }
     }
@@ -565,6 +615,7 @@ public class MainActivity extends AppCompatActivity {
                         isOnline() ? WebSettings.LOAD_DEFAULT : WebSettings.LOAD_CACHE_ELSE_NETWORK);
                 } catch (Throwable ignored) {
                 }
+                applyLockGraceOnResume();
             }
         } catch (Throwable ignored) {
         }
@@ -572,6 +623,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
+        appPausedAt = System.currentTimeMillis();
         try {
             if (web != null) web.onPause();
         } catch (Throwable ignored) {
