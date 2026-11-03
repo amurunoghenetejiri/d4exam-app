@@ -1,5 +1,9 @@
 package com.d4exam.app;
 
+import android.webkit.ValueCallback;
+
+import android.net.Uri;
+
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.NotificationChannel;
@@ -61,6 +65,8 @@ public class MainActivity extends AppCompatActivity {
 
     /** When the activity went to background (0 = unknown / cold). */
     private long appPausedAt = 0L;
+    private ValueCallback<Uri[]> filePathCallback;
+    private static final int REQ_FILE = 4099;
     /** App lock only after this many ms away (matches web FP_LOCK_GRACE_MS). */
     private static final long APP_LOCK_GRACE_MS = 10_000L;
     private static final int NOTIF_TEST_ID = 9001;
@@ -231,6 +237,37 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public boolean onShowFileChooser(
+                WebView webView,
+                ValueCallback<Uri[]> filePathCallback,
+                FileChooserParams fileChooserParams
+            ) {
+                try {
+                    if (MainActivity.this.filePathCallback != null) {
+                        MainActivity.this.filePathCallback.onReceiveValue(null);
+                    }
+                    MainActivity.this.filePathCallback = filePathCallback;
+                    Intent intent = fileChooserParams.createIntent();
+                    try {
+                        startActivityForResult(intent, REQ_FILE);
+                    } catch (Throwable t) {
+                        Intent fallback = new Intent(Intent.ACTION_GET_CONTENT);
+                        fallback.addCategory(Intent.CATEGORY_OPENABLE);
+                        fallback.setType("*/*");
+                        fallback.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                        startActivityForResult(Intent.createChooser(fallback, "Select file"), REQ_FILE);
+                    }
+                    return true;
+                } catch (Throwable t) {
+                    if (MainActivity.this.filePathCallback != null) {
+                        MainActivity.this.filePathCallback.onReceiveValue(null);
+                        MainActivity.this.filePathCallback = null;
+                    }
+                    return false;
+                }
+            }
+
+            @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 if (newProgress > 55) {
                     hideSplash();
@@ -335,6 +372,10 @@ public class MainActivity extends AppCompatActivity {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VIDEO)
                 != PackageManager.PERMISSION_GRANTED) {
                 need.add(Manifest.permission.READ_MEDIA_VIDEO);
+            }
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+                need.add(Manifest.permission.READ_MEDIA_AUDIO);
             }
         } else {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -633,6 +674,33 @@ public class MainActivity extends AppCompatActivity {
         } catch (Throwable ignored) {
         }
         super.onPause();
+    }
+
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_FILE) {
+            Uri[] results = null;
+            try {
+                if (resultCode == RESULT_OK && data != null) {
+                    if (data.getClipData() != null) {
+                        int n = data.getClipData().getItemCount();
+                        results = new Uri[n];
+                        for (int i = 0; i < n; i++) {
+                            results[i] = data.getClipData().getItemAt(i).getUri();
+                        }
+                    } else if (data.getData() != null) {
+                        results = new Uri[] { data.getData() };
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+            if (filePathCallback != null) {
+                filePathCallback.onReceiveValue(results);
+                filePathCallback = null;
+            }
+        }
     }
 
     @Override
