@@ -262,19 +262,23 @@ public class MainActivity extends AppCompatActivity {
 
     private void injectNativeFlag() {
         try {
-            // Mark native shell so web UI prefers fingerprint (not password-first),
-            // and clear sticky lock if this session was already unlocked (stops lock-on-every-page).
+            // Mark as ANDROID APP so web lock gate uses fingerprint (not website password mode)
+            // and never locks on in-app SPA navigation.
             web.evaluateJavascript(
                 "(function(){"
                     + "try{window.__D4_NATIVE__=true;}catch(e){}"
+                    + "try{window.D4Android=window.D4Android||{};}catch(e){}"
                     + "try{document.documentElement.setAttribute('data-d4-native','android');}catch(e){}"
                     + "try{window.localStorage.setItem('d4exam_native_shell_v1','android');}catch(e){}"
                     + "try{"
                     + "var u=window.sessionStorage.getItem('d4_fp_session_unlocked_v1');"
-                    + "if(u==='1'){window.localStorage.removeItem('d4_fp_locked_v1');"
-                    + "window.sessionStorage.removeItem('d4_fp_bg_at_v1');}"
+                    + "if(u==='1'){"
+                    + "window.localStorage.removeItem('d4_fp_locked_v1');"
+                    + "window.sessionStorage.removeItem('d4_fp_bg_at_v1');"
+                    + "}"
                     + "}catch(e){}"
                     + "try{window.dispatchEvent(new Event('d4-native-ready'));}catch(e){}"
+                    + "try{window.dispatchEvent(new Event('d4-session-refresh'));}catch(e){}"
                     + "})();",
                 null
             );
