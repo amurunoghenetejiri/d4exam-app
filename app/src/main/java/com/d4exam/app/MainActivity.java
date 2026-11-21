@@ -205,7 +205,9 @@ public class MainActivity extends AppCompatActivity {
         s.setUseWideViewPort(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         try {
-            s.setCacheMode(isOnline() ? WebSettings.LOAD_DEFAULT : WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            // Prefer network so login/auth fixes from d4exam-web deploy apply immediately
+            s.setCacheMode(isOnline() ? WebSettings.LOAD_NO_CACHE : WebSettings.LOAD_CACHE_ELSE_NETWORK);
+            try { web.clearCache(false); } catch (Throwable ignored) {}
         } catch (Throwable ignored) {
         }
         if (Build.VERSION.SDK_INT >= 21) {
@@ -398,6 +400,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void loadApp() {
         urlIndex = 0;
+        try { web.clearCache(false); } catch (Throwable ignored) {}
         loadCurrentUrl();
     }
 
