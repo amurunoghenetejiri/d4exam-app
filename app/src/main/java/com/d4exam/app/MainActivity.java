@@ -308,7 +308,7 @@ public class MainActivity extends AppCompatActivity {
                     + "try{window.__D4_NATIVE__=true;}catch(e){}"
                     + "try{window.D4Android=window.D4Android||{};}catch(e){}"
                     + "try{document.documentElement.setAttribute('data-d4-native','android');}catch(e){}"
-                    + "try{window.localStorage.setItem('d4exam_native_shell_v1','android');}catch(e){}"
+                    + "try{window.localStorage.setItem('d4exam_native_shell_v1','android');window.__D4_NATIVE__=true;}catch(e){}"
                     + "try{"
                     + "var u=window.sessionStorage.getItem('d4_fp_session_unlocked_v1');"
                     + "if(u==='1'){"
