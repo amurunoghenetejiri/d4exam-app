@@ -231,8 +231,18 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void run() {
                         try {
-                            request.grant(request.getResources());
+                            // Grant camera, mic, and display capture for exam monitoring
+                            String[] res = request.getResources();
+                            if (res != null && res.length > 0) {
+                                request.grant(res);
+                            } else {
+                                request.grant(new String[] {
+                                    PermissionRequest.RESOURCE_VIDEO_CAPTURE,
+                                    PermissionRequest.RESOURCE_AUDIO_CAPTURE
+                                });
+                            }
                         } catch (Throwable ignored) {
+                            try { request.deny(); } catch (Throwable ignored2) {}
                         }
                     }
                 });
